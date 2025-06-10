@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Лента активности</title>
+    <link rel="stylesheet" type="text/css" href="/static/styles/feed.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+    <div class="feed-container">
+        <div class="header">
+            <h1>Лента активности</h1>
+            <button onclick="window.location.href='/chat'">Перейти в чат</button>
+            <button onclick="window.location.href='/profile'">Личный кабинет</button>
+            <button onclick="window.location.href='/events'">Мероприятия</button> <!-- Добавлено -->
+            <button onclick="window.location.href='/events/create_event'">Создать мероприятие</button>
+        </div>
+        <div id="postsContainer" class="posts-container">
+            <!-- Посты будут загружены сюда -->
+            {% for post in posts %}
+            <div class="post" data-post-id="{{ post.id }}" data-liked="{{ post.liked_by_current_user }}">
+                <!-- Заголовок поста -->
+                <div class="post-header">
+                    <img src="{{ post.user.avatar_url }}" alt="Аватар" class="post-avatar">
+                    <div class="post-header-info">
+                        <a href="/profile/view/{{ post.user.id }}" class="post-author">{{ post.user.full_name }}</a>
+                        <span class="post-time">{{ post.created_at }}</span>
+                    </div>
+                </div>
+
+                <!-- Маршрут -->
+                <div class="post-map" id="map-{{ post.id }}"></div>
+
+                <!-- Сетка фотографий -->
+                {% if post.photo_urls and post.photo_urls|length > 0 %}
+                <div class="photo-grid-container">
+                    <div class="photo-grid">
+                        {% for photo_url in post.photo_urls %}
+                        <div class="photo-grid-item" data-photo-url="{{ photo_url }}">
+                            <img src="{{ photo_url }}" alt="Фото поста" class="post-photo">
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Описание поста -->
+                <div class="post-description">{{ post.content }}</div>
+
+                <!-- Статистика и кнопки -->
+                <div class="post-footer">
+                    <div class="post-stats">
+                        <span class="likes-count">{{ post.likes_count or 0 }} лайков</span>
+                        <span class="comments-count">{{ post.comments_count or 0 }} комментариев</span>
+                    </div>
+                    <div class="post-actions">
+                        <button class="like-button {% if post.liked_by_current_user %}liked{% endif %}" data-post-id="{{ post.id }}">Лайк</button>
+                        <button class="comments-button" data-post-id="{{ post.id }}">Комментировать</button>
+                    </div>
+                </div>
+
+                <!-- Секция комментариев -->
+                <div class="comments-section" id="comments-{{ post.id }}" style="display: none;">
+                    <div class="comments-container"></div>
+                    <textarea class="comment-input" placeholder="Напишите комментарий..."></textarea>
+                    <button class="submit-comment" data-post-id="{{ post.id }}">Отправить</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра фотографий -->
+    <div id="photo-modal" class="photo-modal">
+        <span class="close-modal">&times;</span>
+        <button class="modal-nav-button prev-button">&larr;</button>
+        <img class="modal-content" id="modal-photo">
+        <button class="modal-nav-button next-button">&rarr;</button>
+    </div>
+
+    <script src="/static/js/feed.js?v=11"></script>
+    <script>
+        // Инициализация карт для каждого поста
+        {% for post in posts %}
+        initMap({{ post.id }}, {{ post.route_data | tojson }});
+        {% endfor %}
+
+        function initMap(postId, routeData) {
+            const map = L.map(`map-${postId}`).setView([routeData[0].latitude, routeData[0].longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            const routePoints = routeData.map(point => [point.latitude, point.longitude]);
+            L.polyline(routePoints, { color: 'blue' }).addTo(map);
+        }
+    </script>
+</body>
+</html>

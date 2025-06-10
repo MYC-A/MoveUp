@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание мероприятия</title>
+    <link rel="stylesheet" href="/static/styles/create_event.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="/static/js/create_event.js" defer></script>
+</head>
+<body>
+    <h1>Создание мероприятия</h1>
+    <form id="eventForm">
+        <label for="title">Название:</label>
+        <input type="text" id="title" name="title" required>
+        <label for="description">Описание:</label>
+        <textarea id="description" name="description"></textarea>
+        <label for="event_type">Тип мероприятия:</label>
+        <select id="event_type" name="event_type" required>
+            <option value="running">Пробежка</option>
+            <option value="cycling">Велопрогулка</option>
+            <option value="hiking">Поход</option>
+            <option value="training">Тренировка</option>
+        </select>
+        <label for="goal">Цель:</label>
+        <input type="text" id="goal" name="goal">
+        <label for="start_time">Время начала:</label>
+        <input type="datetime-local" id="start_time" name="start_time">
+        <label for="end_time">Время окончания:</label>
+        <input type="datetime-local" id="end_time" name="end_time">
+        <label for="difficulty">Уровень сложности:</label>
+        <select id="difficulty" name="difficulty" required>
+            <option value="новичок">Новичок</option>
+            <option value="любитель">Любитель</option>
+            <option value="профессионал">Профессионал</option>
+        </select>
+        <label for="max_participants">Максимальное количество участников:</label>
+        <input type="number" id="max_participants" name="max_participants" required>
+        <label for="is_public">Открытое мероприятие:</label>
+        <input type="checkbox" id="is_public" name="is_public" checked>
+        <div id="map" style="height: 400px; width: 100%; margin-top: 20px;"></div>
+        <div id="routeInfo">
+            <p id="distance">Расстояние: 0 км</p>
+            <p id="duration">Оценочное время: 0 мин</p>
+        </div>
+        <div id="blueInfo">
+            <p id="blueDistance">Расстояние (синяя линия): 0 км</p>
+            <p id="blueDuration">Оценочное время (синяя линия): 0 мин</p>
+        </div>
+        <div id="redInfo">
+            <p id="redDistance">Расстояние (красная линия): 0 км</p>
+            <p id="redDuration">Оценочное время (красная линия): 0 мин</p>
+        </div>
+        <div id="activePointInfo">
+            <p id="activePointDistance">Расстояние до активной точки: 0 км</p>
+            <p id="activePointDuration">Время до активной точки: 0 мин</p>
+        </div>
+        <button type="button" id="removeLastPoint">Удалить последнюю точку</button>
+        <button type="button" id="clearMap">Очистить карту</button>
+        <button type="button" id="buildRoute">Построить маршрут</button>
+        <label for="optimizeRoute">Оптимизировать маршрут:</label>
+        <input type="checkbox" id="optimizeRoute" name="optimizeRoute">
+        <label for="roundTrip">Круговой маршрут:</label>
+        <input type="checkbox" id="roundTrip" name="roundTrip">
+        <button type="button" id="toggleBlueLine">Скрыть синюю линию</button>
+        <button type="submit">Создать</button>
+    </form>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</body>
+</html>

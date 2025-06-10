@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Список мероприятий</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/styles/events.css">
+    <!-- Подключаем иконки (например, FontAwesome) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <h1>Список мероприятий</h1>
+    <div id="eventsList">
+        {% for event in events %}
+        <div class="event">
+            <h2>{{ event.title }}</h2>
+            <p>{{ event.description }}</p>
+            <p><strong>Тип:</strong> {{ event.event_type }}</p>
+            <p><strong>Цель:</strong> {{ event.goal }}</p>
+            <p><strong>Уровень сложности:</strong> {{ event.difficulty }}</p>
+            <p><strong>Начало:</strong> {{ event.start_time }}</p>
+            <p><strong>Окончание:</strong> {{ event.end_time }}</p>
+            <p><strong>Максимум участников:</strong> {{ event.max_participants }}</p>
+            <p><strong>Публичное:</strong> {{ "Да" if event.is_public else "Нет" }}</p>
+
+            <!-- Блок для отображения свободных мест -->
+            <div class="free-slots">
+                <i class="fas fa-users"></i>
+                <span>Свободные места: <span id="free-slots-{{ event.id }}">{{ event.available_seats }}</span>/{{ event.available_seats }}</span>
+            </div>
+
+            <div id="map-{{ event.id }}" class="map"></div>
+            <a href="/events/{{ event.id }}">Подробнее</a>
+            <button class="participate-button" data-event-id="{{ event.id }}">Записаться на мероприятие</button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="loading" style="display: none;">Загрузка...</div>
+
+    <!-- Подключаем Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Передаем данные из сервера в JavaScript -->
+    <script>
+        window.eventsData = {{ events | tojson | safe }};
+        window.skip = {{ events | length }};
+    </script>
+
+    <!-- Подключаем отдельный JS-файл -->
+    <script src="/static/js/events.js"></script>
+</body>
+</html>

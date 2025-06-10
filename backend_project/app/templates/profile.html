@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Личный кабинет</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="/static/styles/profile.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Личный кабинет</h1>
+
+        <!-- Информация о пользователе -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <img id="avatar" src="{{ user.avatar_url or '/static/images/default-avatar.png' }}" alt="Аватар" class="rounded-circle mb-3" width="150" height="150">
+                <h2 id="fullName" class="card-title">{{ user.full_name }}</h2>
+                <p id="bio" class="card-text">{{ user.bio or "Нет биографии" }}</p>
+            </div>
+        </div>
+
+        <!-- Редактирование профиля -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Редактировать профиль</h2>
+                <form id="editProfileForm">
+                    <div class="mb-3">
+                        <label for="fullNameInput" class="form-label">Имя:</label>
+                        <input type="text" class="form-control" id="fullNameInput" name="full_name" value="{{ user.full_name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="bioInput" class="form-label">Биография:</label>
+                        <textarea class="form-control" id="bioInput" name="bio">{{ user.bio or "" }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="avatarInput" class="form-label">Аватар:</label>
+                        <input type="file" class="form-control" id="avatarInput" name="avatar" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Статистика активности -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Статистика активности</h2>
+                <p>Постов: <span id="postCount">{{ stats.posts_count }}</span></p>
+                <p>Комментариев: <span id="commentCount">{{ stats.comments_count }}</span></p>
+                <p>Лайков: <span id="likeCount">{{ stats.likes_count }}</span></p>
+            </div>
+        </div>
+
+        <!-- Подписчики и подписки -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Подписчики</h2>
+                <p>Количество подписчиков: <span id="followersCount">{{ followers.total_followers }}</span></p>
+                <button id="showFollowers" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#followersModal">Показать подписчиков</button>
+
+                <h2 class="card-title mt-4">Подписки</h2>
+                <p>Количество подписок: <span id="followingCount">{{ following.total_following }}</span></p>
+                <button id="showFollowing" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#followingModal">Показать подписки</button>
+            </div>
+        </div>
+
+        <!-- Кнопка для просмотра мероприятий -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Мои мероприятия</h2>
+                <button id="showEvents" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#eventsModal">
+                    Просмотреть запланированные мероприятия
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для подписчиков -->
+    <div class="modal fade" id="followersModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Подписчики</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul id="followersList" class="list-group"></ul>
+                    <button id="loadMoreFollowers" class="btn btn-primary mt-3">Загрузить еще</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для подписок -->
+    <div class="modal fade" id="followingModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Подписки</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul id="followingList" class="list-group"></ul>
+                    <button id="loadMoreFollowing" class="btn btn-primary mt-3">Загрузить еще</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для мероприятий и заявок -->
+    <div class="modal fade" id="eventsModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Мои мероприятия</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Контейнер для списка мероприятий -->
+                    <div id="eventsContent">
+                        <ul id="eventsList" class="list-group"></ul>
+                        <button id="loadMoreEvents" class="btn btn-primary mt-3">Загрузить еще</button>
+                    </div>
+
+                    <!-- Контейнер для списка заявок -->
+                    <div id="applicationsContent" style="display: none;">
+                        <ul id="applicationsList" class="list-group"></ul>
+                        <button id="loadMoreApplications" class="btn btn-primary mt-3">Загрузить еще</button>
+                        <button id="backToEvents" class="btn btn-secondary mt-3">Назад к мероприятиям</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/profile.js?v=3"></script>
+</body>
+</html>

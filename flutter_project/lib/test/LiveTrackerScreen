@@ -1,0 +1,761 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import '../services/GpsService.dart';
+import '../services/StorageService.dart';
+import '../models/RunningRoute.dart';
+import 'RouteHistoryScreen.dart';
+import '../models/RoutePoint.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+// Класс для фильтрации GPS-данных
+class GpsFilter {
+  // Фильтр точности: удаляет точки с низкой точностью
+  static List<Position> filterByAccuracy(
+      List<Position> points, double minAccuracy) {
+    return points.where((point) => point.accuracy <= minAccuracy).toList();
+  }
+
+  // Интерполяция: добавляет промежуточные точки между существующими
+  static List<Position> interpolatePoints(
+      List<Position> points, double maxDistance) {
+    final interpolatedPoints = <Position>[];
+
+    for (var i = 0; i < points.length - 1; i++) {
+      final point1 = points[i];
+      final point2 = points[i + 1];
+      interpolatedPoints.add(point1);
+
+      final distance = Geolocator.distanceBetween(
+        point1.latitude,
+        point1.longitude,
+        point2.latitude,
+        point2.longitude,
+      );
+
+      if (distance > maxDistance) {
+        final steps = (distance / maxDistance).ceil();
+        for (var j = 1; j < steps; j++) {
+          final fraction = j / steps;
+          interpolatedPoints
+              .add(_interpolatePosition(point1, point2, fraction));
+        }
+      }
+    }
+
+    if (points.isNotEmpty) {
+      interpolatedPoints.add(points.last);
+    }
+
+    return interpolatedPoints;
+  }
+
+  static Position _interpolatePosition(
+      Position point1, Position point2, double fraction) {
+    return Position(
+      latitude:
+          point1.latitude + (point2.latitude - point1.latitude) * fraction,
+      longitude:
+          point1.longitude + (point2.longitude - point1.longitude) * fraction,
+      timestamp: point1.timestamp
+          .add(point2.timestamp.difference(point1.timestamp) * fraction),
+      accuracy: _average(point1.accuracy, point2.accuracy),
+      altitude: _average(point1.altitude, point2.altitude),
+      altitudeAccuracy: _average(
+          point1.altitudeAccuracy ?? 0.0, point2.altitudeAccuracy ?? 0.0),
+      heading: _average(point1.heading, point2.heading),
+      headingAccuracy: _average(
+          point1.headingAccuracy ?? 0.0, point2.headingAccuracy ?? 0.0),
+      speed: _average(point1.speed, point2.speed),
+      speedAccuracy: _average(point1.speedAccuracy, point2.speedAccuracy),
+    );
+  }
+
+  static double _average(double a, double b) => (a + b) / 2;
+
+  // Скользящее среднее: усредняет координаты по окну
+  static List<Position> applyMovingAverage(
+      List<Position> points, int windowSize) {
+    if (points.isEmpty || windowSize < 1) return points;
+
+    final averagedPoints = <Position>[];
+    final halfWindow = windowSize ~/ 2;
+
+    for (var i = 0; i < points.length; i++) {
+      final start = (i - halfWindow).clamp(0, points.length - 1);
+      final end = (i + halfWindow + 1).clamp(0, points.length);
+
+      final window = points.sublist(start, end);
+      averagedPoints.add(_averagePosition(points[i], window));
+    }
+
+    return averagedPoints;
+  }
+
+  static Position _averagePosition(Position base, List<Position> window) {
+    final avgLat =
+        window.map((p) => p.latitude).reduce((a, b) => a + b) / window.length;
+    final avgLon =
+        window.map((p) => p.longitude).reduce((a, b) => a + b) / window.length;
+
+    return Position(
+      latitude: avgLat,
+      longitude: avgLon,
+      timestamp: base.timestamp,
+      accuracy: base.accuracy,
+      altitude: base.altitude,
+      altitudeAccuracy: base.altitudeAccuracy,
+      heading: base.heading,
+      headingAccuracy: base.headingAccuracy,
+      speed: base.speed,
+      speedAccuracy: base.speedAccuracy,
+    );
+  }
+
+  // Фильтр Калмана
+  static List<Position> applyKalmanFilter(List<Position> points) {
+    final filteredPoints = <Position>[];
+    double? latEstimate, lonEstimate;
+    double latVariance = 1.0, lonVariance = 1.0;
+    const processNoise = 1e-5, measurementNoise = 1e-1;
+
+    for (final point in points) {
+      if (latEstimate == null || lonEstimate == null) {
+        latEstimate = point.latitude;
+        lonEstimate = point.longitude;
+      } else {
+        latVariance += processNoise;
+        lonVariance += processNoise;
+
+        final kalmanGainLat = latVariance / (latVariance + measurementNoise);
+        final kalmanGainLon = lonVariance / (lonVariance + measurementNoise);
+
+        latEstimate += kalmanGainLat * (point.latitude - latEstimate);
+        lonEstimate += kalmanGainLon * (point.longitude - lonEstimate);
+
+        latVariance *= (1 - kalmanGainLat);
+        lonVariance *= (1 - kalmanGainLon);
+      }
+
+      filteredPoints.add(Position(
+        latitude: latEstimate,
+        longitude: lonEstimate,
+        timestamp: point.timestamp,
+        accuracy: point.accuracy,
+        altitude: point.altitude,
+        altitudeAccuracy: point.altitudeAccuracy,
+        heading: point.heading,
+        headingAccuracy: point.headingAccuracy,
+        speed: point.speed,
+        speedAccuracy: point.speedAccuracy,
+      ));
+    }
+
+    return filteredPoints;
+  }
+
+  // Сворачивание точек
+  static List<Position> collapsePoints(
+      List<Position> points, double maxDistance, Duration maxTime) {
+    final collapsedPoints = <Position>[];
+    Position? lastPoint;
+
+    for (final point in points) {
+      if (lastPoint == null ||
+          Geolocator.distanceBetween(lastPoint.latitude, lastPoint.longitude,
+                  point.latitude, point.longitude) >
+              maxDistance ||
+          point.timestamp.difference(lastPoint.timestamp) > maxTime) {
+        collapsedPoints.add(point);
+        lastPoint = point;
+      }
+    }
+
+    return collapsedPoints;
+  }
+}
+
+class LiveTrackerScreen extends StatefulWidget {
+  final RunningRoute? route;
+
+  const LiveTrackerScreen({super.key, this.route});
+
+  @override
+  _LiveTrackerScreenState createState() => _LiveTrackerScreenState();
+}
+
+class _LiveTrackerScreenState extends State<LiveTrackerScreen> {
+  final GpsService _gpsService = GpsService();
+  final StorageService _storageService = StorageService();
+  RunningRoute? _route;
+  bool _isTracking = false;
+  bool _isPaused = false;
+  LatLng? _currentPosition;
+  StreamSubscription<Position>? _positionStreamSubscription;
+  Timer? _trackingTimer;
+  Duration _trackingDuration = Duration.zero;
+  bool _followUser = true;
+  final MapController _mapController = MapController();
+  List<LatLng> _accumulatedPoints = [];
+
+  @override
+  void initState() {
+    super.initState();
+    startBackgroundService();
+    _route = widget.route;
+    if (_route != null) {
+      _trackingDuration = _route!.duration;
+    }
+    _checkLocationPermission();
+  }
+
+  void startBackgroundService() {
+    final service = FlutterBackgroundService();
+    service.configure(
+      androidConfiguration: AndroidConfiguration(
+        onStart: onStart,
+        autoStart: true,
+        isForegroundMode: true,
+      ),
+      iosConfiguration: IosConfiguration(
+        autoStart: true,
+        onForeground: onStart,
+      ),
+    );
+    service.startService();
+  }
+
+  static void onStart(ServiceInstance service) async {
+    // Устанавливаем режим foreground (для Android)
+    if (service is AndroidServiceInstance) {
+      service.setForegroundNotificationInfo(
+        title: "Трекер маршрута",
+        content: "Запущено",
+      );
+    }
+
+    // Таймер для обновления данных
+    Timer.periodic(Duration(seconds: 1), (timer) async {
+      bool isRunning = await FlutterBackgroundService().isRunning();
+      if (!isRunning) {
+        timer.cancel();
+        return;
+      }
+
+      // Отправляем данные в уведомление
+      service.invoke(
+        'update',
+        {
+          "current_distance": 0,
+          "current_time": DateTime.now().toString(),
+        },
+      );
+    });
+  }
+
+  void showNotification() {
+    final service = FlutterBackgroundService();
+    service.invoke(
+      'update',
+      {
+        "title": "Трекер маршрута",
+        "content":
+            "Дистанция: ${_route?.distance.toStringAsFixed(2) ?? 0} м, Время: ${_trackingDuration.inHours.toString().padLeft(2, '0')}:${(_trackingDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_trackingDuration.inSeconds % 60).toString().padLeft(2, '0')}",
+      },
+    );
+  }
+
+  Future<void> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Пожалуйста, включите GPS')),
+      );
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Доступ к местоположению отклонен')),
+        );
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Доступ к местоположению отклонен навсегда')),
+      );
+      return;
+    }
+
+    _getCurrentLocation();
+  }
+
+  void _reinitializeGPS() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Пожалуйста, включите GPS')),
+      );
+      return;
+    }
+
+    _getCurrentLocation();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    Position position = await _gpsService.getCurrentLocation();
+    setState(() {
+      _currentPosition = LatLng(position.latitude, position.longitude);
+    });
+
+    _positionStreamSubscription =
+        _gpsService.getPositionStream().listen((position) {
+      final newPosition = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _currentPosition = newPosition;
+      });
+
+      if (_followUser) {
+        _smoothMoveTo(newPosition);
+      }
+
+      if (_isTracking && !_isPaused) {
+        _addPoint(newPosition);
+      }
+    });
+  }
+
+  void _smoothMoveTo(LatLng newPosition) {
+    const int steps = 10;
+    const Duration duration = Duration(milliseconds: 500);
+    final LatLng startPosition = _mapController.camera.center;
+
+    final double latStep =
+        (newPosition.latitude - startPosition.latitude) / steps;
+    final double lngStep =
+        (newPosition.longitude - startPosition.longitude) / steps;
+
+    int step = 0;
+    Timer.periodic(duration ~/ steps, (timer) {
+      if (step >= steps) {
+        timer.cancel();
+        return;
+      }
+
+      final LatLng intermediatePosition = LatLng(
+        startPosition.latitude + latStep * step,
+        startPosition.longitude + lngStep * step,
+      );
+
+      _mapController.move(intermediatePosition, _mapController.camera.zoom);
+      step++;
+    });
+  }
+
+  void _addPoint(LatLng newPoint) {
+    _accumulatedPoints.add(newPoint);
+    if (_accumulatedPoints.length >= 3) {
+      _processAndDrawPoints();
+      _accumulatedPoints.clear();
+    }
+  }
+
+  void _processAndDrawPoints() {
+    final processedPoints = _processPoints(_accumulatedPoints);
+    _updateRoute(processedPoints);
+  }
+
+  List<LatLng> _processPoints(List<LatLng> points) {
+    final processedPoints = <LatLng>[];
+    for (var i = 0; i < points.length - 1; i++) {
+      final point1 = points[i];
+      final point2 = points[i + 1];
+      processedPoints.add(point1);
+
+      if (i > 0) {
+        final previousPoint = points[i - 1];
+        final angle = _calculateAngle(previousPoint, point1, point2);
+        if (angle.abs() > 10) {
+          final midPoint = LatLng(
+            (point1.latitude + point2.latitude) / 2,
+            (point1.longitude + point2.longitude) / 2,
+          );
+          processedPoints.add(midPoint);
+        }
+      }
+    }
+    processedPoints.add(points.last);
+    return processedPoints;
+  }
+
+  double _calculateAngle(LatLng p1, LatLng p2, LatLng p3) {
+    final bearing1 = _calculateBearing(p1, p2);
+    final bearing2 = _calculateBearing(p2, p3);
+    return bearing2 - bearing1;
+  }
+
+  double _calculateBearing(LatLng start, LatLng end) {
+    final lat1 = start.latitude * (pi / 180);
+    final lon1 = start.longitude * (pi / 180);
+    final lat2 = end.latitude * (pi / 180);
+    final lon2 = end.longitude * (pi / 180);
+
+    final y = sin(lon2 - lon1) * cos(lat2);
+    final x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1);
+    return atan2(y, x) * (180 / pi);
+  }
+
+  void _updateRoute(List<LatLng> processedPoints) {
+    setState(() {
+      for (final point in processedPoints) {
+        final routePoint = RoutePoint(
+          coordinates: point,
+          timestamp: DateTime.now(),
+        );
+        _route!.addPoint(point);
+      }
+    });
+  }
+
+  void _startTracking() async {
+    final status = await Permission.location.status;
+    if (!status.isGranted) {
+      await Permission.location.request();
+    }
+
+    if (await Permission.location.isGranted) {
+      setState(() {
+        _route = RunningRoute(
+          id: DateTime.now().toString(),
+          name: 'Новый маршрут',
+          points: [],
+          distance: 0.0,
+          date: DateTime.now(),
+        );
+        _isTracking = true;
+        _isPaused = false;
+        _trackingDuration = Duration.zero;
+        _trackingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+          setState(() {
+            _trackingDuration += Duration(seconds: 1);
+          });
+        });
+      });
+
+      showNotification();
+
+      if (_currentPosition != null) {
+        _route!.addPoint(_currentPosition!);
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('Разрешение на доступ к местоположению не предоставлено')),
+      );
+    }
+  }
+
+  void _pauseTracking() {
+    setState(() {
+      _isPaused = true;
+    });
+    _positionStreamSubscription?.pause();
+    _trackingTimer?.cancel();
+  }
+
+  void _resumeTracking() {
+    setState(() {
+      _isPaused = false;
+    });
+    _positionStreamSubscription?.resume();
+    _trackingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        _trackingDuration += Duration(seconds: 1);
+      });
+    });
+  }
+
+  void _stopAndSaveRoute() {
+    setState(() {
+      _isTracking = false;
+      _isPaused = false;
+    });
+    _positionStreamSubscription?.cancel();
+    _trackingTimer?.cancel();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Сохранить маршрут?'),
+        content: Text('Хотите сохранить текущий маршрут?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _clearRoute();
+            },
+            child: Text('Нет'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _saveRoute();
+            },
+            child: Text('Да'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearRoute() {
+    setState(() {
+      _route = null;
+    });
+  }
+
+  Future<void> _saveRoute() async {
+    if (_route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Нет активного маршрута для сохранения')),
+      );
+      return;
+    }
+
+    final positions = _route!.points
+        .map((point) => Position(
+              latitude: point.coordinates.latitude,
+              longitude: point.coordinates.longitude,
+              timestamp: point.timestamp,
+              accuracy: 15.0,
+              altitude: 0.0,
+              altitudeAccuracy: 0.0,
+              heading: 0.0,
+              headingAccuracy: 0.0,
+              speed: 0.0,
+              speedAccuracy: 0.0,
+            ))
+        .toList();
+
+    final averagedPositions = GpsFilter.applyMovingAverage(positions, 3);
+    final interpolatedPositions =
+        GpsFilter.interpolatePoints(averagedPositions, 10.0);
+    final collapsedPositions =
+        GpsFilter.collapsePoints(averagedPositions, 2.0, Duration(seconds: 60));
+
+    _route!.points = collapsedPositions
+        .map((position) => RoutePoint(
+              coordinates: LatLng(position.latitude, position.longitude),
+              timestamp: position.timestamp,
+            ))
+        .toList();
+
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: Text('Название маршрута'),
+          content: TextField(
+            controller: controller,
+            decoration: InputDecoration(hintText: 'Введите название'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, controller.text);
+              },
+              child: Text('Сохранить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (name != null && name.isNotEmpty) {
+      setState(() {
+        _route!.name = name;
+      });
+      await _storageService.saveRoute(_route!);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Маршрут сохранен')),
+      );
+
+      setState(() {
+        _route = null;
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Маршрут не сохранен: название не указано')),
+      );
+    }
+  }
+
+  void _centerMapOnUser() {
+    if (_currentPosition != null) {
+      _mapController.move(_currentPosition!, _mapController.camera.zoom);
+      setState(() {
+        _followUser = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    _trackingTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Live Tracker'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RouteHistoryScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: _currentPosition == null
+          ? Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _currentPosition!,
+                      initialZoom: 14.25,
+                      onPositionChanged: (MapCamera position, bool hasGesture) {
+                        if (hasGesture) {
+                          setState(() {
+                            _followUser = false;
+                          });
+                        }
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                        keepBuffer: 4,
+                      ),
+                      if (_route != null)
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: _route!.points
+                                  .map((point) => point.coordinates)
+                                  .toList(),
+                              strokeWidth: 4.0,
+                              color: Colors.blue.withOpacity(0.7),
+                              borderColor: Colors.blue.withOpacity(0.2),
+                              borderStrokeWidth: 6.0,
+                            ),
+                          ],
+                        ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _currentPosition!,
+                            child: AnimatedContainer(
+                              duration: Duration(milliseconds: 300),
+                              width: 5,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.blue.withOpacity(0.5),
+                                    spreadRadius: 3,
+                                    blurRadius: 7,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    children: [
+                      if (_route != null)
+                        Text(
+                          'Пройдено: ${_route!.distance.toStringAsFixed(2)} м',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                      Text(
+                        'Время: ${_trackingDuration.inHours.toString().padLeft(2, '0')}:${(_trackingDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_trackingDuration.inSeconds % 60).toString().padLeft(2, '0')}',
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: _isTracking
+                ? (_isPaused ? _resumeTracking : _pauseTracking)
+                : _startTracking,
+            heroTag: 'trackingButton',
+            child: Icon(_isTracking
+                ? (_isPaused ? Icons.play_arrow : Icons.pause)
+                : Icons.directions_run), // Иконка для старта трекинга
+          ),
+          if (_isTracking) SizedBox(height: 10),
+          if (_isTracking)
+            FloatingActionButton(
+              onPressed: _stopAndSaveRoute,
+              child: Icon(Icons.stop), // Иконка для остановки трекинга
+            ),
+          SizedBox(height: 10),
+          FloatingActionButton(
+            onPressed: _centerMapOnUser,
+            child: Icon(Icons
+                .my_location), // Иконка для центрирования карты на пользователе
+          ),
+          SizedBox(height: 10),
+          FloatingActionButton(
+            onPressed: _reinitializeGPS,
+            child: Icon(
+                Icons.gps_not_fixed), // Иконка для повторной инициализации GPS
+          ),
+        ],
+      ),
+    );
+  }
+}

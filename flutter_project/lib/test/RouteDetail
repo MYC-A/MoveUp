@@ -1,0 +1,365 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/CreatePostScreen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:photo_view/photo_view.dart'; // Для полноэкранного просмотра фото
+import '../models/RunningRoute.dart';
+import 'RouteViewScreen.dart';
+import '../services/StorageService.dart';
+
+class RouteDetailsScreen extends StatefulWidget {
+  final RunningRoute route;
+
+  const RouteDetailsScreen({super.key, required this.route});
+
+  @override
+  _RouteDetailsScreenState createState() => _RouteDetailsScreenState();
+}
+
+class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
+  final StorageService _storageService = StorageService();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.text = widget.route.name;
+    _descriptionController.text = widget.route.description;
+    Future.delayed(Duration(milliseconds: 500), () {
+      _zoomToRoute();
+    });
+  }
+
+  void _zoomToRoute() {
+    if (widget.route.points.isEmpty) return;
+
+    final bounds = LatLngBounds.fromPoints(
+      widget.route.points.map((point) => point.coordinates).toList(),
+    );
+
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: EdgeInsets.all(50),
+      ),
+    );
+  }
+
+  Future<void> addPhotoToRoute(RunningRoute route) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+      if (pickedFile != null) {
+        setState(() {
+          route.addPhoto(pickedFile.path);
+        });
+        await _storageService.updateRoutePhotos(route.id, route.photos);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Фотография не выбрана')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при добавлении фотографии: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    widget.route.name =
+        _nameController.text.isEmpty ? "Без названия" : _nameController.text;
+    widget.route.description = _descriptionController.text;
+    await _storageService.saveRoute(widget.route);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Изменения сохранены')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Детали маршрута', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.indigo[900], // Темно-синий фон
+        elevation: 4,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.save, color: Colors.white),
+            onPressed: _saveChanges,
+          ),
+          IconButton(
+            icon: Icon(Icons.add_a_photo, color: Colors.white),
+            onPressed: () async {
+              await addPhotoToRoute(widget.route);
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.map, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RouteViewScreen(route: widget.route),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.post_add, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CreatePostScreen(route: widget.route),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Container(
+        color: Colors.grey[100], // Светло-серый фон
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Карта
+              Container(
+                height: 300, // Увеличенная высота для карты
+                margin: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: widget.route.points.first.coordinates,
+                      initialZoom: 13.0,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                      ),
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: widget.route.points
+                                .map((point) => point.coordinates)
+                                .toList(),
+                            strokeWidth: 4.0,
+                            color: Colors.blue,
+                          ),
+                        ],
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: widget.route.points.first.coordinates,
+                            child: Icon(Icons.location_on,
+                                color: Colors.green, size: 30),
+                          ),
+                          Marker(
+                            point: widget.route.points.last.coordinates,
+                            child: Icon(Icons.location_on,
+                                color: Colors.red, size: 30),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Секция метрик
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMetricCard(Icons.timer, widget.route.formattedDuration, 'Время'),
+                    _buildMetricCard(Icons.directions_run, '${(widget.route.distance / 1000).toStringAsFixed(2)} км', 'Дистанция'),
+                    _buildMetricCard(Icons.local_fire_department, '357 ккал', 'Калории'), // Заглушка для калорий
+                  ],
+                ),
+              ),
+              // Карточка с названием и описанием
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                    border: Border.all(color: Colors.orangeAccent, width: 1),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Название маршрута',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        TextFormField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Введите название',
+                            hintStyle: TextStyle(color: Colors.grey[400]),
+                          ),
+                          style: TextStyle(fontSize: 18, color: Colors.black),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Описание маршрута',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        TextFormField(
+                          controller: _descriptionController,
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Введите описание',
+                            hintStyle: TextStyle(color: Colors.grey[400]),
+                          ),
+                          style: TextStyle(fontSize: 16, color: Colors.black),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Фотографии
+              if (widget.route.photos.isNotEmpty)
+                Container(
+                  height: 200,
+                  margin: EdgeInsets.symmetric(vertical: 16),
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: widget.route.photos.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FullScreenImage(imagePath: widget.route.photos[index]),
+                              ),
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.file(
+                              File(widget.route.photos[index]),
+                              width: 150,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              if (widget.route.photos.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'Нет фотографий',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Метод для отображения метрик в карточках
+  Widget _buildMetricCard(IconData icon, String value, String label) {
+    return Container(
+      width: 100,
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 2)),
+        ],
+        border: Border.all(color: Colors.orangeAccent, width: 1),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 30, color: Colors.orangeAccent),
+          SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Полноэкранный просмотр фото
+class FullScreenImage extends StatelessWidget {
+  final String imagePath;
+
+  const FullScreenImage({Key? key, required this.imagePath}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: PhotoView(
+          imageProvider: FileImage(File(imagePath)),
+          backgroundDecoration: BoxDecoration(color: Colors.black),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль пользователя</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="/static/styles/profile.css">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Профиль пользователя</h1>
+
+        <!-- Информация о пользователе -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <img id="avatar" src="{{ user.avatar_url or '/static/images/default-avatar.png' }}" alt="Аватар" class="rounded-circle mb-3" width="150" height="150">
+                <h2 id="fullName" class="card-title">{{ user.full_name }}</h2>
+                <p id="bio" class="card-text">{{ user.bio or "Нет биографии" }}</p>
+                <!-- Кнопки "Начать диалог" и "Подписаться" -->
+                <div class="d-flex gap-2">
+                    <button id="startChatButton" class="btn btn-primary">Начать диалог</button>
+                    <button id="followButton" class="btn btn-outline-primary">Подписаться</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика активности -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Статистика активности</h2>
+                <p>Постов: <span id="postCount">{{ stats.posts_count }}</span></p>
+                <p>Комментариев: <span id="commentCount">{{ stats.comments_count }}</span></p>
+                <p>Лайков: <span id="likeCount">{{ stats.likes_count }}</span></p>
+            </div>
+        </div>
+
+        <!-- Посты пользователя -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h2 class="card-title">Посты пользователя</h2>
+                <div id="userPosts" class="posts-container">
+                    <!-- Посты будут загружены сюда -->
+                </div>
+                <button id="loadMorePosts" class="btn btn-primary mt-3">Загрузить еще</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/profile_view.js?v=9"></script>
+</body>
+</html>

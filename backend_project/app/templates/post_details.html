@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Пост с комментариями</title>
+    <link rel="stylesheet" type="text/css" href="/static/styles/feed.css">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+    <div class="feed-container">
+        <div class="header">
+            <h1>Пост с комментариями</h1>
+            <button id="backButton">Назад</button>
+        </div>
+        <div id="postContainer" class="post">
+            <!-- Пост будет загружен сюда -->
+        </div>
+        <div id="commentsContainer" class="comments-container">
+            <!-- Комментарии будут загружены сюда -->
+        </div>
+        <div class="comment-form">
+            <textarea id="commentInput" placeholder="Напишите комментарий..."></textarea>
+            <button id="submitComment">Отправить</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра фотографий -->
+    <div id="photo-modal" class="photo-modal">
+        <span class="close-modal">&times;</span>
+        <button class="modal-nav-button prev-button">&larr;</button>
+        <img class="modal-content" id="modal-photo">
+        <button class="modal-nav-button next-button">&rarr;</button>
+    </div>
+
+    <script src="/static/js/post_details.js"></script>
+</body>
+</html>
