@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketState
 from fastapi.responses import JSONResponse
 from app.users.dependensies_user import get_current_user, get_current_user_id
+from app.core.config import settings
 from app.db.base import get_db
 from app.core.security import create_access_token
 from app.models.follow import UserFollow
@@ -253,22 +254,17 @@ async def get_feed(
     return JSONResponse(content=posts_json)
 
 
-MINIO_ENDPOINT = "localhost:9000"  # Адрес MinIO сервера
-MINIO_ACCESS_KEY = "minioadmin"    # Логин для доступа к MinIO
-MINIO_SECRET_KEY = "minioadmin"    # Пароль для доступа к MinIO
-MINIO_BUCKET_NAME = "photos"       # Имя bucket для хранения фотографий
-
 # Инициализация MinIO клиента
 minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
+    settings.MINIO_ENDPOINT,
+    access_key=settings.MINIO_ACCESS_KEY,
+    secret_key=settings.MINIO_SECRET_KEY,
     secure=False  # Используйте True, если MinIO настроен с SSL
 )
 
 async def check():
     # Проверка и создание бакета, если он не существует
-    bucket_name = "posts"
+    bucket_name = settings.MINIO_POSTS_BUCKET_NAME
     if not minio_client.bucket_exists(bucket_name):
         minio_client.make_bucket(bucket_name)
         print(f"Bucket '{bucket_name}' created.")
@@ -291,7 +287,7 @@ async def upload_photo_to_minio(file: UploadFile, bucket_name: str):
         )
 
         # Возвращаем URL файла
-        return f"http://localhost:9000/{bucket_name}/{file_name}"
+        return f"{settings.MINIO_PUBLIC_URL.rstrip('/')}/{bucket_name}/{file_name}"
     except S3Error as e:
         print(f"Error uploading file to MinIO: {e}")
         raise
@@ -330,7 +326,7 @@ async def create_post(
     # Сохраняем загруженные фотографии в MinIO
     photo_urls = []
     for photo in photos:
-        photo_url = await upload_photo_to_minio(photo, "posts")
+        photo_url = await upload_photo_to_minio(photo, settings.MINIO_POSTS_BUCKET_NAME)
         db_photo = PostPhoto(post_id=db_post.id, photo_url=photo_url)
         db.add(db_photo)
         photo_urls.append(photo_url)

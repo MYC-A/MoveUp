@@ -1,3 +1,4 @@
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'dart:convert';
@@ -15,7 +16,7 @@ class WebSocketService {
   void connectToFeed() {
     try {
       _channel = IOWebSocketChannel.connect(
-        Uri.parse('ws://91.200.84.206/api/post/ws/feed'),
+        Uri.parse('${AppConfig.wsBaseUrl}/post/ws/feed'),
       );
 
       print('Подключение к WebSocket для ленты установлено');
@@ -43,7 +44,7 @@ class WebSocketService {
   void connectToPost(int postId) {
     try {
       _channel = IOWebSocketChannel.connect(
-        Uri.parse('ws://91.200.84.206/api/post/ws/post/$postId'),
+        Uri.parse('${AppConfig.wsBaseUrl}/post/ws/post/$postId'),
       );
 
       print('Подключение к WebSocket для поста $postId установлено');

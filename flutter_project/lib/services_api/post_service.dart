@@ -1,12 +1,12 @@
 import 'dart:convert';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/models/RunningRoute.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models_api/post.dart';
 
 class PostService {
-  final String baseUrl =
-      'http://91.200.84.206/api'; // Для Android-эмулятора // Замените на ваш URL
+  final String baseUrl = AppConfig.apiBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
 
   // Получить ленту постов
@@ -238,8 +238,7 @@ class Comment {
           DateTime.parse(json['created_at'] ?? DateTime.now().toString()),
       userFullName: json['user']['username'] ?? 'Пользователь',
       userAvatarUrl: json['user']['avatar_url'] != null
-          ? json['user']['avatar_url']
-              .replaceAll('localhost:9000', '91.200.84.206/minio')
+          ? AppConfig.normalizeMediaUrl(json['user']['avatar_url'])
           : null,
     );
   }

@@ -1,11 +1,12 @@
 import 'dart:convert';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/io.dart';
 
 class ChatService {
-  final String baseUrl = 'http://91.200.84.206/api'; // Базовый URL для VPS
-  final String wsBaseUrl = 'ws://91.200.84.206/api'; // WebSocket URL для VPS
+  final String baseUrl = AppConfig.apiBaseUrl;
+  final String wsBaseUrl = AppConfig.wsBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
   IOWebSocketChannel? _channel;
 

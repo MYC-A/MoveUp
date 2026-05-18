@@ -1,21 +1,25 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:latlong2/latlong.dart';
 
 class EventService {
-  final String baseUrl = 'http://91.200.84.206/api'; // Для Android-эмулятора
+  final String baseUrl = AppConfig.apiBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
-  final String openRouteApiKey =
-      '5b3ce3597851110001cf6248fc87794625ca407fa03a6dac7017f830'; // API-ключ
+  final String openRouteApiKey = AppConfig.openRouteServiceApiKey;
 
   // Построение маршрута через OpenRouteService
   Future<Map<String, dynamic>> buildRoute(
       List<LatLng> points, bool roundTrip) async {
     if (points.length < 2) {
       throw Exception('Добавьте минимум две точки для построения маршрута.');
+    }
+    if (openRouteApiKey.isEmpty) {
+      throw Exception(
+          'OPEN_ROUTE_API_KEY не задан. Запустите Flutter с --dart-define=OPEN_ROUTE_API_KEY=...');
     }
 
     // Формируем координаты для запроса

@@ -27,6 +27,8 @@ from typing import List
 import io
 from fastapi import Query
 
+from app.core.config import settings
+
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 # Папка для шаблонов
@@ -37,18 +39,19 @@ AVATAR_DIR = Path("app/static/images/avatars")
 AVATAR_DIR.mkdir(exist_ok=True)
 
 
-MINIO_ENDPOINT = "localhost:9000"  # Адрес MinIO сервера
-MINIO_ACCESS_KEY = "minioadmin"    # Логин для доступа к MinIO
-MINIO_SECRET_KEY = "minioadmin"    # Пароль для доступа к MinIO
-MINIO_BUCKET_NAME = "photos"       # Имя bucket для хранения фотографий
-
 # Инициализация MinIO клиента
 minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
+    settings.MINIO_ENDPOINT,
+    access_key=settings.MINIO_ACCESS_KEY,
+    secret_key=settings.MINIO_SECRET_KEY,
     secure=False  # Используйте True, если MinIO настроен с SSL
 )
+
+
+def ensure_minio_bucket(bucket_name: str):
+    if not minio_client.bucket_exists(bucket_name):
+        minio_client.make_bucket(bucket_name)
+
 
 # Рендеринг страницы личного кабинета
 @router.get("/")
@@ -93,14 +96,6 @@ async def get_profile_page(
     )
 
 
-# Проверка существования бакета
-try:
-    if not minio_client.bucket_exists(MINIO_BUCKET_NAME):
-        minio_client.make_bucket(MINIO_BUCKET_NAME)
-except S3Error as e:
-    print(f"Ошибка создания бакета: {e}")
-
-
 # Обновление данных текущего пользователя
 @router.put("/", response_model=UserRead)
 async def update_profile(
@@ -131,9 +126,11 @@ async def update_profile(
             # Читаем содержимое файла
             file_content = await avatar.read()
 
+            ensure_minio_bucket(settings.MINIO_BUCKET_NAME)
+
             # Загружаем в MinIO
             minio_client.put_object(
-                MINIO_BUCKET_NAME,
+                settings.MINIO_BUCKET_NAME,
                 file_name,
                 data=io.BytesIO(file_content),
                 length=len(file_content),
@@ -141,7 +138,7 @@ async def update_profile(
             )
 
             # Формируем URL для доступа к файлу
-            avatar_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET_NAME}/{file_name}"
+            avatar_url = f"{settings.MINIO_PUBLIC_URL.rstrip('/')}/{settings.MINIO_BUCKET_NAME}/{file_name}"
             user.avatar_url = avatar_url
         except S3Error as e:
             raise HTTPException(status_code=500, detail=f"Ошибка загрузки в MinIO: {e}")
@@ -606,34 +603,6 @@ async def mark_notifications_as_read(
 
     await db.commit()
     return {"message": "Уведомления помечены как прочитанные"}
-
-@router.put("/", response_model=UserRead)
-async def update_profile(
-    full_name: str = Form(None),
-    bio: str = Form(None),
-    avatar: UploadFile = File(None),
-    current_user: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
-):
-    result = await db.execute(select(User).filter(User.id == current_user))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    if full_name:
-        user.full_name = full_name
-    if bio:
-        user.bio = bio
-
-    if avatar:
-        avatar_path = AVATAR_DIR / f"{current_user}.jpg"
-        with open(avatar_path, "wb") as buffer:
-            buffer.write(await avatar.read())
-        user.avatar_url = f"/static/images/avatars/{current_user}.jpg"
-
-    await db.commit()
-    await db.refresh(user)
-    return user
 
 @router.post("/profile/notifications/mark_as_read_single")
 async def mark_single_notification_as_read(

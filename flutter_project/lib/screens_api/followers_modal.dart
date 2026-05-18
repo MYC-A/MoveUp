@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../screens_api/UserProfiles.dart';
 import '../services_api/lk_service.dart';
@@ -66,9 +67,9 @@ class _FollowersModalState extends State<FollowersModal> {
 
   String _getAvatarUrl(String? url) {
     return (url ?? '')
-            .replaceAll('http://localhost:9000', 'http://91.200.84.206/minio')
+            .replaceAll('http://localhost:9000', AppConfig.mediaBaseUrl)
             .isNotEmpty
-        ? url!.replaceAll('http://localhost:9000', 'http://91.200.84.206/minio')
+        ? url!.replaceAll('http://localhost:9000', AppConfig.mediaBaseUrl)
         : 'https://via.placeholder.com/150';
   }
 

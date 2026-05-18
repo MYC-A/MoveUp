@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
+from app.core.config import settings
 from app.users.dependensies_user import get_current_user
 from app.db.base import get_db
 from typing import List
-from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 from ..chat.models import GroupChat, group_chat_participants
@@ -18,7 +18,13 @@ active_connections = {}
 @router.get("/create_event")
 async def create_event_page(request: Request):
     """Страница создания мероприятия."""
-    return templates.TemplateResponse("create_event.html", {"request": request})
+    return templates.TemplateResponse(
+        "create_event.html",
+        {
+            "request": request,
+            "open_route_api_key": settings.OPEN_ROUTE_API_KEY,
+        },
+    )
 
 @router.post("/create", response_model=EventRead)
 async def create_event(
@@ -200,18 +206,3 @@ async def get_event_route(
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     return event.route_data or []
-
-@router.post("/{event_id}/participate", response_model=EventParticipantCreate)
-async def participate_event(
-    event_id: int,
-    current_user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Запись пользователя на мероприятие."""
-    participant = await EventParticipantDAO.add_participant(
-        event_id=event_id,
-        user_id=current_user.id,
-        session=db
-    )
-    return participant
-

@@ -1,10 +1,10 @@
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LkUsersService {
-  final String baseUrl =
-      'http://91.200.84.206/api'; // Для Android-эмулятора // Замените на ваш URL
+  final String baseUrl = AppConfig.apiBaseUrl;
   final storage = FlutterSecureStorage();
 
   // Получить данные профиля пользователя

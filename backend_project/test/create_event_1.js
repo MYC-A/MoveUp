@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let routeLayer; // Красная линия (маршрут от API)
     let showBlueLine = true; // Флаг для отображения синей линии
 
-    const OPENROUTE_API_KEY = '5b3ce3597851110001cf6248fc87794625ca407fa03a6dac7017f830'; // Ваш API-ключ
+    const OPENROUTE_API_KEY = window.MoveUpConfig?.openRouteApiKey || "";
 
     // Получаем элементы для отображения информации о красной линии
     const redDistanceElement = document.getElementById("redDistance");

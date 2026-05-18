@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/NotificationsScreen.dart';
 import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
 import 'package:flutter_application_1/screens_api/followers_modal.dart';
@@ -173,7 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             CircleAvatar(
                               backgroundImage: NetworkImage(
                                 (user['avatar_url'] ?? '').replaceAll(
-                                    'localhost:9000', '91.200.84.206/minio'),
+                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme),
                               ),
                               radius: 50,
                             ),

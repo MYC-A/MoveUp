@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/UserFollowersModal.dart';
 import 'package:flutter_application_1/screens_api/UserFollowingModal.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
@@ -102,7 +103,7 @@ class _UserProfilesState extends State<UserProfiles> {
           final user = profile['user'];
           final stats = profile['stats'];
           final avatarUrl = (user['avatar_url'] ?? '')
-              .replaceAll('localhost:9000', '91.200.84.206/minio');
+              .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
           return CustomScrollView(
             controller: _scrollController,

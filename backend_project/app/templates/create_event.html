@@ -6,6 +6,11 @@
     <title>Создание мероприятия</title>
     <link rel="stylesheet" href="/static/styles/create_event.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script>
+        window.MoveUpConfig = {
+            openRouteApiKey: {{ open_route_api_key | tojson }}
+        };
+    </script>
     <script src="/static/js/create_event.js" defer></script>
 </head>
 <body>

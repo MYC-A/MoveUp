@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens/RouteHistoryScreen.dart';
 import 'package:flutter_application_1/screens_api/CreatePostWithoutRouteScreen.dart';
 import 'package:flutter_application_1/screens_api/PostDetails_screen.dart';
@@ -506,7 +507,7 @@ class _PostItemState extends State<PostItem>
     final post = widget.post;
     final String avatarUrl =
         (post.userAvatarUrl ?? 'https://via.placeholder.com/150')
-            .replaceAll('localhost:9000', '91.200.84.206/minio');
+            .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
     return Container(
       margin: EdgeInsets.all(8),
@@ -740,7 +741,7 @@ class _PostItemState extends State<PostItem>
                 itemCount: post.photoUrls!.length,
                 itemBuilder: (context, index) {
                   final String imageUrl = post.photoUrls![index]
-                      .replaceAll('localhost:9000', '91.200.84.206/minio');
+                      .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -749,7 +750,7 @@ class _PostItemState extends State<PostItem>
                           builder: (context) => PhotoViewer(
                             photoUrls: post.photoUrls!
                                 .map((url) => url.replaceAll(
-                                    'localhost:9000', '91.200.84.206/minio'))
+                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme))
                                 .toList(),
                             initialIndex: index,
                           ),

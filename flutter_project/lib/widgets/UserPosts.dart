@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/PostDetails_screen.dart';
 import 'package:flutter_application_1/services_api/post_service.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -107,7 +108,7 @@ class _UserPostsState extends State<UserPosts> {
           for (var url in post.photoUrls!) {
             precacheImage(
               CachedNetworkImageProvider(
-                url.replaceAll('localhost:9000', '91.200.84.206/minio'),
+                url.replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme),
                 cacheManager: customCacheManager,
               ),
               context,
@@ -268,7 +269,7 @@ class _UserPostsState extends State<UserPosts> {
             final post = posts[index];
             final String avatarUrl =
                 (post.userAvatarUrl ?? 'https://via.placeholder.com/150')
-                    .replaceAll('localhost:9000', '91.200.84.206/minio');
+                    .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
             return Card(
               margin: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -528,7 +529,7 @@ class _UserPostsState extends State<UserPosts> {
                           itemBuilder: (context, index) {
                             final String imageUrl = post.photoUrls![index]
                                 .replaceAll(
-                                    'localhost:9000', '91.200.84.206/minio');
+                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
                             return GestureDetector(
                               onTap: () {
@@ -539,7 +540,7 @@ class _UserPostsState extends State<UserPosts> {
                                       photoUrls: post.photoUrls!
                                           .map((url) => url.replaceAll(
                                               'localhost:9000',
-                                              '91.200.84.206/minio'))
+                                              AppConfig.mediaBaseUrlWithoutScheme))
                                           .toList(),
                                       initialIndex: index,
                                     ),

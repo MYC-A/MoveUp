@@ -1,0 +1,36 @@
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local env/secrets
+.env
+.env.*
+!.env.example
+
+# Backend local data
+backend_project/.venv/
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+flutter_project/build/
+flutter_project/.dart_tool/
+
+# Logs
+*.log

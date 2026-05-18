@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/models/RoutePoint.dart';
 import 'package:flutter_application_1/models/RunningRoute.dart';
 import 'package:flutter_application_1/services/StorageService.dart';
@@ -88,7 +89,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
       setState(() {
         _currentUserId = userId;
         _currentUserAvatarUrl = profile['user']['avatar_url']
-            ?.replaceAll('localhost:9000', '91.200.84.206/minio');
+            ?.replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
         _currentUserFullName = profile['user']['full_name'];
       });
     } catch (e) {
@@ -169,7 +170,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
     try {
       final profile = await _lkUsersService.fetchUserProfile(userId);
       return profile['user']['avatar_url']
-          ?.replaceAll('localhost:9000', '91.200.84.206/minio');
+          ?.replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
     } catch (e) {
       print('Ошибка загрузки аватарки пользователя $userId: $e');
       return null;
@@ -191,7 +192,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
           final avatarUrl = await _fetchUserAvatar(commentJson['user_id']);
           commentJson['user'] = {
             'avatar_url': avatarUrl?.replaceAll(
-                    'localhost:9000', '91.200.84.206/minio') ??
+                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme) ??
                 '',
             'username': commentJson['user']?['username'] ?? 'Пользователь',
           };
@@ -357,7 +358,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
     }
 
     final postAvatarUrl = (_post.userAvatarUrl ?? '')
-        .replaceAll('localhost:9000', '91.200.84.206/minio');
+        .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -622,7 +623,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                         itemBuilder: (context, index) {
                           final String imageUrl = _post.photoUrls![index]
                               .replaceAll(
-                                  'localhost:9000', '91.200.84.206/minio');
+                                  'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
                           return GestureDetector(
                             onTap: () {
                               Navigator.push(
@@ -632,7 +633,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                     photoUrls: _post.photoUrls!
                                         .map((url) => url.replaceAll(
                                             'localhost:9000',
-                                            '91.200.84.206/minio'))
+                                            AppConfig.mediaBaseUrlWithoutScheme))
                                         .toList(),
                                     initialIndex: index,
                                   ),
@@ -731,7 +732,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                       }
                       final comment = _comments[index];
                       final commentAvatarUrl = (comment.userAvatarUrl ?? '')
-                          .replaceAll('localhost:9000', '91.200.84.206/minio');
+                          .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
                       return Padding(
                         padding:
@@ -901,8 +902,10 @@ class PhotoViewer extends StatelessWidget {
       body: PhotoViewGallery.builder(
         itemCount: photoUrls.length,
         builder: (context, index) {
-          final imageUrl = photoUrls[index]
-            ..replaceAll('localhost:9000', '91.200.84.206/minio');
+          final imageUrl = photoUrls[index].replaceAll(
+            'localhost:9000',
+            AppConfig.mediaBaseUrlWithoutScheme,
+          );
           return PhotoViewGalleryPageOptions(
             imageProvider: CachedNetworkImageProvider(
               imageUrl,
