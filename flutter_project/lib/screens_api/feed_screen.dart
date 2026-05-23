@@ -150,37 +150,48 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       final newPosts = await _postService.getFeed(0, _limit);
       final newPostsToAdd =
           newPosts.where((post) => post.id > _latestPostId!).toList();
-      if (newPostsToAdd.isNotEmpty) {
-        setState(() {
+      if (!mounted) return;
+
+      var hasExistingUpdates = false;
+      setState(() {
+        if (newPostsToAdd.isNotEmpty) {
           _posts.insertAll(0, newPostsToAdd);
           _mapControllers.insertAll(
               0, List.generate(newPostsToAdd.length, (_) => MapController()));
           _latestPostId = _posts.first.id;
-        });
+        }
+
+        // Обновляем commentsCount/likesCount для существующих постов одним rebuild.
+        for (var newPost in newPosts) {
+          final index = _posts.indexWhere((p) => p.id == newPost.id);
+          if (index != -1) {
+            _posts[index].commentsCount = newPost.commentsCount;
+            _posts[index].likesCount = newPost.likesCount;
+            hasExistingUpdates = true;
+          }
+        }
+
+        if (newPostsToAdd.isNotEmpty || hasExistingUpdates) {
+          _posts = List.from(_posts);
+        }
+        _isRefreshing = false;
+      });
+
+      if (newPostsToAdd.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${newPostsToAdd.length} новых постов')),
         );
       }
-      // Обновляем commentsCount для существующих постов
-      for (var newPost in newPosts) {
-        final index = _posts.indexWhere((p) => p.id == newPost.id);
-        if (index != -1) {
-          setState(() {
-            _posts[index].commentsCount = newPost.commentsCount;
-            _posts[index].likesCount = newPost.likesCount;
-            _posts = List.from(_posts);
-          });
-        }
-      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления: $e')),
-      );
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка обновления: $e')),
+        );
+      }
       debugPrint('Ошибка обновления: $e');
-    } finally {
-      setState(() {
-        _isRefreshing = false;
-      });
     }
   }
 
@@ -740,8 +751,8 @@ class _PostItemState extends State<PostItem>
                 ),
                 itemCount: post.photoUrls!.length,
                 itemBuilder: (context, index) {
-                  final String imageUrl = post.photoUrls![index]
-                      .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
+                  final String imageUrl = post.photoUrls![index].replaceAll(
+                      'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -749,8 +760,8 @@ class _PostItemState extends State<PostItem>
                         MaterialPageRoute(
                           builder: (context) => PhotoViewer(
                             photoUrls: post.photoUrls!
-                                .map((url) => url.replaceAll(
-                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme))
+                                .map((url) => url.replaceAll('localhost:9000',
+                                    AppConfig.mediaBaseUrlWithoutScheme))
                                 .toList(),
                             initialIndex: index,
                           ),

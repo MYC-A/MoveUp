@@ -19,7 +19,6 @@ from app.users.dependensies_user import get_current_user, get_current_user_id
 from app.core.config import settings
 from app.db.base import get_db
 from app.core.security import create_access_token
-from app.models.follow import UserFollow
 from app.posts.models_posts_comments import Comment
 from app.posts.models_posts_like import PostLike
 from .schemas_comments import CommentCreate
@@ -167,65 +166,30 @@ async def get_feed(
     """Получить ленту активности с постами от друзей и рекомендациями"""
     current_user = current_user1.id
 
-    # Получаем посты от друзей (исключая посты текущего пользователя)
-    stmt_friends = (
+    stmt_posts = (
         select(Post)
         .options(selectinload(Post.user), selectinload(Post.photos))  # Загружаем фотографии
-
-
-        .order_by(Post.created_at.desc())  # Сортируем по новизне
+        .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
         .offset(skip)
         .limit(limit)
     )
-    """
-    .join(UserFollow, UserFollow.following_id == Post.user_id)
-            .filter(
-            UserFollow.follower_id == current_user,
-            Post.user_id != current_user  # Исключаем посты текущего пользователя
-        )
-    """
-    result_friends = await db.execute(stmt_friends)
-    friend_posts = result_friends.scalars().all()
-
-    # Получаем рекомендации (посты от пользователей, на которых не подписан текущий пользователь)
-    stmt_recommendations = (
-        select(Post)
-        .options(selectinload(Post.user), selectinload(Post.photos))  # Загружаем фотографии
-        .outerjoin(UserFollow, (UserFollow.following_id == Post.user_id) & (UserFollow.follower_id == current_user))
-        .filter(
-            UserFollow.follower_id.is_(None),  # Посты от пользователей, на которых не подписан
-            Post.user_id != current_user  # Исключаем посты текущего пользователя
-        )
-        .order_by(
-            Post.likes_count.desc(),  # Сортируем по популярности
-            Post.created_at.desc()    # Затем по новизне
-        )
-        .offset(skip)
-        .limit(limit)
-    )
-    result_recommendations = await db.execute(stmt_recommendations)
-    recommended_posts = result_recommendations.scalars().all()
-
-    # Объединяем посты от друзей и рекомендации
-    all_posts = friend_posts + recommended_posts
-
-    # Убираем дубликаты (если пост от друга также попал в рекомендации)
-    unique_posts = list({post.id: post for post in all_posts}.values())
-
-    # Сортируем объединенный список по дате создания
-    unique_posts.sort(key=lambda post: post.created_at, reverse=True)
+    result_posts = await db.execute(stmt_posts)
+    posts = result_posts.scalars().all()
 
     # Проверяем, лайкнул ли текущий пользователь каждый пост
-    for post in unique_posts:
+    post_ids = [post.id for post in posts]
+    liked_post_ids = set()
+    if post_ids:
         result = await db.execute(
-            select(PostLike).filter(
-                PostLike.user_id == current_user1.id,
-                PostLike.post_id == post.id
+            select(PostLike.post_id).where(
+                PostLike.user_id == current_user,
+                PostLike.post_id.in_(post_ids)
             )
         )
-        post.liked_by_current_user = result.scalars().first() is not None
+        liked_post_ids = set(result.scalars().all())
 
-    for post in unique_posts:
+    for post in posts:
+        post.liked_by_current_user = post.id in liked_post_ids
         post.photo_urls = [photo.photo_url for photo in post.photos]
 
     # Преобразуем посты в JSON
@@ -248,7 +212,7 @@ async def get_feed(
             "liked_by_current_user": post.liked_by_current_user,
             "photo_urls": post.photo_urls,
         }
-        for post in unique_posts
+        for post in posts
     ]
 
     return JSONResponse(content=posts_json)
