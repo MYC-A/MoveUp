@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
-import 'package:flutter_application_1/models/RunningRoute.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models_api/post.dart';
@@ -26,7 +26,7 @@ class PostService {
       final String responseBody = utf8.decode(response.bodyBytes);
 
       final List<dynamic> data = json.decode(responseBody);
-      print('Тело ответа: ${responseBody}');
+      debugPrint('Лента загружена: ${data.length} постов');
       return data.map((json) => Post.fromJson(json)).toList();
     } else {
       throw Exception('Ошибка загрузки ленты: ${response.body}');
@@ -149,9 +149,9 @@ class PostService {
     required List<String> photoPaths,
   }) async {
     try {
-      print('Начало createPost: content=$content, photos=${photoPaths.length}');
+      debugPrint(
+          'Создание поста: photos=${photoPaths.length}, routePoints=${routeData.length}');
       final token = await storage.read(key: 'access_token');
-      print('Токен: ${token != null ? 'найден' : 'не найден'}');
       if (token == null) {
         throw Exception('Токен не найден');
       }
@@ -162,19 +162,15 @@ class PostService {
         'duration': duration,
         'route_data': routeData,
       };
-      print('postData: $postData');
 
       Uri url = Uri.parse('$baseUrl/post/posts_create');
-      print('Создание запроса на: $url');
 
       Future<http.MultipartRequest> createRequest(Uri uri) async {
         final request = http.MultipartRequest('POST', uri);
         request.headers['Cookie'] = 'users_access_token=$token';
         request.fields['post'] = json.encode(postData);
-        print('Добавлены поля: ${request.fields}');
 
         for (final photoPath in photoPaths) {
-          print('Добавление файла: $photoPath');
           final file = await http.MultipartFile.fromPath('photos', photoPath);
           request.files.add(file);
         }
@@ -183,30 +179,28 @@ class PostService {
       }
 
       var request = await createRequest(url);
-      print('Отправка запроса...');
       var response = await request.send();
       var responseBody = await response.stream.bytesToString();
-      print('Ответ сервера: ${response.statusCode}, тело: $responseBody');
+      debugPrint('Создание поста завершено со статусом ${response.statusCode}');
 
       // Обработка перенаправления
       if (response.statusCode == 307) {
         final redirectUrl = response.headers['location'];
         if (redirectUrl != null) {
-          print('Перенаправление на: $redirectUrl');
           url = Uri.parse(redirectUrl);
           final newRequest = await createRequest(url); // ← новое создание!
           response = await newRequest.send();
           responseBody = await response.stream.bytesToString();
-          print(
-              'Ответ сервера после перенаправления: ${response.statusCode}, тело: $responseBody');
+          debugPrint(
+              'Создание поста после перенаправления: ${response.statusCode}');
         }
       }
 
       if (response.statusCode != 200) {
         throw Exception('Ошибка создания поста: $responseBody');
       }
-    } catch (e, stackTrace) {
-      print('Ошибка в createPost: $e, StackTrace: $stackTrace');
+    } catch (e) {
+      debugPrint('Ошибка в createPost: $e');
       rethrow;
     }
   }

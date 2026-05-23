@@ -60,7 +60,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         });
       }
     } catch (e) {
-      print('Ошибка получения ID пользователя: $e');
+      debugPrint('Ошибка получения ID пользователя: $e');
     }
   }
 
@@ -72,11 +72,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _messages = messages;
           _isLoading = false;
         });
-        _messagesController.add(_messages);
+        _emitMessages();
         _scrollToBottomWithDelay();
       }
     } catch (e) {
-      print('Ошибка загрузки сообщений: $e');
+      debugPrint('Ошибка загрузки сообщений: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -89,34 +89,36 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     try {
       await _chatService.markGroupMessagesAsRead(widget.groupChatId);
       final unreadCount = await _chatService.getUnreadMessagesCount();
-      print('Непрочитанных сообщений: $unreadCount');
+      debugPrint('Непрочитанных сообщений: $unreadCount');
     } catch (e) {
-      print('Ошибка отметки сообщений как прочитанных: $e');
+      debugPrint('Ошибка отметки сообщений как прочитанных: $e');
     }
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients && _messages.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 150,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      });
+  void _emitMessages() {
+    if (!_messagesController.isClosed) {
+      _messagesController.add(_messages);
     }
+  }
+
+  void _scrollToBottom({
+    Duration delay = const Duration(milliseconds: 100),
+  }) {
+    if (_messages.isEmpty) return;
+
+    Future.delayed(delay, () {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _scrollToBottomWithDelay() {
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 150,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    _scrollToBottom(delay: const Duration(milliseconds: 200));
   }
 
   Future<void> _sendMessage() async {
@@ -138,11 +140,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         setState(() {
           _messages.add(tempMessage);
         });
-        _messagesController.add(_messages);
+        _emitMessages();
         _scrollToBottom();
       }
 
       await _chatService.sendGroupMessage(widget.groupChatId, content);
+      if (!mounted) return;
       _messageController.clear();
 
       // Удаляем временное сообщение
@@ -150,15 +153,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         setState(() {
           _messages.removeWhere((m) => m['is_temp'] == true);
         });
+        _emitMessages();
       }
     } catch (e) {
-      print('Ошибка отправки сообщения: $e');
+      debugPrint('Ошибка отправки сообщения: $e');
       // Откатываем изменения при ошибке
       if (mounted) {
         setState(() {
           _messages.removeWhere((m) => m['is_temp'] == true);
         });
+        _emitMessages();
       }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось отправить сообщение')),
       );
@@ -181,7 +187,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               const SnackBar(content: Text('Участник добавлен')),
             );
           } catch (e) {
-            print('Ошибка добавления участника: $e');
+            debugPrint('Ошибка добавления участника: $e');
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Ошибка: ${e.toString()}')),
             );
@@ -203,7 +209,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           setState(() {
             _messages.add(message);
           });
-          _messagesController.add(_messages);
+          _emitMessages();
           _scrollToBottom();
         }
       },
@@ -280,7 +286,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             .format(dateCorrected); // Дата и время
       }
     } catch (e) {
-      print('Ошибка форматирования времени: $e');
+      debugPrint('Ошибка форматирования времени: $e');
       return isoDate;
     }
   }

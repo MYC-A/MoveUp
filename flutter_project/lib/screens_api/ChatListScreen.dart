@@ -116,10 +116,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   if (currentUserId == null) return;
 
                   try {
-                    final response = await lkService.fetchUserFollowers(
-                        currentUserId!, 0, 100);
-                    final followers =
-                        response['followers'] as List<dynamic>? ?? [];
+                    await lkService.fetchUserFollowers(currentUserId!, 0, 100);
 
                     showDialog(
                       context: context,

@@ -7,7 +7,6 @@ import 'package:flutter_application_1/screens_api/following_modal.dart';
 import '../services_api/lk_service.dart';
 import 'dart:async'; // Для использования Timer
 import 'package:image_picker/image_picker.dart'; // Для выбора изображения
-import 'dart:io';
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -174,7 +173,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             CircleAvatar(
                               backgroundImage: NetworkImage(
                                 (user['avatar_url'] ?? '').replaceAll(
-                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme),
+                                    'localhost:9000',
+                                    AppConfig.mediaBaseUrlWithoutScheme),
                               ),
                               radius: 50,
                             ),

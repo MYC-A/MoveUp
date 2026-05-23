@@ -21,6 +21,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = true;
   int? currentUserId;
   late final KeyboardVisibilityController _keyboardVisibilityController;
+  late final StreamSubscription<bool> _keyboardVisibilitySubscription;
   final _messagesController =
       StreamController<List<Map<String, dynamic>>>.broadcast();
 
@@ -28,7 +29,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _keyboardVisibilityController = KeyboardVisibilityController();
-    _keyboardVisibilityController.onChange.listen((bool visible) {
+    _keyboardVisibilitySubscription =
+        _keyboardVisibilityController.onChange.listen((bool visible) {
       if (visible) {
         _scrollToBottom();
       }
@@ -38,10 +40,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initChat() async {
-    await _getCurrentUserId();
-    await _loadMessages();
-    _connectToChat();
-    await _markMessagesAsRead();
+    try {
+      await _getCurrentUserId();
+      if (!mounted || currentUserId == null) return;
+      await _loadMessages();
+      if (!mounted) return;
+      _connectToChat();
+      await _markMessagesAsRead();
+    } catch (e) {
+      debugPrint('Ошибка инициализации чата: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _markMessagesAsRead() async {
@@ -49,33 +62,43 @@ class _ChatScreenState extends State<ChatScreen> {
       await _chatService.markMessagesAsRead(widget.recipientId);
       ChatListScreen.state?.refreshUnreadMessagesCount();
     } catch (e) {
-      print('Ошибка при отметке сообщений как прочитанных: $e');
+      debugPrint('Ошибка при отметке сообщений как прочитанных: $e');
     }
   }
 
   Future<void> _getCurrentUserId() async {
     final data = await _chatService.getChatData();
+    if (!mounted) return;
     setState(() {
       currentUserId = data['user']['id'];
     });
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients && _messages.isNotEmpty) {
-      // Добавляем небольшую задержку для гарантии, что контент обновился
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent +
-              100, // Небольшой дополнительный отступ
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      });
+  void _emitMessages() {
+    if (!_messagesController.isClosed) {
+      _messagesController.add(_messages);
     }
+  }
+
+  void _scrollToBottom({
+    Duration delay = const Duration(milliseconds: 100),
+  }) {
+    if (_messages.isEmpty) return;
+
+    Future.delayed(delay, () {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
   void dispose() {
+    _keyboardVisibilitySubscription.cancel();
     _scrollController.dispose();
     _chatService.disconnect();
     _messagesController.close();
@@ -90,16 +113,15 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages = messages;
         _isLoading = false;
       });
-      _messagesController.add(_messages);
-      // Добавляем двойную задержку для гарантии прокрутки
-      Future.delayed(const Duration(milliseconds: 50), () {
-        _scrollToBottom();
-      });
+      _emitMessages();
+      _scrollToBottom(delay: const Duration(milliseconds: 150));
     } catch (e) {
-      print('Ошибка загрузки сообщений: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      debugPrint('Ошибка загрузки сообщений: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -107,13 +129,14 @@ class _ChatScreenState extends State<ChatScreen> {
     _chatService.connectToChat(
       currentUserId!,
       (message) {
+        if (!mounted) return;
         if (message['type'] == 'personal' &&
             message['sender_id'] == widget.recipientId &&
             message['recipient_id'] == currentUserId) {
           setState(() {
             _messages.add(message);
           });
-          _messagesController.add(_messages);
+          _emitMessages();
           _scrollToBottom();
           ChatListScreen.state?.refreshUnreadMessagesCount();
         }
@@ -127,6 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _chatService.sendMessage(widget.recipientId, content);
+      if (!mounted) return;
       _messageController.clear();
 
       final newMessage = {
@@ -139,11 +163,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add(newMessage);
       });
 
-      _messagesController.add(_messages);
+      _emitMessages();
       _scrollToBottom();
       ChatListScreen.state?.refreshUnreadMessagesCount();
     } catch (e) {
-      print('Ошибка отправки сообщения: $e');
+      debugPrint('Ошибка отправки сообщения: $e');
     }
   }
 

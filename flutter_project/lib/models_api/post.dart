@@ -40,15 +40,11 @@ class Post {
         // Предполагаем, что время в UTC+5, конвертируем в UTC
         createdAt = parsedDate.subtract(Duration(hours: 5)); // UTC+5 -> UTC
         createdAt = createdAt.toLocal(); // UTC -> локальный пояс
-        print('Parsed created_at: $createdAtRaw -> $createdAt');
       } else {
         createdAt = DateTime.now().toLocal();
-        print(
-            'Invalid created_at format: $createdAtRaw, using current time: $createdAt');
       }
     } else {
       createdAt = DateTime.now().toLocal();
-      print('created_at is null, using current time: $createdAt');
     }
 
     return Post(

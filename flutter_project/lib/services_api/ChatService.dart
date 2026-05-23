@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -169,7 +170,7 @@ class ChatService {
     );
     if (response.statusCode == 200) {
       final Map data = json.decode(utf8.decode(response.bodyBytes));
-      print("Ответ сервера unread_messages_count: $data");
+      debugPrint('Количество непрочитанных сообщений загружено');
       return {
         'personal':
             (data['personal'] as Map).map((k, v) => MapEntry(int.parse(k), v)),
@@ -188,7 +189,6 @@ class ChatService {
       throw Exception('Токен не найден');
     }
     final url = Uri.parse('$baseUrl/chat/mark_as_read');
-    print('Отправка POST $url с recipient_id: $recipientId');
     final response = await http.post(
       url,
       headers: {
@@ -197,8 +197,7 @@ class ChatService {
       },
       body: json.encode({'recipient_id': recipientId}),
     );
-    print(
-        'Ответ от /chat/mark_as_read: ${response.statusCode}, ${response.body}');
+    debugPrint('markMessagesAsRead status: ${response.statusCode}');
     if (response.statusCode != 200) {
       throw Exception(
           'Ошибка при отметке сообщений как прочитанных: ${response.body}');
@@ -263,23 +262,25 @@ class ChatService {
       _channel!.stream.listen(
         (message) {
           final data = json.decode(message);
-          print('Получен message: $data');
+          debugPrint(
+              'Получено WebSocket-сообщение чата: ${data['type'] ?? 'unknown'}');
           onMessageReceived(data);
         },
         onError: (error) {
-          print('WebSocket error: $error');
+          debugPrint('WebSocket error: $error');
         },
         onDone: () {
-          print('WebSocket соединение для чата закрыто');
+          debugPrint('WebSocket соединение для чата закрыто');
         },
       );
     } catch (e) {
-      print('Ошибка подключения к WebSocket: $e');
+      debugPrint('Ошибка подключения к WebSocket: $e');
     }
   }
 
   // Закрыть WebSocket-соединение
   void disconnect() {
     _channel?.sink.close();
+    _channel = null;
   }
 }

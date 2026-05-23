@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
-import '../screens/LiveTrackerScreen.dart';
 import 'dart:convert';
 import 'package:flutter_application_1/main.dart';
 import '../services_api/auth_service.dart';
@@ -20,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _testStorage();
     if (_formKey.currentState!.validate()) {
       try {
-        final response = await _authService.login(
+        await _authService.login(
           email: _emailController.text,
           password: _passwordController.text,
         );

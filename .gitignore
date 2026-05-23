@@ -34,3 +34,17 @@ flutter_project/.dart_tool/
 
 # Logs
 *.log
+
+# AI/agent local workspace
+docs/agent/
+.agents/
+.codex/
+.cursor/
+.continue/
+.claude/
+.gemini/
+.openai/
+.aider*
+AGENTS.md
+CLAUDE.md
+GEMINI.md
