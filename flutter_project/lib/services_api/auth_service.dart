@@ -7,6 +7,11 @@ class AuthService {
   final String baseUrl = AppConfig.apiBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
 
+  Future<void> _clearAuthData() async {
+    await storage.delete(key: 'access_token');
+    await storage.delete(key: 'user_id');
+  }
+
   // Регистрация пользователя
   Future<Map<String, dynamic>> register({
     required String email,
@@ -25,11 +30,12 @@ class AuthService {
         'password_check': passwordCheck,
       }),
     );
+    final responseBody = utf8.decode(response.bodyBytes);
 
     if (response.statusCode == 200) {
-      return json.decode(response.body);
+      return json.decode(responseBody);
     } else if (response.statusCode == 400) {
-      final errorBody = json.decode(response.body);
+      final errorBody = json.decode(responseBody);
       throw Exception('Ошибка регистрации: ${errorBody['detail']}');
     } else {
       throw Exception('Ошибка соединения: ${response.statusCode}');
@@ -53,10 +59,11 @@ class AuthService {
     );
 
     print('Login: Response status: ${response.statusCode}');
-    print('Login: Response body: ${response.body}');
+    final responseBody = utf8.decode(response.bodyBytes);
+    print('Login: Response body: $responseBody');
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body);
+      final data = json.decode(responseBody);
       final accessToken = data['access_token'];
       if (accessToken == null) {
         print('Login: No access_token in response');
@@ -81,7 +88,7 @@ class AuthService {
       }
       return data;
     } else if (response.statusCode == 400) {
-      final errorBody = json.decode(response.body);
+      final errorBody = json.decode(responseBody);
       throw Exception(
           'Ошибка входа: ${errorBody['detail'] ?? 'Неизвестная ошибка'}');
     } else if (response.statusCode == 401) {
@@ -104,27 +111,27 @@ class AuthService {
     await storage.delete(key: 'access_token');
     await storage.delete(key: 'user_id');
     if (response.statusCode != 200) {
-      print('Logout failed: ${response.body}');
-      throw Exception('Ошибка выхода: ${json.decode(response.body)}');
+      final responseBody = utf8.decode(response.bodyBytes);
+      print('Logout failed: $responseBody');
+      throw Exception('Ошибка выхода: ${json.decode(responseBody)}');
     }
     print('Logout successful');
   }
 
   // Проверка текущего пользователя
   Future<int?> getCurrentUserId() async {
-    // Проверяем кэшированный user_id
-    final cachedUserId = await storage.read(key: 'user_id');
-    if (cachedUserId != null) {
-      print('getCurrentUserId: Cached user_id: $cachedUserId');
-      return int.parse(cachedUserId);
-    }
-
     final token = await storage.read(key: 'access_token');
     print('getCurrentUserId: Token read: $token');
 
     if (token == null) {
       print('getCurrentUserId: No token found');
+      await storage.delete(key: 'user_id');
       return null;
+    }
+
+    final cachedUserId = await storage.read(key: 'user_id');
+    if (cachedUserId != null) {
+      print('getCurrentUserId: Cached user_id: $cachedUserId');
     }
 
     const maxRetries = 3;
@@ -140,12 +147,13 @@ class AuthService {
         );
 
         print('getCurrentUserId: Response status: ${response.statusCode}');
-        print('getCurrentUserId: Response body: ${response.body}');
+        final responseBody = utf8.decode(response.bodyBytes);
+        print('getCurrentUserId: Response body: $responseBody');
 
         if (response.statusCode == 200) {
           int? userId;
           try {
-            final data = json.decode(response.body);
+            final data = json.decode(responseBody);
             if (data is int) {
               userId = data; // Ответ — число
             } else if (data is Map<String, dynamic>) {
@@ -155,7 +163,7 @@ class AuthService {
             print('getCurrentUserId: JSON decode error: $e');
             // Если JSON-декодирование не удалось, пробуем интерпретировать как число
             try {
-              userId = int.parse(response.body);
+              userId = int.parse(responseBody);
             } catch (_) {
               print(
                   'getCurrentUserId: Failed to parse response body as integer');
@@ -164,8 +172,7 @@ class AuthService {
 
           if (userId == null) {
             print('getCurrentUserId: No user ID in response');
-            await storage.delete(key: 'access_token');
-            await storage.delete(key: 'user_id');
+            await _clearAuthData();
             return null;
           }
 
@@ -176,8 +183,7 @@ class AuthService {
           return userId;
         } else if (response.statusCode == 401) {
           print('getCurrentUserId: Unauthorized, deleting token');
-          await storage.delete(key: 'access_token');
-          await storage.delete(key: 'user_id');
+          await _clearAuthData();
           return null;
         } else {
           print('getCurrentUserId: Failed with status: ${response.statusCode}');

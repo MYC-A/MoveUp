@@ -23,6 +23,7 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       final userId = await _authService.getCurrentUserId();
       print('SplashScreen: User ID: $userId');
+      if (!mounted) return;
       if (userId != null) {
         print('SplashScreen: Navigating to MainScreen');
         Navigator.pushReplacement(
@@ -38,6 +39,7 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     } catch (e) {
       print('SplashScreen: Error checking auth status: $e');
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => LoginScreen()),
