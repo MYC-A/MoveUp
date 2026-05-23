@@ -879,8 +879,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       ),
       children: [
         TileLayer(
-          urlTemplate: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          subdomains: ['a', 'b', 'c'],
           userAgentPackageName: 'com.example.runTracker',
         ),
         if (_route != null && _route!.points.isNotEmpty)

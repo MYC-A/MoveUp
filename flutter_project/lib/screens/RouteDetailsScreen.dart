@@ -329,8 +329,8 @@ class _MapSection extends StatelessWidget {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-              subdomains: const ['mt0', 'mt1', 'mt2', 'mt3'],
+              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              subdomains: const ['a', 'b', 'c'],
               userAgentPackageName: 'com.example.runTracker',
             ),
             PolylineLayer(
