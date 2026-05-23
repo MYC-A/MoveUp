@@ -38,7 +38,7 @@ dependencies:
   sqflite: ^2.2.0+4 # Для работы с SQLite
   path: ^1.8.3 # Для работы с путями файлов
   path_provider: ^2.1.5
-  intl: ^0.20.2 # Для форматирования даты и времени
+  intl: 0.19.0 # Для форматирования даты и времени
   flutter_map_tile_caching: ^9.1.0
   simplify: ^1.1.0
   vector_math: ^2.1.2
