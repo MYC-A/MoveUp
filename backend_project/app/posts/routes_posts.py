@@ -396,7 +396,9 @@ async def add_comment(
             "content": new_comment.content,
             "created_at": new_comment.created_at.isoformat(),
             "user": {
-                "username": current_user.full_name  # Или current_user.username
+                "username": current_user.full_name,
+                "full_name": current_user.full_name,
+                "avatar_url": current_user.avatar_url,
             }
         }
     }
@@ -424,6 +426,7 @@ async def get_comments(
         select(Comment)
         .filter(Comment.post_id == post_id)
         .options(selectinload(Comment.user))
+        .order_by(Comment.created_at.asc(), Comment.id.asc())
         .offset(skip)
         .limit(limit)
     )
@@ -437,7 +440,8 @@ async def get_comments(
             "created_at": comment.created_at.isoformat(),
             "user": {
                 "username": comment.user.full_name,
-                "avatar_url": comment.user.avatar_url  # Должно быть здесь
+                "full_name": comment.user.full_name,
+                "avatar_url": comment.user.avatar_url,
             }
         }
         for comment in comments

@@ -224,16 +224,18 @@ class Comment {
   });
 
   factory Comment.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>? ?? {};
+    final avatarUrl = user['avatar_url'] as String?;
+
     return Comment(
       id: json['id'] ?? 0,
       userId: json['user_id'] ?? 0,
       content: json['content'] ?? '',
       createdAt:
           DateTime.parse(json['created_at'] ?? DateTime.now().toString()),
-      userFullName: json['user']['username'] ?? 'Пользователь',
-      userAvatarUrl: json['user']['avatar_url'] != null
-          ? AppConfig.normalizeMediaUrl(json['user']['avatar_url'])
-          : null,
+      userFullName: user['full_name'] ?? user['username'] ?? 'Пользователь',
+      userAvatarUrl:
+          avatarUrl != null ? AppConfig.normalizeMediaUrl(avatarUrl) : null,
     );
   }
 }
