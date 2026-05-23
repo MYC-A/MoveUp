@@ -14,11 +14,15 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  static const int _pageSize = 30;
+
   final ChatService _chatService = ChatService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
+  bool _isLoadingOlder = false;
+  bool _hasMoreMessages = true;
   int? currentUserId;
   late final KeyboardVisibilityController _keyboardVisibilityController;
   late final StreamSubscription<bool> _keyboardVisibilitySubscription;
@@ -35,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _scrollToBottom();
       }
     });
+    _scrollController.addListener(_handleScroll);
 
     _initChat();
   }
@@ -80,6 +85,27 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _handleScroll() {
+    if (!_scrollController.hasClients ||
+        _isLoading ||
+        _isLoadingOlder ||
+        !_hasMoreMessages) {
+      return;
+    }
+
+    if (_scrollController.position.pixels <= 80) {
+      _loadOlderMessages();
+    }
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+
+    final distanceFromBottom =
+        _scrollController.position.maxScrollExtent - _scrollController.offset;
+    return distanceFromBottom < 120;
+  }
+
   void _scrollToBottom({
     Duration delay = const Duration(milliseconds: 100),
   }) {
@@ -99,6 +125,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _keyboardVisibilitySubscription.cancel();
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _chatService.disconnect();
     _messagesController.close();
@@ -107,10 +134,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadMessages() async {
     try {
-      final messages =
-          await _chatService.getMessagesBetweenUsers(widget.recipientId);
+      final messages = await _chatService.getMessagesBetweenUsers(
+        widget.recipientId,
+        limit: _pageSize,
+      );
+      if (!mounted) return;
       setState(() {
         _messages = messages;
+        _hasMoreMessages = messages.length == _pageSize;
         _isLoading = false;
       });
       _emitMessages();
@@ -125,6 +156,68 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _loadOlderMessages() async {
+    if (_messages.isEmpty || _isLoadingOlder || !_hasMoreMessages) return;
+
+    final firstMessageId = _messages.first['id'];
+    if (firstMessageId is! int) {
+      setState(() {
+        _hasMoreMessages = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingOlder = true;
+    });
+
+    final oldMaxScrollExtent = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+
+    try {
+      final olderMessages = await _chatService.getMessagesBetweenUsers(
+        widget.recipientId,
+        limit: _pageSize,
+        beforeId: firstMessageId,
+      );
+      if (!mounted) return;
+
+      final existingIds =
+          _messages.map((message) => message['id']).whereType<int>().toSet();
+      final uniqueOlderMessages = olderMessages.where((message) {
+        final id = message['id'];
+        return id == null || !existingIds.contains(id);
+      }).toList();
+
+      setState(() {
+        _messages = [...uniqueOlderMessages, ..._messages];
+        _hasMoreMessages = olderMessages.length == _pageSize;
+        _isLoadingOlder = false;
+      });
+      _emitMessages();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+
+        final scrollDelta =
+            _scrollController.position.maxScrollExtent - oldMaxScrollExtent;
+        final targetOffset = (_scrollController.offset + scrollDelta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.jumpTo(targetOffset.toDouble());
+      });
+    } catch (e) {
+      debugPrint('Ошибка загрузки старых сообщений: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingOlder = false;
+        });
+      }
+    }
+  }
+
   void _connectToChat() {
     _chatService.connectToChat(
       currentUserId!,
@@ -133,11 +226,20 @@ class _ChatScreenState extends State<ChatScreen> {
         if (message['type'] == 'personal' &&
             message['sender_id'] == widget.recipientId &&
             message['recipient_id'] == currentUserId) {
+          final messageId = message['id'];
+          if (messageId is int &&
+              _messages.any((item) => item['id'] == messageId)) {
+            return;
+          }
+
+          final shouldScroll = _isNearBottom();
           setState(() {
             _messages.add(message);
           });
           _emitMessages();
-          _scrollToBottom();
+          if (shouldScroll) {
+            _scrollToBottom();
+          }
           ChatListScreen.state?.refreshUnreadMessagesCount();
         }
       },
@@ -149,6 +251,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (content.isEmpty) return;
 
     try {
+      final shouldScroll = _isNearBottom();
       await _chatService.sendMessage(widget.recipientId, content);
       if (!mounted) return;
       _messageController.clear();
@@ -164,7 +267,9 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       _emitMessages();
-      _scrollToBottom();
+      if (shouldScroll) {
+        _scrollToBottom();
+      }
       ChatListScreen.state?.refreshUnreadMessagesCount();
     } catch (e) {
       debugPrint('Ошибка отправки сообщения: $e');
@@ -188,7 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              message['content'],
+              message['content']?.toString() ?? '',
               style: TextStyle(
                 fontSize: 16,
                 color: isMe ? Colors.white : Colors.black,

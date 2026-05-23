@@ -52,12 +52,21 @@ class ChatService {
   }
 
   // Получить сообщения с пользователем (GET /chat/messages/{user_id})
-  Future<List<Map<String, dynamic>>> getMessagesBetweenUsers(int userId) async {
+  Future<List<Map<String, dynamic>>> getMessagesBetweenUsers(
+    int userId, {
+    int limit = 30,
+    int? beforeId,
+  }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw Exception('Токен не найден');
     }
-    final url = Uri.parse('$baseUrl/chat/messages/$userId');
+    final url = Uri.parse('$baseUrl/chat/messages/$userId').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        if (beforeId != null) 'before_id': beforeId.toString(),
+      },
+    );
     final response = await http.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
@@ -95,13 +104,22 @@ class ChatService {
   }
 
   // Получить сообщения группового чата (GET /chat/group_chats/{group_chat_id}/get_messages)
-  Future<List<Map<String, dynamic>>> getGroupMessages(int groupChatId) async {
+  Future<List<Map<String, dynamic>>> getGroupMessages(
+    int groupChatId, {
+    int limit = 30,
+    int? beforeId,
+  }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw Exception('Токен не найден');
     }
-    final url =
-        Uri.parse('$baseUrl/chat/group_chats/$groupChatId/get_messages');
+    final url = Uri.parse('$baseUrl/chat/group_chats/$groupChatId/get_messages')
+        .replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        if (beforeId != null) 'before_id': beforeId.toString(),
+      },
+    );
     final response = await http.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},

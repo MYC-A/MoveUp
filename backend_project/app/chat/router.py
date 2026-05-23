@@ -4,7 +4,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends,
 from fastapi import Body
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from sqlalchemy.dialects.postgresql import insert
 
@@ -158,9 +158,19 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 
 # Получение сообщений между двумя пользователями
 @router.get("/messages/{user_id}", response_model=List[MessageRead])
-async def get_messages(user_id: int, current_user: User = Depends(get_current_user)):
-    # Возвращаем список сообщений между текущим пользователем и другим пользователем
-    return await MessagesDAO.get_messages_between_users(user_id_1=user_id, user_id_2=current_user.id) or []
+async def get_messages(
+    user_id: int,
+    limit: int = Query(30, ge=1, le=100),
+    before_id: Optional[int] = Query(None, ge=1),
+    current_user: User = Depends(get_current_user),
+):
+    # Возвращаем последнюю страницу сообщений между текущим пользователем и другим пользователем.
+    return await MessagesDAO.get_messages_between_users(
+        user_id_1=user_id,
+        user_id_2=current_user.id,
+        limit=limit,
+        before_id=before_id,
+    ) or []
 @router.get("/users_with_messages", response_model=List[int])
 async def get_users_with_messages(current_user: User = Depends(get_current_user)):
     """
@@ -179,12 +189,13 @@ async def get_users_with_messages(current_user: User = Depends(get_current_user)
 # Эндпоинт для отправки личного сообщения
 @router.post("/messages", response_model=MessageCreate)
 async def send_message(message: MessageCreate, current_user: User = Depends(get_current_user)):
-    await MessagesDAO.add(
+    saved_message = await MessagesDAO.add(
         sender_id=current_user.id,
         content=message.content,
         recipient_id=message.recipient_id
     )
     message_data = {
+        'id': saved_message.id,
         'type': 'personal',
         'sender_id': current_user.id,
         'recipient_id': message.recipient_id,
@@ -235,6 +246,7 @@ async def send_group_message(
     for participant_id in participants:
         is_read = participant_id == current_user.id
         message_data = {
+            'id': group_message.id,
             'type': 'group',
             'group_chat_id': group_message.group_chat_id,
             'sender_id': group_message.sender_id,
@@ -250,12 +262,19 @@ async def send_group_message(
 @router.get("/group_chats/{group_chat_id}/get_messages", response_model=List[GroupMessageRead])
 async def get_group_messages(
     group_chat_id: int,
+    limit: int = Query(30, ge=1, le=100),
+    before_id: Optional[int] = Query(None, ge=1),
     current_user: User = Depends(get_current_user),
 ):
     """
-        Возвращает список сообщений из группового чата.
-        """
-    return await GroupMessagesDAO.get_group_messages(group_chat_id, current_user.id)
+    Возвращает страницу сообщений из группового чата.
+    """
+    return await GroupMessagesDAO.get_group_messages(
+        group_chat_id,
+        current_user.id,
+        limit=limit,
+        before_id=before_id,
+    )
 
 @router.post("/group_chats/{group_chat_id}/mark_as_read")
 async def mark_group_messages_as_read(
@@ -294,5 +313,4 @@ async def add_participant_to_group_chat(
     """
     await GroupMessagesDAO.add_participant_to_group_chat(group_chat_id, request.user_id)
     return {"status": "ok", "msg": "Participant added to group chat"}
-
 

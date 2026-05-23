@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import select, and_, or_, update, func, literal, exists
 from sqlalchemy.dialects.postgresql import insert
@@ -59,16 +59,22 @@ class MessagesDAO(BaseDAO):
             result = await session.execute(query)
             return result.scalars().all()
     @classmethod
-    async def get_messages_between_users(cls, user_id_1: int, user_id_2: int):
+    async def get_messages_between_users(
+        cls,
+        user_id_1: int,
+        user_id_2: int,
+        limit: int = 30,
+        before_id: Optional[int] = None,
+    ):
         """
-        Асинхронно находит и возвращает все сообщения между двумя пользователями.
+        Асинхронно находит и возвращает страницу сообщений между двумя пользователями.
 
         Аргументы:
             user_id_1: ID первого пользователя.
             user_id_2: ID второго пользователя.
 
         Возвращает:
-            Список сообщений между двумя пользователями.
+            Список сообщений между двумя пользователями в хронологическом порядке.
         """
         async with async_session_maker() as session:
             query = select(cls.model).filter(
@@ -76,9 +82,14 @@ class MessagesDAO(BaseDAO):
                     and_(cls.model.sender_id == user_id_1, cls.model.recipient_id == user_id_2),
                     and_(cls.model.sender_id == user_id_2, cls.model.recipient_id == user_id_1)
                 )
-            ).order_by(cls.model.id)
+            )
+            if before_id is not None:
+                query = query.filter(cls.model.id < before_id)
+
+            query = query.order_by(cls.model.id.desc()).limit(limit)
             result = await session.execute(query)
-            return result.scalars().all()
+            messages = result.scalars().all()
+            return list(reversed(messages))
 
     # Пример mark_messages_as_read
     @classmethod
@@ -179,7 +190,13 @@ class GroupMessagesDAO(BaseDAO):
 
     # В GroupMessagesDAO
     @classmethod
-    async def get_group_messages(cls, group_chat_id: int, current_user_id: int):
+    async def get_group_messages(
+        cls,
+        group_chat_id: int,
+        current_user_id: int,
+        limit: int = 30,
+        before_id: Optional[int] = None,
+    ):
         async with async_session_maker() as session:
             query = (
                 select(
@@ -198,9 +215,13 @@ class GroupMessagesDAO(BaseDAO):
                     (GroupMessageReadStatus.user_id == current_user_id)
                 )
                 .where(GroupMessage.group_chat_id == group_chat_id)
-                .order_by(GroupMessage.created_at)
             )
+            if before_id is not None:
+                query = query.where(GroupMessage.id < before_id)
+
+            query = query.order_by(GroupMessage.id.desc()).limit(limit)
             result = await session.execute(query)
+            rows = list(reversed(result.all()))
             return [
                 GroupMessageRead(
                     id=row.id,
@@ -211,7 +232,7 @@ class GroupMessagesDAO(BaseDAO):
                     is_read=row.is_read if row.sender_id != current_user_id else True,
                     created_at=row.created_at
                 )
-                for row in result.all()
+                for row in rows
             ]
 
     # В GroupMessagesDAO

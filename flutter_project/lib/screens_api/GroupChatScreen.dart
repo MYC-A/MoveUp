@@ -20,6 +20,8 @@ class GroupChatScreen extends StatefulWidget {
 }
 
 class _GroupChatScreenState extends State<GroupChatScreen> {
+  static const int _pageSize = 30;
+
   final ChatService _chatService = ChatService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -28,12 +30,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
+  bool _isLoadingOlder = false;
+  bool _hasMoreMessages = true;
   int? currentUserId;
   late StreamSubscription<bool> _keyboardVisibilitySubscription;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _initChat();
 
     _keyboardVisibilitySubscription =
@@ -45,10 +50,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Future<void> _initChat() async {
-    await _getCurrentUserId();
-    await _loadMessages();
-    _connectToWebSocket();
-    await _markMessagesAsRead();
+    try {
+      await _getCurrentUserId();
+      if (!mounted) return;
+      await _loadMessages();
+      if (!mounted) return;
+      _connectToWebSocket();
+      await _markMessagesAsRead();
+    } catch (e) {
+      debugPrint('Ошибка инициализации группового чата: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _getCurrentUserId() async {
@@ -66,10 +82,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   Future<void> _loadMessages() async {
     try {
-      final messages = await _chatService.getGroupMessages(widget.groupChatId);
+      final messages = await _chatService.getGroupMessages(
+        widget.groupChatId,
+        limit: _pageSize,
+      );
       if (mounted) {
         setState(() {
           _messages = messages;
+          _hasMoreMessages = messages.length == _pageSize;
           _isLoading = false;
         });
         _emitMessages();
@@ -98,6 +118,89 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   void _emitMessages() {
     if (!_messagesController.isClosed) {
       _messagesController.add(_messages);
+    }
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients ||
+        _isLoading ||
+        _isLoadingOlder ||
+        !_hasMoreMessages) {
+      return;
+    }
+
+    if (_scrollController.position.pixels <= 80) {
+      _loadOlderMessages();
+    }
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+
+    final distanceFromBottom =
+        _scrollController.position.maxScrollExtent - _scrollController.offset;
+    return distanceFromBottom < 120;
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_messages.isEmpty || _isLoadingOlder || !_hasMoreMessages) return;
+
+    final firstMessageId = _messages.first['id'];
+    if (firstMessageId is! int) {
+      setState(() {
+        _hasMoreMessages = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingOlder = true;
+    });
+
+    final oldMaxScrollExtent = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+
+    try {
+      final olderMessages = await _chatService.getGroupMessages(
+        widget.groupChatId,
+        limit: _pageSize,
+        beforeId: firstMessageId,
+      );
+      if (!mounted) return;
+
+      final existingIds =
+          _messages.map((message) => message['id']).whereType<int>().toSet();
+      final uniqueOlderMessages = olderMessages.where((message) {
+        final id = message['id'];
+        return id == null || !existingIds.contains(id);
+      }).toList();
+
+      setState(() {
+        _messages = [...uniqueOlderMessages, ..._messages];
+        _hasMoreMessages = olderMessages.length == _pageSize;
+        _isLoadingOlder = false;
+      });
+      _emitMessages();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+
+        final scrollDelta =
+            _scrollController.position.maxScrollExtent - oldMaxScrollExtent;
+        final targetOffset = (_scrollController.offset + scrollDelta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.jumpTo(targetOffset.toDouble());
+      });
+    } catch (e) {
+      debugPrint('Ошибка загрузки старых групповых сообщений: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingOlder = false;
+        });
+      }
     }
   }
 
@@ -137,11 +240,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       };
 
       if (mounted) {
+        final shouldScroll = _isNearBottom();
         setState(() {
           _messages.add(tempMessage);
         });
         _emitMessages();
-        _scrollToBottom();
+        if (shouldScroll) {
+          _scrollToBottom();
+        }
       }
 
       await _chatService.sendGroupMessage(widget.groupChatId, content);
@@ -206,21 +312,31 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         if (message['type'] == 'group' &&
             message['group_chat_id'] == widget.groupChatId &&
             mounted) {
+          final messageId = message['id'];
+          if (messageId is int &&
+              _messages.any((item) => item['id'] == messageId)) {
+            return;
+          }
+
+          final shouldScroll = _isNearBottom();
           setState(() {
             _messages.add(message);
           });
           _emitMessages();
-          _scrollToBottom();
+          if (shouldScroll) {
+            _scrollToBottom();
+          }
         }
       },
     );
   }
 
-  Widget _buildMessage(int index) {
-    final message = _messages[index];
+  Widget _buildMessage(Map<String, dynamic> message) {
     final isMe = message['sender_id'] == currentUserId;
     final isRead = message['is_read'] ?? false;
     final isTemp = message['is_temp'] ?? false;
+    final senderName = message['sender_name']?.toString() ?? 'Пользователь';
+    final createdAt = message['created_at']?.toString() ?? '';
 
     return Column(
       crossAxisAlignment:
@@ -230,7 +346,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
             child: Text(
-              "${message['sender_name']} - ${_formatDateTime(message['created_at'])}",
+              "$senderName - ${_formatDateTime(createdAt)}",
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
@@ -245,7 +361,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                message['content'],
+                message['content']?.toString() ?? '',
                 style: TextStyle(
                   color: isTemp ? Colors.grey : Colors.black,
                 ),
@@ -293,6 +409,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _messagesController.close();
     _keyboardVisibilitySubscription.cancel();
@@ -326,7 +443,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         itemCount: snapshot.data?.length ?? 0,
                         itemBuilder: (context, index) {
-                          return _buildMessage(index);
+                          return _buildMessage(snapshot.data![index]);
                         },
                       );
                     },
