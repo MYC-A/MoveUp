@@ -547,16 +547,17 @@ class _PostItemState extends State<PostItem>
   }
 
   String _formatStartTime(List<dynamic> routeData, String createdAt) {
+    DateTime startTime;
     if (routeData.isNotEmpty && routeData[0]['timestamp'] != null) {
       try {
-        final startTime = DateTime.parse(routeData[0]['timestamp']);
-        return '${startTime.day.toString().padLeft(2, '0')}.${startTime.month.toString().padLeft(2, '0')}.${startTime.year} ${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
+        startTime = DateTime.parse(routeData[0]['timestamp']);
+        return '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
       } catch (e) {
         debugPrint('Ошибка парсинга timestamp: $e');
       }
     }
-    final createdTime = DateTime.parse(createdAt);
-    return '${createdTime.day.toString().padLeft(2, '0')}.${createdTime.month.toString().padLeft(2, '0')}.${createdTime.year} ${createdTime.hour.toString().padLeft(2, '0')}:${createdTime.minute.toString().padLeft(2, '0')}';
+    startTime = DateTime.parse(createdAt);
+    return '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
   }
 
   void _navigateToUserProfile(int userId) {
@@ -577,6 +578,45 @@ class _PostItemState extends State<PostItem>
     }
   }
 
+  void _showPostMenu(Post post, bool hasRoute) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('Открыть профиль'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToUserProfile(post.userId);
+                  },
+                ),
+                if (hasRoute)
+                  ListTile(
+                    leading: const Icon(Icons.map_outlined),
+                    title: const Text('Открыть маршрут'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onMapTap();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -589,14 +629,21 @@ class _PostItemState extends State<PostItem>
     return Container(
       margin: const EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.xs,
-        AppSpacing.md,
         AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.lg,
       ),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,6 +653,7 @@ class _PostItemState extends State<PostItem>
           if (hasRoute && (post.distance > 0 || post.duration > 0))
             _buildRouteStats(post),
           _buildContent(post),
+          _buildPostChips(post, hasRoute),
           if (post.photoUrls != null && post.photoUrls!.isNotEmpty)
             _buildPhotoGrid(post),
           const Divider(height: 1, color: AppColors.border),
@@ -620,9 +668,9 @@ class _PostItemState extends State<PostItem>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
         AppSpacing.sm,
       ),
       child: Row(
@@ -631,7 +679,7 @@ class _PostItemState extends State<PostItem>
           GestureDetector(
             onTap: () => _navigateToUserProfile(post.userId),
             child: CircleAvatar(
-              radius: 24,
+              radius: 32,
               backgroundColor: AppColors.surfaceMuted,
               backgroundImage: CachedNetworkImageProvider(
                 avatarUrl,
@@ -647,39 +695,57 @@ class _PostItemState extends State<PostItem>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  post.userFullName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.titleMedium?.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        post.userFullName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.titleLarge?.copyWith(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (hasRoute) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.routeSoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: Icon(
+                            Icons.directions_run,
+                            color: AppColors.route,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.xxs),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   Helper.formatDateTime(post.createdAt),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontSize: 15,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.xs),
+          const SizedBox(width: AppSpacing.sm),
           IconButton(
-            tooltip: hasRoute ? 'Открыть маршрут' : 'Маршрут не прикреплён',
-            icon: const Icon(Icons.map_outlined),
-            color: hasRoute ? AppColors.route : AppColors.textMuted,
-            onPressed: hasRoute ? widget.onMapTap : null,
-            style: IconButton.styleFrom(
-              backgroundColor:
-                  hasRoute ? AppColors.routeSoft : AppColors.surfaceMuted,
-              disabledBackgroundColor: AppColors.surfaceMuted,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadii.md),
-              ),
-            ),
+            tooltip: 'Действия',
+            icon: const Icon(Icons.more_vert),
+            color: AppColors.textSecondary,
+            onPressed: () => _showPostMenu(post, hasRoute),
           ),
         ],
       ),
@@ -697,92 +763,116 @@ class _PostItemState extends State<PostItem>
         }
       },
       child: Container(
-        height: 210,
-        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        height: 240,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         decoration: BoxDecoration(
           color: AppColors.routeSoft,
-          borderRadius: BorderRadius.circular(AppRadii.md),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.border),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadii.md),
-          child: FlutterMap(
-            mapController: widget.mapController,
-            options: MapOptions(
-              interactionOptions:
-                  InteractionOptions(flags: InteractiveFlag.none),
-              initialCenter: LatLng(
-                post.routeData[0]['latitude'],
-                post.routeData[0]['longitude'],
-              ),
-              initialZoom: 13.0,
-            ),
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c'],
+              Positioned.fill(
+                child: FlutterMap(
+                  mapController: widget.mapController,
+                  options: MapOptions(
+                    interactionOptions:
+                        InteractionOptions(flags: InteractiveFlag.none),
+                    initialCenter: LatLng(
+                      post.routeData[0]['latitude'],
+                      post.routeData[0]['longitude'],
+                    ),
+                    initialZoom: 13.0,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      subdomains: ['a', 'b', 'c'],
+                    ),
+                    if (post.routeData.length == 1)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            width: 40.0,
+                            height: 40.0,
+                            point: LatLng(
+                              post.routeData[0]['latitude'],
+                              post.routeData[0]['longitude'],
+                            ),
+                            child: const Icon(
+                              Icons.location_pin,
+                              color: AppColors.route,
+                              size: 40,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: post.routeData
+                                .map((point) => LatLng(
+                                    point['latitude'], point['longitude']))
+                                .toList(),
+                            strokeWidth: 5.0,
+                            color: AppColors.route,
+                          ),
+                        ],
+                      ),
+                    if (post.routeData.length > 1)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            width: 34.0,
+                            height: 34.0,
+                            point: LatLng(
+                              post.routeData.first['latitude'],
+                              post.routeData.first['longitude'],
+                            ),
+                            child: _RouteMarker(
+                              icon: Icons.directions_run,
+                              color: AppColors.success,
+                            ),
+                          ),
+                          Marker(
+                            width: 40.0,
+                            height: 40.0,
+                            point: LatLng(
+                              post.routeData.last['latitude'],
+                              post.routeData.last['longitude'],
+                            ),
+                            child: _RouteMarker(
+                              icon: Icons.flag,
+                              color: AppColors.route,
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
-              if (post.routeData.length == 1)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      width: 40.0,
-                      height: 40.0,
-                      point: LatLng(
-                        post.routeData[0]['latitude'],
-                        post.routeData[0]['longitude'],
-                      ),
-                      child: const Icon(
-                        Icons.location_pin,
-                        color: AppColors.route,
-                        size: 40,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: post.routeData
-                          .map((point) =>
-                              LatLng(point['latitude'], point['longitude']))
-                          .toList(),
-                      strokeWidth: 4.0,
-                      color: AppColors.route,
-                    ),
-                  ],
+              Positioned(
+                top: AppSpacing.md,
+                left: AppSpacing.md,
+                child: _MapBadge(
+                  icon: Icons.directions_run,
+                  label: 'Маршрут',
                 ),
-              if (post.routeData.length > 1)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      width: 30.0,
-                      height: 30.0,
-                      point: LatLng(
-                        post.routeData.first['latitude'],
-                        post.routeData.first['longitude'],
-                      ),
-                      child: _RouteMarker(
-                        icon: Icons.directions_run,
-                        color: AppColors.success,
-                      ),
-                    ),
-                    Marker(
-                      width: 30.0,
-                      height: 30.0,
-                      point: LatLng(
-                        post.routeData.last['latitude'],
-                        post.routeData.last['longitude'],
-                      ),
-                      child: _RouteMarker(
-                        icon: Icons.flag,
-                        color: AppColors.route,
-                      ),
-                    ),
-                  ],
+              ),
+              Positioned(
+                top: AppSpacing.md,
+                right: AppSpacing.md,
+                child: _MapOverlayButton(
+                  icon: Icons.fullscreen,
+                  tooltip: 'Открыть карту',
+                  onTap: widget.onMapTap,
                 ),
+              ),
             ],
           ),
         ),
@@ -791,21 +881,12 @@ class _PostItemState extends State<PostItem>
   }
 
   Widget _buildRouteStats(Post post) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.lg,
         AppSpacing.md,
         AppSpacing.sm,
-        AppSpacing.md,
-        0,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.routeSoft,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
@@ -814,21 +895,26 @@ class _PostItemState extends State<PostItem>
               icon: Icons.timer_outlined,
               label: 'Время',
               value: _formatDuration(post.duration),
+              color: AppColors.success,
             ),
           ),
+          const _StatsDivider(),
           Expanded(
             child: _InfoTile(
-              icon: Icons.directions_run,
+              icon: Icons.route_outlined,
               label: 'Дистанция',
               value: _formatDistance(post.distance),
+              color: AppColors.route,
             ),
           ),
+          const _StatsDivider(),
           Expanded(
             child: _InfoTile(
-              icon: Icons.calendar_today_outlined,
+              icon: Icons.access_time,
               label: 'Начало',
               value:
                   _formatStartTime(post.routeData, post.createdAt.toString()),
+              color: AppColors.activity,
             ),
           ),
         ],
@@ -841,9 +927,9 @@ class _PostItemState extends State<PostItem>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
         AppSpacing.sm,
       ),
       child: Column(
@@ -852,8 +938,9 @@ class _PostItemState extends State<PostItem>
           Text(
             post.content,
             style: textTheme.bodyLarge?.copyWith(
-              fontSize: 16,
-              height: 1.35,
+              fontSize: 17,
+              height: 1.38,
+              fontWeight: FontWeight.w500,
             ),
             maxLines: post.isExpanded ? null : 3,
             overflow:
@@ -884,30 +971,89 @@ class _PostItemState extends State<PostItem>
     );
   }
 
-  Widget _buildPhotoGrid(Post post) {
-    final photoUrls = post.photoUrls!;
+  Widget _buildPostChips(Post post, bool hasRoute) {
+    final chips = <Widget>[];
+
+    if (hasRoute) {
+      chips.add(
+        _PostChip(
+          icon: Icons.directions_run,
+          label: 'Активность',
+          foreground: AppColors.success,
+          background: const Color(0xFFE8F7ED),
+        ),
+      );
+    }
+    if (post.distance > 0) {
+      chips.add(
+        _PostChip(
+          icon: Icons.route_outlined,
+          label: _formatDistance(post.distance),
+          foreground: AppColors.route,
+          background: AppColors.routeSoft,
+        ),
+      );
+    }
+    if (post.photoUrls != null && post.photoUrls!.isNotEmpty) {
+      chips.add(
+        _PostChip(
+          icon: Icons.photo_library_outlined,
+          label: '${post.photoUrls!.length} фото',
+          foreground: AppColors.activity,
+          background: AppColors.activitySoft,
+        ),
+      );
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
+        AppSpacing.lg,
         0,
+        AppSpacing.lg,
         AppSpacing.md,
-        AppSpacing.md,
+      ),
+      child: Wrap(
+        spacing: AppSpacing.xs,
+        runSpacing: AppSpacing.xs,
+        children: chips,
+      ),
+    );
+  }
+
+  Widget _buildPhotoGrid(Post post) {
+    final photoUrls = post.photoUrls!;
+    final visibleCount = photoUrls.length > 4 ? 4 : photoUrls.length;
+    final crossAxisCount = visibleCount == 1 ? 1 : 2;
+    final childAspectRatio = visibleCount == 1 ? 1.75 : 1.28;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.lg,
       ),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: AppSpacing.xxs,
-          mainAxisSpacing: AppSpacing.xxs,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: AppSpacing.sm,
+          mainAxisSpacing: AppSpacing.sm,
+          childAspectRatio: childAspectRatio,
         ),
-        itemCount: photoUrls.length,
+        itemCount: visibleCount,
         itemBuilder: (context, index) {
           final String imageUrl = photoUrls[index].replaceAll(
             'localhost:9000',
             AppConfig.mediaBaseUrlWithoutScheme,
           );
+          final remainingCount = photoUrls.length - visibleCount;
+          final showRemainingOverlay =
+              remainingCount > 0 && index == visibleCount - 1;
+
           return GestureDetector(
             onTap: () {
               Navigator.push(
@@ -926,21 +1072,43 @@ class _PostItemState extends State<PostItem>
               );
             },
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadii.md),
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                cacheManager: customCacheManager,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                errorWidget: (context, url, error) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: AppColors.danger,
-                ),
-                fadeInDuration: const Duration(milliseconds: 300),
-                width: 100,
-                height: 100,
+              borderRadius: BorderRadius.circular(18),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    cacheManager: customCacheManager,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    errorWidget: (context, url, error) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: AppColors.danger,
+                    ),
+                    fadeInDuration: const Duration(milliseconds: 300),
+                    width: 100,
+                    height: 100,
+                  ),
+                  if (showRemainingOverlay)
+                    ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      child: Center(
+                        child: Text(
+                          '+$remainingCount',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           );
@@ -952,8 +1120,8 @@ class _PostItemState extends State<PostItem>
   Widget _buildActions(Post post) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xxs,
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
       ),
       child: Row(
         children: [
@@ -1015,7 +1183,8 @@ class _PostActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
           color: AppColors.textSecondary,
-          fontSize: 13,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
         );
 
     return InkWell(
@@ -1031,7 +1200,7 @@ class _PostActionButton extends StatelessWidget {
               alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: iconColor, size: 21),
+            Icon(icon, color: iconColor, size: 28),
             const SizedBox(width: AppSpacing.xs),
             Flexible(
               child: Text(
@@ -1048,15 +1217,147 @@ class _PostActionButton extends StatelessWidget {
   }
 }
 
+class _PostChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  const _PostChip({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: foreground, size: 18),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: foreground,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MapBadge({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.textPrimary.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapOverlayButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _MapOverlayButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppColors.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            child: Icon(icon, color: AppColors.textSecondary, size: 24),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatsDivider extends StatelessWidget {
+  const _StatsDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 64,
+      color: AppColors.border,
+    );
+  }
+}
+
 class _InfoTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color color;
 
   const _InfoTile({
     required this.icon,
     required this.label,
     required this.value,
+    required this.color,
   });
 
   @override
@@ -1066,7 +1367,7 @@ class _InfoTile extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: AppColors.route),
+        Icon(icon, size: 26, color: color),
         const SizedBox(height: AppSpacing.xxs),
         Text(
           label,
@@ -1084,8 +1385,8 @@ class _InfoTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: textTheme.labelLarge?.copyWith(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
             color: AppColors.textPrimary,
           ),
         ),
@@ -1097,23 +1398,25 @@ class _InfoTile extends StatelessWidget {
 class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color color;
+  final double size;
 
   const _RouteMarker({
     required this.icon,
     required this.color,
+    this.size = 26,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 24,
-      height: 24,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.surface, width: 2),
       ),
-      child: Icon(icon, color: Colors.white, size: 14),
+      child: Icon(icon, color: Colors.white, size: size * 0.45),
     );
   }
 }
