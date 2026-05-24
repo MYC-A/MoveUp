@@ -33,11 +33,15 @@ class AppTheme {
       ),
       titleLarge: baseTextTheme.titleLarge?.copyWith(
         color: AppColors.textPrimary,
+        fontSize: 24,
+        height: 1.15,
         fontWeight: FontWeight.w700,
         letterSpacing: 0,
       ),
       titleMedium: baseTextTheme.titleMedium?.copyWith(
         color: AppColors.textPrimary,
+        fontSize: 17,
+        height: 1.2,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
       ),

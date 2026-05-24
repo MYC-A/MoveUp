@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:flutter_application_1/screens_api/profile_screen.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
@@ -583,334 +584,465 @@ class _PostItemState extends State<PostItem>
     final String avatarUrl =
         (post.userAvatarUrl ?? 'https://via.placeholder.com/150')
             .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
+    final hasRoute = widget.isValidRoute(post.routeData);
 
     return Container(
-      margin: EdgeInsets.all(8),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4)),
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            leading: GestureDetector(
-              onTap: () => _navigateToUserProfile(post.userId),
-              child: CircleAvatar(
-                backgroundImage: CachedNetworkImageProvider(
-                  avatarUrl,
-                  cacheManager: customCacheManager,
-                ),
-                onBackgroundImageError: (exception, stackTrace) {
-                  debugPrint('Ошибка загрузки аватарки: $exception');
-                },
+          _buildHeader(post, avatarUrl, hasRoute),
+          if (hasRoute) _buildRouteMap(post),
+          if (hasRoute && (post.distance > 0 || post.duration > 0))
+            _buildRouteStats(post),
+          _buildContent(post),
+          if (post.photoUrls != null && post.photoUrls!.isNotEmpty)
+            _buildPhotoGrid(post),
+          const Divider(height: 1, color: AppColors.border),
+          _buildActions(post),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(Post post, String avatarUrl, bool hasRoute) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: () => _navigateToUserProfile(post.userId),
+            child: CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.surfaceMuted,
+              backgroundImage: CachedNetworkImageProvider(
+                avatarUrl,
+                cacheManager: customCacheManager,
               ),
-            ),
-            title: Text(
-              post.userFullName,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Roboto',
-                fontSize: 18,
-              ),
-            ),
-            subtitle: Text(
-              Helper.formatDateTime(post.createdAt),
-              style: TextStyle(
-                fontFamily: 'Roboto',
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            trailing: IconButton(
-              icon: Icon(Icons.map, color: Colors.blueAccent),
-              onPressed: widget.onMapTap,
+              onBackgroundImageError: (exception, stackTrace) {
+                debugPrint('Ошибка загрузки аватарки: $exception');
+              },
             ),
           ),
-          if (widget.isValidRoute(post.routeData))
-            VisibilityDetector(
-              key: Key('map_${post.id}'),
-              onVisibilityChanged: (info) {
-                if (info.visibleFraction > 0) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    widget.zoomToRoute(post.routeData, widget.mapController);
-                  });
-                }
-              },
-              child: Container(
-                height: 200,
-                margin: EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: FlutterMap(
-                    mapController: widget.mapController,
-                    options: MapOptions(
-                      interactionOptions:
-                          InteractionOptions(flags: InteractiveFlag.none),
-                      initialCenter: LatLng(
-                        post.routeData[0]['latitude'],
-                        post.routeData[0]['longitude'],
-                      ),
-                      initialZoom: 13.0,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        subdomains: ['a', 'b', 'c'],
-                      ),
-                      if (post.routeData.length == 1)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              width: 40.0,
-                              height: 40.0,
-                              point: LatLng(
-                                post.routeData[0]['latitude'],
-                                post.routeData[0]['longitude'],
-                              ),
-                              child: Icon(Icons.location_pin,
-                                  color: Colors.red, size: 40),
-                            ),
-                          ],
-                        )
-                      else
-                        PolylineLayer(
-                          polylines: [
-                            Polyline(
-                              points: post.routeData
-                                  .map((point) => LatLng(
-                                      point['latitude'], point['longitude']))
-                                  .toList(),
-                              strokeWidth: 4.0,
-                              color: Colors.orange,
-                            ),
-                          ],
-                        ),
-                      if (post.routeData.length > 1)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              width: 30.0,
-                              height: 30.0,
-                              point: LatLng(
-                                post.routeData.first['latitude'],
-                                post.routeData.first['longitude'],
-                              ),
-                              child: Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.directions_run,
-                                    color: Colors.white, size: 16),
-                              ),
-                            ),
-                            Marker(
-                              width: 30.0,
-                              height: 30.0,
-                              point: LatLng(
-                                post.routeData.last['latitude'],
-                                post.routeData.last['longitude'],
-                              ),
-                              child: Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.flag,
-                                    color: Colors.white, size: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          if (widget.isValidRoute(post.routeData) &&
-              (post.distance > 0 || post.duration > 0))
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _InfoTile(
-                    icon: Icons.timer,
-                    label: 'Время',
-                    value: _formatDuration(post.duration),
-                  ),
-                  _InfoTile(
-                    icon: Icons.directions_run,
-                    label: 'Дистанция',
-                    value: _formatDistance(post.distance),
-                  ),
-                  _InfoTile(
-                    icon: Icons.calendar_today,
-                    label: 'Начало',
-                    value: _formatStartTime(
-                        post.routeData, post.createdAt.toString()),
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.all(16),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  post.content,
-                  style: TextStyle(fontSize: 16, fontFamily: 'Roboto'),
-                  maxLines: post.isExpanded ? null : 3,
-                  overflow: post.isExpanded
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                ),
-                if (post.content.length > 100)
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        post.isExpanded = !post.isExpanded;
-                      });
-                    },
-                    child: Text(
-                      post.isExpanded ? 'Свернуть' : 'Показать полностью',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontFamily: 'Roboto',
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  post.userFullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleMedium?.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  Helper.formatDateTime(post.createdAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall,
+                ),
               ],
             ),
           ),
-          if (post.photoUrls != null && post.photoUrls!.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.all(8),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 4,
-                  mainAxisSpacing: 4,
-                ),
-                itemCount: post.photoUrls!.length,
-                itemBuilder: (context, index) {
-                  final String imageUrl = post.photoUrls![index].replaceAll(
-                      'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PhotoViewer(
-                            photoUrls: post.photoUrls!
-                                .map((url) => url.replaceAll('localhost:9000',
-                                    AppConfig.mediaBaseUrlWithoutScheme))
-                                .toList(),
-                            initialIndex: index,
-                          ),
-                        ),
-                      );
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: imageUrl,
-                        cacheManager: customCacheManager,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Center(child: CircularProgressIndicator()),
-                        errorWidget: (context, url, error) =>
-                            Icon(Icons.error, color: Colors.red),
-                        // Оптимизация загрузки фото
-                        fadeInDuration: Duration(milliseconds: 300),
-                        width: 100,
-                        height: 100,
-                      ),
-                    ),
-                  );
-                },
+          const SizedBox(width: AppSpacing.xs),
+          IconButton(
+            tooltip: hasRoute ? 'Открыть маршрут' : 'Маршрут не прикреплён',
+            icon: const Icon(Icons.map_outlined),
+            color: hasRoute ? AppColors.route : AppColors.textMuted,
+            onPressed: hasRoute ? widget.onMapTap : null,
+            style: IconButton.styleFrom(
+              backgroundColor:
+                  hasRoute ? AppColors.routeSoft : AppColors.surfaceMuted,
+              disabledBackgroundColor: AppColors.surfaceMuted,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadii.md),
               ),
-            ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        post.likedByCurrentUser
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        color:
-                            post.likedByCurrentUser ? Colors.red : Colors.grey,
-                      ),
-                      onPressed: () => widget.likePost(post.id),
-                    ),
-                    Text(
-                      '${post.likesCount} лайков',
-                      style: TextStyle(
-                        fontFamily: 'Roboto',
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.comment, color: Colors.grey),
-                      onPressed: () {
-                        widget.webSocketService.disconnect();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                PostDetailsScreen(postId: post.id),
-                          ),
-                        ).then((_) {
-                          widget.webSocketService.switchToFeed();
-                          widget.loadPosts();
-                        });
-                      },
-                    ),
-                    Text(
-                      '${post.commentsCount} комментариев',
-                      style: TextStyle(
-                        fontFamily: 'Roboto',
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRouteMap(Post post) {
+    return VisibilityDetector(
+      key: Key('map_${post.id}'),
+      onVisibilityChanged: (info) {
+        if (info.visibleFraction > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            widget.zoomToRoute(post.routeData, widget.mapController);
+          });
+        }
+      },
+      child: Container(
+        height: 210,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.routeSoft,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          child: FlutterMap(
+            mapController: widget.mapController,
+            options: MapOptions(
+              interactionOptions:
+                  InteractionOptions(flags: InteractiveFlag.none),
+              initialCenter: LatLng(
+                post.routeData[0]['latitude'],
+                post.routeData[0]['longitude'],
+              ),
+              initialZoom: 13.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c'],
+              ),
+              if (post.routeData.length == 1)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      width: 40.0,
+                      height: 40.0,
+                      point: LatLng(
+                        post.routeData[0]['latitude'],
+                        post.routeData[0]['longitude'],
+                      ),
+                      child: const Icon(
+                        Icons.location_pin,
+                        color: AppColors.route,
+                        size: 40,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: post.routeData
+                          .map((point) =>
+                              LatLng(point['latitude'], point['longitude']))
+                          .toList(),
+                      strokeWidth: 4.0,
+                      color: AppColors.route,
+                    ),
+                  ],
+                ),
+              if (post.routeData.length > 1)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      width: 30.0,
+                      height: 30.0,
+                      point: LatLng(
+                        post.routeData.first['latitude'],
+                        post.routeData.first['longitude'],
+                      ),
+                      child: _RouteMarker(
+                        icon: Icons.directions_run,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    Marker(
+                      width: 30.0,
+                      height: 30.0,
+                      point: LatLng(
+                        post.routeData.last['latitude'],
+                        post.routeData.last['longitude'],
+                      ),
+                      child: _RouteMarker(
+                        icon: Icons.flag,
+                        color: AppColors.route,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRouteStats(Post post) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.routeSoft,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _InfoTile(
+              icon: Icons.timer_outlined,
+              label: 'Время',
+              value: _formatDuration(post.duration),
+            ),
+          ),
+          Expanded(
+            child: _InfoTile(
+              icon: Icons.directions_run,
+              label: 'Дистанция',
+              value: _formatDistance(post.distance),
+            ),
+          ),
+          Expanded(
+            child: _InfoTile(
+              icon: Icons.calendar_today_outlined,
+              label: 'Начало',
+              value:
+                  _formatStartTime(post.routeData, post.createdAt.toString()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(Post post) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            post.content,
+            style: textTheme.bodyLarge?.copyWith(
+              fontSize: 16,
+              height: 1.35,
+            ),
+            maxLines: post.isExpanded ? null : 3,
+            overflow:
+                post.isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          if (post.content.length > 100) ...[
+            const SizedBox(height: AppSpacing.xs),
+            InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+              onTap: () {
+                setState(() {
+                  post.isExpanded = !post.isExpanded;
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+                child: Text(
+                  post.isExpanded ? 'Свернуть' : 'Показать полностью',
+                  style: textTheme.labelLarge?.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoGrid(Post post) {
+    final photoUrls = post.photoUrls!;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.md,
+      ),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: AppSpacing.xxs,
+          mainAxisSpacing: AppSpacing.xxs,
+        ),
+        itemCount: photoUrls.length,
+        itemBuilder: (context, index) {
+          final String imageUrl = photoUrls[index].replaceAll(
+            'localhost:9000',
+            AppConfig.mediaBaseUrlWithoutScheme,
+          );
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PhotoViewer(
+                    photoUrls: photoUrls
+                        .map((url) => url.replaceAll(
+                              'localhost:9000',
+                              AppConfig.mediaBaseUrlWithoutScheme,
+                            ))
+                        .toList(),
+                    initialIndex: index,
+                  ),
+                ),
+              );
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                cacheManager: customCacheManager,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                errorWidget: (context, url, error) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: AppColors.danger,
+                ),
+                fadeInDuration: const Duration(milliseconds: 300),
+                width: 100,
+                height: 100,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActions(Post post) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xxs,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _PostActionButton(
+              icon: post.likedByCurrentUser
+                  ? Icons.favorite
+                  : Icons.favorite_border,
+              iconColor: post.likedByCurrentUser
+                  ? AppColors.danger
+                  : AppColors.textSecondary,
+              label: '${post.likesCount} лайков',
+              onTap: () => widget.likePost(post.id),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: _PostActionButton(
+              icon: Icons.mode_comment_outlined,
+              iconColor: AppColors.textSecondary,
+              label: '${post.commentsCount} комментариев',
+              alignEnd: true,
+              onTap: () {
+                widget.webSocketService.disconnect();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostDetailsScreen(postId: post.id),
+                  ),
+                ).then((_) {
+                  widget.webSocketService.switchToFeed();
+                  widget.loadPosts();
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PostActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final VoidCallback onTap;
+  final bool alignEnd;
+
+  const _PostActionButton({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.onTap,
+    this.alignEnd = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: AppColors.textSecondary,
+          fontSize: 13,
+        );
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          mainAxisAlignment:
+              alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: iconColor, size: 21),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -929,29 +1061,59 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 24, color: Colors.blueAccent),
-        SizedBox(height: 4),
+        Icon(icon, size: 20, color: AppColors.route),
+        const SizedBox(height: AppSpacing.xxs),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            fontFamily: 'Roboto',
-            color: Colors.grey.shade600,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary,
           ),
         ),
-        SizedBox(height: 4),
+        const SizedBox(height: AppSpacing.xxs),
         Text(
           value,
-          style: TextStyle(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: textTheme.labelLarge?.copyWith(
             fontSize: 14,
-            fontFamily: 'Roboto',
             fontWeight: FontWeight.w600,
-            color: Colors.black87,
+            color: AppColors.textPrimary,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RouteMarker extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _RouteMarker({
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.surface, width: 2),
+      ),
+      child: Icon(icon, color: Colors.white, size: 14),
     );
   }
 }
