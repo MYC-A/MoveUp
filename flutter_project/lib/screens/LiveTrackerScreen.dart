@@ -10,6 +10,7 @@ import '../services/StorageService.dart';
 import '../models/RunningRoute.dart';
 import 'RouteHistoryScreen.dart';
 import '../models/RoutePoint.dart';
+import '../theme/app_colors.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 // Класс для фильтрации GPS-данных
@@ -65,11 +66,10 @@ class GpsFilter {
           .add(point2.timestamp.difference(point1.timestamp) * fraction),
       accuracy: _average(point1.accuracy, point2.accuracy),
       altitude: _average(point1.altitude, point2.altitude),
-      altitudeAccuracy: _average(
-          point1.altitudeAccuracy ?? 0.0, point2.altitudeAccuracy ?? 0.0),
+      altitudeAccuracy:
+          _average(point1.altitudeAccuracy, point2.altitudeAccuracy),
       heading: _average(point1.heading, point2.heading),
-      headingAccuracy: _average(
-          point1.headingAccuracy ?? 0.0, point2.headingAccuracy ?? 0.0),
+      headingAccuracy: _average(point1.headingAccuracy, point2.headingAccuracy),
       speed: _average(point1.speed, point2.speed),
       speedAccuracy: _average(point1.speedAccuracy, point2.speedAccuracy),
     );
@@ -533,10 +533,6 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   void _updateRoute(List<LatLng> processedPoints) {
     setState(() {
       for (final point in processedPoints) {
-        final routePoint = RoutePoint(
-          coordinates: point,
-          timestamp: DateTime.now(),
-        );
         _route!.addPoint(point);
       }
     });
@@ -756,10 +752,10 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     return distanceInKm * userWeight * caloriesPerKmPerKg;
   }
 
-  bool _isRecording = false;
-
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Трекер маршрута'),
@@ -791,7 +787,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.route),
           ),
           SizedBox(height: 16),
           Text(
@@ -846,14 +842,14 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   Widget _buildStatItem(IconData icon, String value, String label) {
     return Column(
       children: [
-        Icon(icon, size: 28, color: Colors.blue[800]),
+        Icon(icon, size: 28, color: AppColors.route),
         SizedBox(height: 8),
         Text(
           value,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: Colors.blue[800],
+            color: AppColors.route,
           ),
         ),
         Text(
@@ -889,8 +885,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
               Polyline(
                 points: _route!.points.map((p) => p.coordinates).toList(),
                 strokeWidth: 4.0,
-                color: Colors.blue,
-                borderColor: Colors.blue.withOpacity(0.2),
+                color: AppColors.route,
+                borderColor: AppColors.route.withValues(alpha: 0.2),
                 borderStrokeWidth: 6.0,
               ),
             ],
@@ -903,7 +899,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
               point: _currentPosition!,
               child: Icon(
                 Icons.location_pin,
-                color: Colors.red,
+                color: AppColors.danger,
                 size: 40,
               ),
             ),
@@ -914,15 +910,20 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   }
 
   Widget _buildFloatingActions() {
+    final trackerColor =
+        _isTracking && !_isPaused ? AppColors.activity : AppColors.route;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         // Для перезапуска GPS (было gps_fixed)
         FloatingActionButton(
           heroTag: 'gps_reinit',
+          tooltip: 'Обновить GPS',
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.route,
           onPressed: _reinitializeGPS,
-          child: Icon(Icons.place,
-              size: 28, color: Colors.blueAccent), // "Обновление" с акцентом
+          child: Icon(Icons.place, size: 28),
         ),
 
         SizedBox(height: 8),
@@ -930,21 +931,30 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
 // Для центрирования карты
         FloatingActionButton(
           heroTag: 'map_center',
+          tooltip: 'Центрировать карту',
+          backgroundColor: AppColors.routeSoft,
+          foregroundColor: AppColors.route,
           onPressed: _centerMapOnUser,
-          child: Icon(Icons.location_searching,
-              size: 28, color: Colors.deepPurple), // "Фокус" вместо геолокации
+          child: Icon(Icons.location_searching, size: 28),
         ),
         SizedBox(height: 8),
         if (_isTracking)
           FloatingActionButton(
             heroTag: 'stop_tracking',
-            backgroundColor: Colors.red,
+            tooltip: 'Завершить маршрут',
+            backgroundColor: AppColors.danger,
+            foregroundColor: AppColors.surface,
             onPressed: _stopAndSaveRoute,
             child: Icon(Icons.stop, size: 28),
           ),
         SizedBox(height: 8),
         FloatingActionButton(
           heroTag: 'start_stop',
+          tooltip: _isTracking
+              ? (_isPaused ? 'Продолжить запись' : 'Пауза')
+              : 'Начать запись',
+          backgroundColor: trackerColor,
+          foregroundColor: AppColors.surface,
           onPressed: _isTracking
               ? (_isPaused ? _resumeTracking : _pauseTracking)
               : _startTracking,
