@@ -50,6 +50,7 @@ Flutter сейчас ожидает:
 - Доступ в интернет для карт, удаленных изображений и OpenRouteService.
 - API/WebSocket/media/OpenRoute настройки берутся из `lib/config/app_config.dart`.
 - Для локального backend используются `--dart-define`.
+- Push-уведомления сообщений опциональны и требуют Firebase/FCM настройки.
 
 Важно: текущие production URL оставлены только как default в `AppConfig`, чтобы не сломать существующий запуск без параметров.
 
@@ -94,6 +95,11 @@ MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=photos
 MINIO_POSTS_BUCKET_NAME=posts
 OPEN_ROUTE_API_KEY=
+
+# Optional: system push notifications for chats.
+FCM_ENABLED=false
+FIREBASE_CREDENTIALS_PATH=./firebase-service-account.json
+FCM_ANDROID_CHANNEL_ID=moveup_messages
 ```
 
 ## Flutter: локальный запуск
@@ -116,6 +122,31 @@ flutter run \
 - Physical device: IP компьютера в локальной сети
 
 Без `--dart-define` приложение использует production defaults из `AppConfig`.
+
+## Push-уведомления сообщений
+
+Для системных уведомлений используется FCM data-push + локальная Android notification карточка. Flutter показывает одну expandable карточку на диалог и держит максимум 3 видимые строки, чтобы поток сообщений не забивал шторку.
+
+Что нужно для локальной проверки:
+
+1. Создать Firebase Android app с package `com.example.flutter_application_1`.
+2. Скачать service account json и положить вне git, например рядом с локальными секретами.
+3. В `backend_project/.env` включить `FCM_ENABLED=true` и указать `FIREBASE_CREDENTIALS_PATH`.
+4. Обновить backend-зависимости: `pip install -r requirements.txt`.
+5. Запустить Flutter с Firebase `--dart-define`:
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8000 \
+  --dart-define=WS_BASE_URL=ws://10.0.2.2:8000 \
+  --dart-define=MEDIA_BASE_URL=http://10.0.2.2:9000 \
+  --dart-define=FIREBASE_API_KEY=... \
+  --dart-define=FIREBASE_APP_ID=... \
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=FIREBASE_PROJECT_ID=...
+```
+
+Если Firebase-параметры не заданы, push-сервис отключается без падения приложения.
 
 ## Работа с агентами
 
@@ -142,7 +173,7 @@ flutter run \
 - Во Flutter media URL еще нормализуются в нескольких UI-файлах через `AppConfig`, но часть повторов можно дополнительно свернуть в единый helper.
 - Backend-настройки БД смешивают `DATABASE_URL` и отдельные DB-поля; фактически используется `DATABASE_URL`.
 - Автоматические backend-тесты пока не заведены.
-- Flutter SDK отсутствует в текущем контейнере, поэтому `flutter analyze` здесь не запускался.
+- Android debug build в агентном контейнере может не запускаться без установленного Android SDK; проверять сборку лучше локально.
 
 ## Git workflow
 

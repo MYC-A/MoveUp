@@ -304,6 +304,13 @@ class GroupMessagesDAO(BaseDAO):
             return result.scalars().all()
 
     @classmethod
+    async def get_group_chat_name(cls, group_chat_id: int) -> str | None:
+        async with async_session_maker() as session:
+            query = select(GroupChat.name).where(GroupChat.id == group_chat_id)
+            result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    @classmethod
     async def create_group_chat(cls, name: str, creator_id: int, participants: List[int]):
         async with async_session_maker() as session:
             group_chat = GroupChat(name=name, creator_id=creator_id)

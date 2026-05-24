@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -32,6 +33,10 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService.setActiveConversation(
+      conversationType: 'personal',
+      conversationId: widget.recipientId,
+    );
     _keyboardVisibilityController = KeyboardVisibilityController();
     _keyboardVisibilitySubscription =
         _keyboardVisibilityController.onChange.listen((bool visible) {
@@ -124,6 +129,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    PushNotificationService.clearActiveConversation(
+      conversationType: 'personal',
+      conversationId: widget.recipientId,
+    );
     _keyboardVisibilitySubscription.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();

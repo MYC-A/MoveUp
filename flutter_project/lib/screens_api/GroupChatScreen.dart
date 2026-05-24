@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:intl/intl.dart';
 
@@ -38,6 +39,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService.setActiveConversation(
+      conversationType: 'group',
+      conversationId: widget.groupChatId,
+    );
     _scrollController.addListener(_handleScroll);
     _initChat();
 
@@ -409,6 +414,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   void dispose() {
+    PushNotificationService.clearActiveConversation(
+      conversationType: 'group',
+      conversationId: widget.groupChatId,
+    );
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _messagesController.close();

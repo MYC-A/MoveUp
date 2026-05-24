@@ -13,6 +13,7 @@ from app.chat.router import router as chat_router
 from app.posts.routes_posts import router as post_router
 from app.event.routers_event import router as event_router
 from app.friendship.routes_friends import router as friends_router
+from app.push.router import router as push_router
 app = FastAPI()
 app.mount('/static', StaticFiles(directory='app/static'), name='static')
 
@@ -36,6 +37,7 @@ app.include_router(post_router)
 app.include_router(profile_router)
 app.include_router(friends_router)
 app.include_router(event_router)
+app.include_router(push_router)
 
 
 @app.get("/")

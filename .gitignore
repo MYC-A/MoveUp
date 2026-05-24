@@ -18,6 +18,9 @@ venv/
 .env
 .env.*
 !.env.example
+firebase-service-account*.json
+google-services.json
+GoogleService-Info.plist
 
 # Backend local data
 backend_project/.venv/
@@ -48,5 +51,4 @@ docs/agent/
 AGENTS.md
 CLAUDE.md
 GEMINI.md
-
 

@@ -3,6 +3,7 @@ import 'register_screen.dart';
 import 'dart:convert';
 import 'package:flutter_application_1/main.dart';
 import '../services_api/auth_service.dart';
+import '../services_api/push_notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -23,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _emailController.text,
           password: _passwordController.text,
         );
+        await PushNotificationService.registerCurrentDeviceToken();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Вход выполнен успешно!')),
         );
@@ -119,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: 'Email',
                     prefixIcon: Icon(Icons.email),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.8),
+                    fillColor: Colors.white.withValues(alpha: 0.8),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -138,7 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: 'Пароль',
                     prefixIcon: Icon(Icons.lock),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.8),
+                    fillColor: Colors.white.withValues(alpha: 0.8),
                   ),
                   obscureText: true,
                   validator: (value) {

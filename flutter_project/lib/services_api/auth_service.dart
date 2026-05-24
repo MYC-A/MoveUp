@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_application_1/config/app_config.dart';
+import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -103,6 +104,7 @@ class AuthService {
     final url = Uri.parse('$baseUrl/auth/logout/');
     final token = await storage.read(key: 'access_token');
     print('Logout: Token read: $token');
+    await PushNotificationService.unregisterCurrentDeviceToken();
     final response = await http.post(
       url,
       headers: {'Cookie': 'users_access_token=$token'},

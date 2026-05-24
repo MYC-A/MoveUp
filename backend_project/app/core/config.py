@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     MINIO_POSTS_BUCKET_NAME: str
     OPEN_ROUTE_API_KEY: str
 
+    FCM_ENABLED: bool = False
+    FIREBASE_CREDENTIALS_PATH: str = ""
+    FCM_ANDROID_CHANNEL_ID: str = "moveup_messages"
+
 
 
 settings = Settings()

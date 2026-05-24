@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, Query, BackgroundTasks
 from fastapi import Body
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -13,6 +13,7 @@ from app.chat.models import GroupMessageReadStatus
 from app.chat.schemas import MessageRead, MessageCreate, GroupChatCreate, GroupMessageCreate, GroupMessageRead, \
     MarkReadRequest
 from app.db.base import async_session_maker
+from app.push.service import PushNotificationService
 from app.users.dao_users import UsersDAO
 from app.users.dependensies_user import get_current_user
 from app.users.models_user import User
@@ -94,6 +95,74 @@ async def get_chat_page(
     )
 # Активные WebSocket-подключения: {user_id: websocket}
 active_connections: Dict[int, WebSocket] = {}
+
+
+def _truncate_push_body(content: str, max_length: int = 120) -> str:
+    normalized = " ".join(content.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[:max_length - 1]}..."
+
+
+def _count_unread_total(unread: Dict[str, Dict[int, int]]) -> int:
+    total = 0
+    for counters in unread.values():
+        total += sum(counters.values())
+    return total
+
+
+async def _send_personal_message_push(
+    recipient_id: int,
+    sender: User,
+    message_id: int,
+    content: str,
+) -> None:
+    if not PushNotificationService.is_enabled():
+        return
+
+    unread = await MessagesDAO.get_unread_messages_count(recipient_id)
+    await PushNotificationService.send_chat_message_push(
+        recipient_id=recipient_id,
+        title=sender.full_name or "Новое сообщение",
+        body=_truncate_push_body(content),
+        data={
+            "type": "chat_message",
+            "conversation_type": "personal",
+            "conversation_id": sender.id,
+            "sender_id": sender.id,
+            "message_id": message_id,
+        },
+        unread_count=_count_unread_total(unread),
+    )
+
+
+async def _send_group_message_push(
+    recipient_id: int,
+    sender: User,
+    group_chat_id: int,
+    group_chat_name: str,
+    message_id: int,
+    content: str,
+) -> None:
+    if not PushNotificationService.is_enabled():
+        return
+
+    sender_name = sender.full_name or "Участник"
+    unread = await MessagesDAO.get_unread_messages_count(recipient_id)
+    await PushNotificationService.send_chat_message_push(
+        recipient_id=recipient_id,
+        title=group_chat_name,
+        body=f"{sender_name}: {_truncate_push_body(content)}",
+        data={
+            "type": "chat_message",
+            "conversation_type": "group",
+            "conversation_id": group_chat_id,
+            "group_chat_id": group_chat_id,
+            "sender_id": sender.id,
+            "message_id": message_id,
+        },
+        unread_count=_count_unread_total(unread),
+    )
 
 @router.get("/unread_messages_count", response_model=Dict[str, Dict[int, int]])
 async def get_unread_messages_count(current_user: User = Depends(get_current_user)):
@@ -188,7 +257,11 @@ async def get_users_with_messages(current_user: User = Depends(get_current_user)
 
 # Эндпоинт для отправки личного сообщения
 @router.post("/messages", response_model=MessageCreate)
-async def send_message(message: MessageCreate, current_user: User = Depends(get_current_user)):
+async def send_message(
+    message: MessageCreate,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     saved_message = await MessagesDAO.add(
         sender_id=current_user.id,
         content=message.content,
@@ -203,6 +276,13 @@ async def send_message(message: MessageCreate, current_user: User = Depends(get_
         'is_read': False
     }
     await notify_user(message.recipient_id, message_data)
+    background_tasks.add_task(
+        _send_personal_message_push,
+        recipient_id=message.recipient_id,
+        sender=current_user,
+        message_id=saved_message.id,
+        content=message.content,
+    )
     return message
 
 # Эндпоинт для отправки сообщения в групповой чат
@@ -210,6 +290,7 @@ async def send_message(message: MessageCreate, current_user: User = Depends(get_
 @router.post("/group_chats/messages")
 async def send_group_message(
     message: GroupMessageCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
     # Добавляем сообщение в групповой чат
@@ -242,7 +323,10 @@ async def send_group_message(
         await session.execute(stmt)
         await session.commit()
 
-    # Отправляем уведомления всем участникам
+    group_chat_name = await GroupMessagesDAO.get_group_chat_name(message.group_chat_id)
+    group_chat_name = group_chat_name or "Групповой чат"
+
+    # Отправляем realtime-уведомления всем участникам и push получателям.
     for participant_id in participants:
         is_read = participant_id == current_user.id
         message_data = {
@@ -256,6 +340,16 @@ async def send_group_message(
             'is_read': is_read
         }
         await notify_user(participant_id, message_data)
+        if participant_id != current_user.id:
+            background_tasks.add_task(
+                _send_group_message_push,
+                recipient_id=participant_id,
+                sender=current_user,
+                group_chat_id=group_message.group_chat_id,
+                group_chat_name=group_chat_name,
+                message_id=group_message.id,
+                content=group_message.content,
+            )
 
     return message_data
 
@@ -313,4 +407,3 @@ async def add_participant_to_group_chat(
     """
     await GroupMessagesDAO.add_participant_to_group_chat(group_chat_id, request.user_id)
     return {"status": "ok", "msg": "Participant added to group chat"}
-
