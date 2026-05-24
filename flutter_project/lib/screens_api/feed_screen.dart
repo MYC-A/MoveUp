@@ -32,6 +32,8 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
+  static const double _loadMoreThreshold = 200;
+
   final PageStorageBucket _bucket = PageStorageBucket();
   final ScrollController _scrollController = ScrollController();
   final PostService _postService = PostService();
@@ -51,6 +53,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_handleScroll);
     _loadCurrentUserId();
     _loadPosts();
     _webSocketService.switchToFeed();
@@ -73,6 +76,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   void dispose() {
     _debounceTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.removeListener(_handleScroll);
     for (var controller in _mapControllers) {
       controller.dispose();
     }
@@ -91,6 +95,16 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         });
         debugPrint("Приложение свернуто, кэш частично очищен.");
       }
+    }
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients || _isLoading || !_hasMore) return;
+
+    final position = _scrollController.position;
+    final distanceToBottom = position.maxScrollExtent - position.pixels;
+    if (distanceToBottom <= _loadMoreThreshold) {
+      _loadPosts();
     }
   }
 
@@ -352,78 +366,67 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           bucket: _bucket,
           child: RefreshIndicator(
             onRefresh: _refreshPosts,
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (ScrollNotification scrollInfo) {
-                if (scrollInfo.metrics.pixels ==
-                        scrollInfo.metrics.maxScrollExtent &&
-                    _hasMore &&
-                    !_isLoading) {
-                  _loadPosts();
-                }
-                return true;
-              },
-              child: Stack(
-                children: [
-                  ListView.separated(
-                    key: PageStorageKey('feed_list'),
-                    controller: _scrollController,
-                    itemCount: _posts.length + (_hasMore ? 1 : 0),
-                    separatorBuilder: (context, index) =>
-                        Divider(height: 1, color: Colors.grey[300]),
-                    itemBuilder: (context, index) {
-                      if (index == _posts.length) {
-                        return Center(child: CircularProgressIndicator());
-                      }
-                      final post = _posts[index];
-                      return PostItem(
-                        key: ValueKey(post.id),
-                        post: post,
-                        mapController: _mapControllers[index],
-                        onMapTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  FullScreenMap(routeData: post.routeData),
-                            ),
-                          );
-                        },
-                        isValidRoute: _isValidRoute,
-                        zoomToRoute: _zoomToRoute,
-                        webSocketService: _webSocketService,
-                        loadPosts: _loadPosts,
-                        likePost: _likePost,
-                        currentUserId:
-                            _currentUserId, // Передаем _currentUserId
-                      );
-                    },
-                  ),
-                  if (_isRefreshing)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Container(
-                          margin: EdgeInsets.all(8),
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 4,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
+            child: Stack(
+              children: [
+                ListView.separated(
+                  key: PageStorageKey('feed_list'),
+                  controller: _scrollController,
+                  physics: AlwaysScrollableScrollPhysics(),
+                  itemCount: _posts.length + (_hasMore ? 1 : 0),
+                  separatorBuilder: (context, index) =>
+                      Divider(height: 1, color: Colors.grey[300]),
+                  itemBuilder: (context, index) {
+                    if (index == _posts.length) {
+                      return Center(child: CircularProgressIndicator());
+                    }
+                    final post = _posts[index];
+                    return PostItem(
+                      key: ValueKey(post.id),
+                      post: post,
+                      mapController: _mapControllers[index],
+                      onMapTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                FullScreenMap(routeData: post.routeData),
                           ),
-                          child: CircularProgressIndicator(strokeWidth: 3),
+                        );
+                      },
+                      isValidRoute: _isValidRoute,
+                      zoomToRoute: _zoomToRoute,
+                      webSocketService: _webSocketService,
+                      loadPosts: _loadPosts,
+                      likePost: _likePost,
+                      currentUserId: _currentUserId, // Передаем _currentUserId
+                    );
+                  },
+                ),
+                if (_isRefreshing)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        margin: EdgeInsets.all(8),
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
+                        child: CircularProgressIndicator(strokeWidth: 3),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),

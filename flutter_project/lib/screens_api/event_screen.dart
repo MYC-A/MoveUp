@@ -14,6 +14,8 @@ class EventScreen extends StatefulWidget {
 }
 
 class _EventScreenState extends State<EventScreen> {
+  static const double _loadMoreThreshold = 200;
+
   final EventService _eventService = EventService();
   final List<Event> _events = [];
   int _skip = 0;
@@ -28,16 +30,28 @@ class _EventScreenState extends State<EventScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _loadEvents();
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     for (var controller in _mapControllers) {
       controller.dispose();
     }
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients || _isLoading || !_hasMore) return;
+
+    final position = _scrollController.position;
+    final distanceToBottom = position.maxScrollExtent - position.pixels;
+    if (distanceToBottom <= _loadMoreThreshold) {
+      _loadEvents();
+    }
   }
 
   Future<void> _loadEvents({bool refresh = false}) async {
@@ -188,55 +202,45 @@ class _EventScreenState extends State<EventScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refreshEvents,
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (ScrollNotification scrollInfo) {
-            if (scrollInfo.metrics.pixels ==
-                    scrollInfo.metrics.maxScrollExtent &&
-                _hasMore &&
-                !_isLoading) {
-              _loadEvents();
-            }
-            return true;
-          },
-          child: Stack(
-            children: [
-              ListView.builder(
-                controller: _scrollController,
-                itemCount: _events.length + (_hasMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _events.length) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-                  final event = _events[index];
-                  return _buildEventCard(event, index);
-                },
-              ),
-              if (_isRefreshing)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      margin: EdgeInsets.all(8),
-                      padding: EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: CircularProgressIndicator(strokeWidth: 3),
+        child: Stack(
+          children: [
+            ListView.builder(
+              controller: _scrollController,
+              physics: AlwaysScrollableScrollPhysics(),
+              itemCount: _events.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _events.length) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                final event = _events[index];
+                return _buildEventCard(event, index);
+              },
+            ),
+            if (_isRefreshing)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    margin: EdgeInsets.all(8),
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
                     ),
+                    child: CircularProgressIndicator(strokeWidth: 3),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
