@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // Добавляем для локализации
 import 'package:flutter_application_1/screens/LiveTrackerScreen.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
+import 'package:flutter_application_1/screens_api/ChatScreen.dart';
+import 'package:flutter_application_1/screens_api/GroupChatScreen.dart';
 import 'package:flutter_application_1/screens_api/event_screen.dart';
 import 'package:flutter_application_1/screens_api/feed_screen.dart';
 import 'package:flutter_application_1/screens_api/login_screen.dart';
@@ -21,7 +23,40 @@ Future<void> main() async {
   await initializeDateFormatting('ru', null);
   Intl.defaultLocale = 'ru';
   await PushNotificationService.initialize();
+  _configurePushNavigation();
   runApp(MyApp());
+}
+
+void _configurePushNavigation() {
+  PushNotificationService.notificationNavigationHandler = (data) {
+    final navigator = PushNotificationService.navigatorKey.currentState;
+    if (navigator == null) return false;
+
+    final conversationType = data['conversation_type']?.toString();
+    final conversationId =
+        int.tryParse(data['conversation_id']?.toString() ?? '');
+    if (conversationType == null || conversationId == null) return false;
+
+    if (conversationType == 'group') {
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => GroupChatScreen(
+            groupChatId: conversationId,
+            groupChatName:
+                data['conversation_title']?.toString() ?? 'Групповой чат',
+          ),
+        ),
+      );
+      return true;
+    }
+
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(recipientId: conversationId),
+      ),
+    );
+    return true;
+  };
 }
 
 class MyApp extends StatelessWidget {
@@ -30,6 +65,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: PushNotificationService.navigatorKey,
       title: 'MoveUp',
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -88,6 +124,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _startUnreadPolling();
     _loadUnreadMessagesCount();
     PushNotificationService.registerCurrentDeviceToken();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushNotificationService.openPendingNotificationIfAny();
+    });
   }
 
   @override
@@ -132,7 +171,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _countUnreadMessages(Map<String, Map<int, int>> unread) {
     var total = 0;
     for (final group in unread.values) {
-      total += group.values.fold<int>(0, (sum, value) => sum + value);
+      total += group.values.where((value) => value > 0).length;
     }
     return total;
   }

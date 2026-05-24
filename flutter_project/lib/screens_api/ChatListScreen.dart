@@ -174,9 +174,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Map<int, int> groupCount,
   ) {
     final totalPersonal =
-        personalCount.values.fold<int>(0, (sum, value) => sum + value);
-    final totalGroup =
-        groupCount.values.fold<int>(0, (sum, value) => sum + value);
+        personalCount.values.where((value) => value > 0).length;
+    final totalGroup = groupCount.values.where((value) => value > 0).length;
     widget.onUnreadTotalChanged?.call(totalPersonal + totalGroup);
   }
 

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:intl/intl.dart';
 
 class GroupChatScreen extends StatefulWidget {
@@ -34,7 +34,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _isLoadingOlder = false;
   bool _hasMoreMessages = true;
   int? currentUserId;
-  late StreamSubscription<bool> _keyboardVisibilitySubscription;
 
   @override
   void initState() {
@@ -45,13 +44,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
     _scrollController.addListener(_handleScroll);
     _initChat();
-
-    _keyboardVisibilitySubscription =
-        KeyboardVisibilityController().onChange.listen((bool visible) {
-      if (visible) {
-        _scrollToBottom();
-      }
-    });
   }
 
   Future<void> _initChat() async {
@@ -113,8 +105,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Future<void> _markMessagesAsRead() async {
     try {
       await _chatService.markGroupMessagesAsRead(widget.groupChatId);
-      final unreadCount = await _chatService.getUnreadMessagesCount();
-      debugPrint('Непрочитанных сообщений: $unreadCount');
+      ChatListScreen.state?.refreshUnreadMessagesCount();
     } catch (e) {
       debugPrint('Ошибка отметки сообщений как прочитанных: $e');
     }
@@ -331,6 +322,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           if (shouldScroll) {
             _scrollToBottom();
           }
+          unawaited(_markMessagesAsRead());
         }
       },
     );
@@ -418,10 +410,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       conversationType: 'group',
       conversationId: widget.groupChatId,
     );
+    unawaited(_markMessagesAsRead());
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _messagesController.close();
-    _keyboardVisibilitySubscription.cancel();
     _chatService.disconnect();
     super.dispose();
   }

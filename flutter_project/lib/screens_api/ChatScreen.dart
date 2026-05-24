@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 
 class ChatScreen extends StatefulWidget {
   final int recipientId;
@@ -25,8 +24,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingOlder = false;
   bool _hasMoreMessages = true;
   int? currentUserId;
-  late final KeyboardVisibilityController _keyboardVisibilityController;
-  late final StreamSubscription<bool> _keyboardVisibilitySubscription;
   final _messagesController =
       StreamController<List<Map<String, dynamic>>>.broadcast();
 
@@ -37,13 +34,6 @@ class _ChatScreenState extends State<ChatScreen> {
       conversationType: 'personal',
       conversationId: widget.recipientId,
     );
-    _keyboardVisibilityController = KeyboardVisibilityController();
-    _keyboardVisibilitySubscription =
-        _keyboardVisibilityController.onChange.listen((bool visible) {
-      if (visible) {
-        _scrollToBottom();
-      }
-    });
     _scrollController.addListener(_handleScroll);
 
     _initChat();
@@ -133,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
       conversationType: 'personal',
       conversationId: widget.recipientId,
     );
-    _keyboardVisibilitySubscription.cancel();
+    unawaited(_markMessagesAsRead());
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _chatService.disconnect();
@@ -249,7 +239,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (shouldScroll) {
             _scrollToBottom();
           }
-          ChatListScreen.state?.refreshUnreadMessagesCount();
+          unawaited(_markMessagesAsRead());
         }
       },
     );

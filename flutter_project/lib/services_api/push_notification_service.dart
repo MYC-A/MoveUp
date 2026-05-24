@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -42,10 +42,15 @@ class PushNotificationService {
   static final FlutterSecureStorage _storage = const FlutterSecureStorage();
   static final Map<String, List<String>> _conversationLines = {};
   static final Map<String, int> _conversationTotal = {};
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+  static bool Function(Map<String, dynamic> data)?
+      notificationNavigationHandler;
 
   static bool _initialized = false;
   static bool _localNotificationsReady = false;
   static String? _activeConversationKey;
+  static Map<String, dynamic>? _pendingNotificationData;
 
   static bool get isInitialized => _initialized;
 
@@ -145,6 +150,10 @@ class PushNotificationService {
     }
   }
 
+  static void openPendingNotificationIfAny() {
+    _openPendingNotification();
+  }
+
   static Future<void> _initializeLocalNotifications() async {
     if (_localNotificationsReady) return;
 
@@ -160,9 +169,15 @@ class PushNotificationService {
     await _localNotifications.initialize(
       settings,
       onDidReceiveNotificationResponse: (response) {
-        debugPrint('Открыто push-уведомление: ${response.payload}');
+        _handleNotificationPayload(response.payload);
       },
     );
+
+    final launchDetails =
+        await _localNotifications.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      _handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+    }
 
     const channel = AndroidNotificationChannel(
       _channelId,
@@ -344,6 +359,42 @@ class PushNotificationService {
 
   static void _handleMessageTap(RemoteMessage message) {
     debugPrint('Открыто FCM-уведомление: ${message.data}');
+    _handleNotificationData(message.data);
+  }
+
+  static void _handleNotificationPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+
+    try {
+      final decoded = json.decode(payload);
+      if (decoded is Map<String, dynamic>) {
+        _handleNotificationData(decoded);
+      } else if (decoded is Map) {
+        _handleNotificationData(
+          decoded.map((key, value) => MapEntry(key.toString(), value)),
+        );
+      }
+    } catch (e) {
+      debugPrint('Ошибка обработки payload push-уведомления: $e');
+    }
+  }
+
+  static void _handleNotificationData(Map<String, dynamic> data) {
+    if (data['type'] != 'chat_message') return;
+
+    _pendingNotificationData = Map<String, dynamic>.from(data);
+    _openPendingNotification();
+  }
+
+  static void _openPendingNotification() {
+    final data = _pendingNotificationData;
+    final handler = notificationNavigationHandler;
+    if (data == null || handler == null) return;
+
+    final didOpen = handler(data);
+    if (didOpen) {
+      _pendingNotificationData = null;
+    }
   }
 
   static bool get _isSupportedPlatform {
