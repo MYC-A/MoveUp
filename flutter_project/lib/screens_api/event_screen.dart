@@ -5,9 +5,9 @@ import 'package:flutter_application_1/services_api/EventService.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
@@ -30,6 +30,7 @@ class _EventScreenState extends State<EventScreen> {
   bool _hasMore = true;
   final List<MapController> _mapControllers = [];
   final ScrollController _scrollController = ScrollController();
+  final Set<int> _fittedMapEventIds = {};
   int? _latestEventId;
   bool _isRefreshing = false;
   String? _loadError;
@@ -70,6 +71,7 @@ class _EventScreenState extends State<EventScreen> {
         _skip = 0;
         _events.clear();
         _mapControllers.clear();
+        _fittedMapEventIds.clear();
         _hasMore = true;
         _latestEventId = null;
       }
@@ -175,14 +177,96 @@ class _EventScreenState extends State<EventScreen> {
     );
   }
 
-  String _formatDateTime(DateTime? dateTime) {
-    if (dateTime == null) return "Не указано";
-    return Helper.formatDateTime(dateTime);
+  String _formatTime(DateTime? dateTime) {
+    if (dateTime == null) return '--:--';
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _formatTimeRange(Event event) {
+    if (event.startTime == null && event.endTime == null) {
+      return 'Время не указано';
+    }
+
+    if (event.endTime == null) {
+      return _formatTime(event.startTime);
+    }
+
+    return '${_formatTime(event.startTime)} - ${_formatTime(event.endTime)}';
+  }
+
+  String _formatDay(DateTime? dateTime) {
+    if (dateTime == null) return '--';
+    return dateTime.day.toString();
+  }
+
+  String _formatMonth(DateTime? dateTime) {
+    if (dateTime == null) return 'дата';
+    const months = [
+      'янв',
+      'фев',
+      'мар',
+      'апр',
+      'мая',
+      'июн',
+      'июл',
+      'авг',
+      'сен',
+      'окт',
+      'ноя',
+      'дек',
+    ];
+    return months[dateTime.month - 1];
+  }
+
+  Color _eventAccent(Event event) {
+    final normalized =
+        '${event.eventType} ${EventTranslations.getEventTypeDisplayName(event.eventType)}'
+            .toLowerCase();
+
+    if (normalized.contains('bike') ||
+        normalized.contains('cycle') ||
+        normalized.contains('вел')) {
+      return AppColors.route;
+    }
+
+    if (normalized.contains('run') ||
+        normalized.contains('бег') ||
+        normalized.contains('поход') ||
+        normalized.contains('hiking')) {
+      return AppColors.primary;
+    }
+
+    return AppColors.activity;
+  }
+
+  IconData _eventIcon(Event event) {
+    final normalized =
+        '${event.eventType} ${EventTranslations.getEventTypeDisplayName(event.eventType)}'
+            .toLowerCase();
+
+    if (normalized.contains('bike') ||
+        normalized.contains('cycle') ||
+        normalized.contains('вел')) {
+      return Icons.directions_bike_rounded;
+    }
+
+    if (normalized.contains('поход') || normalized.contains('hiking')) {
+      return Icons.terrain_rounded;
+    }
+
+    return Icons.directions_run_rounded;
+  }
+
+  String _eventPlaceLabel(Event event) {
+    return event.routeData.isEmpty ? 'Маршрут не указан' : 'Маршрут на карте';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('События'),
         actions: [
@@ -296,7 +380,13 @@ class _EventScreenState extends State<EventScreen> {
 
     return ListView.builder(
       controller: _scrollController,
-      physics: AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        0,
+        AppSpacing.sm,
+        0,
+        AppSpacing.xl,
+      ),
       itemCount: _events.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == _events.length) {
@@ -324,165 +414,190 @@ class _EventScreenState extends State<EventScreen> {
   }
 
   Widget _buildEventCard(Event event, int index) {
-    return Card(
-      margin: EdgeInsets.all(8.0),
-      elevation: 4.0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+    final accent = _eventAccent(event);
+    final type = EventTranslations.getEventTypeDisplayName(event.eventType);
+    final difficulty =
+        EventTranslations.getDifficultyDisplayName(event.difficulty);
+    final summary = event.description?.trim().isNotEmpty == true
+        ? event.description!.trim()
+        : event.goal?.trim();
+    final hasSeats = event.availableSeats > 0;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.lg,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.74)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.07),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: accent.withValues(alpha: 0.06),
+            blurRadius: 36,
+            offset: const Offset(0, 18),
+          ),
+        ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _EventActivityIcon(
+                  icon: _eventIcon(event),
+                  color: accent,
+                ),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: Text(
-                    event.title,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        type,
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        event.title,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 23,
+                          fontWeight: FontWeight.w800,
+                          height: 1.12,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.map, color: Colors.blue),
-                  onPressed: event.routeData.isEmpty
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => FullScreenMap(
-                                routePoints: event.routePoints,
-                              ),
-                            ),
-                          );
-                        },
+                const SizedBox(width: AppSpacing.sm),
+                _EventSeatsBadge(
+                  availableSeats: event.availableSeats,
+                  maxParticipants: event.maxParticipants,
+                  hasSeats: hasSeats,
                 ),
               ],
             ),
-            SizedBox(height: 8),
-            if (event.description != null && event.description!.isNotEmpty)
-              Text(
-                event.description!,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[700],
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 3,
-              ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.directions_run, size: 18, color: Colors.grey[700]),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Тип: ${EventTranslations.getEventTypeDisplayName(event.eventType)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.terrain, size: 18, color: Colors.grey[700]),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Сложность: ${EventTranslations.getDifficultyDisplayName(event.difficulty)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.calendar_today, size: 18, color: Colors.grey[700]),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Начало: ${_formatDateTime(event.startTime)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.event_available, size: 18, color: Colors.grey[700]),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Окончание: ${_formatDateTime(event.endTime)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.people, size: 18, color: Colors.grey[700]),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Свободные места: ${event.availableSeats}/${event.maxParticipants}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-            _buildMap(event, index),
-            SizedBox(height: 16),
-            Center(
-              child: ElevatedButton(
-                onPressed: event.availableSeats > 0
-                    ? () => _participateEvent(event.id)
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                ),
+            if (summary != null && summary.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
                 child: Text(
-                  event.availableSeats > 0
-                      ? 'Записаться на мероприятие'
+                  summary,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 16,
+                    height: 1.35,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 3,
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(22),
+                border:
+                    Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+              ),
+              child: Row(
+                children: [
+                  _EventDateTile(
+                    day: _formatDay(event.startTime),
+                    month: _formatMonth(event.startTime),
+                    color: accent,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _EventInfoRow(
+                          icon: Icons.access_time_rounded,
+                          label: _formatTimeRange(event),
+                          color: AppColors.activity,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        _EventInfoRow(
+                          icon: Icons.place_rounded,
+                          label: _eventPlaceLabel(event),
+                          color: AppColors.route,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                _EventPill(
+                  icon: _eventIcon(event),
+                  label: type,
+                  color: accent,
+                ),
+                _EventPill(
+                  icon: Icons.terrain_rounded,
+                  label: difficulty,
+                  color: AppColors.activity,
+                ),
+                _EventPill(
+                  icon: Icons.group_rounded,
+                  label: hasSeats
+                      ? '${event.availableSeats} свободно'
                       : 'Мест нет',
-                  style: TextStyle(color: Colors.white),
+                  color: hasSeats ? AppColors.success : AppColors.danger,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            _buildMap(event, index, accent),
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: hasSeats ? () => _participateEvent(event.id) : null,
+                icon: Icon(
+                  hasSeats ? Icons.send_rounded : Icons.block_rounded,
+                  size: 20,
+                ),
+                label: Text(hasSeats ? 'Записаться' : 'Мест нет'),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.surface,
+                  disabledBackgroundColor: AppColors.surfaceMuted,
+                  disabledForegroundColor: AppColors.textMuted,
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
                 ),
               ),
             ),
@@ -492,13 +607,31 @@ class _EventScreenState extends State<EventScreen> {
     );
   }
 
-  Widget _buildMap(Event event, int index) {
+  Widget _buildMap(Event event, int index, Color accent) {
     if (event.routeData.isEmpty) {
-      return Text(
-        'Маршрут не указан',
-        style: TextStyle(
-          fontSize: 14,
-          color: Colors.grey[700],
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.map_outlined, color: AppColors.textMuted),
+            SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'Маршрут не указан',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -508,93 +641,108 @@ class _EventScreenState extends State<EventScreen> {
     return VisibilityDetector(
       key: Key('map_${event.id}'),
       onVisibilityChanged: (info) {
-        if (info.visibleFraction > 0) {
+        if (info.visibleFraction > 0.28 &&
+            !_fittedMapEventIds.contains(event.id)) {
+          _fittedMapEventIds.add(event.id);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _zoomToRoute(routePoints, _mapControllers[index]);
           });
         }
       },
       child: Container(
-        height: 200,
+        height: 214,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.0),
+          color: AppColors.routeSoft,
+          borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: Colors.black12,
-              blurRadius: 6,
-              offset: Offset(0, 3),
+              color: AppColors.route.withValues(alpha: 0.13),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12.0),
-          child: FlutterMap(
-            mapController: _mapControllers[index],
-            options: MapOptions(
-              interactionOptions: InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
-              initialCenter: routePoints.isNotEmpty
-                  ? routePoints.first
-                  : LatLng(55.7558, 37.6176),
-              initialZoom: 13.0,
-            ),
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c'],
-              ),
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: routePoints,
-                    color: Colors.blue,
-                    strokeWidth: 4.0,
+              FlutterMap(
+                mapController: _mapControllers[index],
+                options: MapOptions(
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                  initialCenter: routePoints.isNotEmpty
+                      ? routePoints.first
+                      : const LatLng(55.7558, 37.6176),
+                  initialZoom: 13.0,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  ),
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: routePoints,
+                        color: accent,
+                        strokeWidth: 5.0,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      if (routePoints.isNotEmpty)
+                        Marker(
+                          width: 42.0,
+                          height: 42.0,
+                          point: routePoints.first,
+                          child: _EventRouteMarker(
+                            icon: Icons.play_arrow_rounded,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      if (routePoints.isNotEmpty)
+                        Marker(
+                          width: 46.0,
+                          height: 46.0,
+                          point: routePoints.last,
+                          child: _EventRouteMarker(
+                            icon: Icons.flag_rounded,
+                            color: accent,
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),
-              MarkerLayer(
-                markers: [
-                  if (routePoints.isNotEmpty)
-                    Marker(
-                      width: 30.0,
-                      height: 30.0,
-                      point: routePoints.first,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.directions_run,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ),
-                    ),
-                  if (routePoints.isNotEmpty)
-                    Marker(
-                      width: 30.0,
-                      height: 30.0,
-                      point: routePoints.last,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.flag,
-                          color: Colors.white,
-                          size: 16,
+              Positioned(
+                left: AppSpacing.sm,
+                top: AppSpacing.sm,
+                child: _EventMapBadge(
+                  icon: _eventIcon(event),
+                  label: EventTranslations.getEventTypeDisplayName(
+                    event.eventType,
+                  ),
+                  color: accent,
+                ),
+              ),
+              Positioned(
+                right: AppSpacing.sm,
+                top: AppSpacing.sm,
+                child: _EventMapButton(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FullScreenMap(
+                          routePoints: event.routePoints,
                         ),
                       ),
-                    ),
-                ],
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -623,6 +771,380 @@ class _EventScreenState extends State<EventScreen> {
         SnackBar(content: Text(errorMessage)),
       );
     }
+  }
+}
+
+class _EventActivityIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _EventActivityIcon({
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Icon(
+        icon,
+        color: color,
+        size: 28,
+      ),
+    );
+  }
+}
+
+class _EventSeatsBadge extends StatelessWidget {
+  final int availableSeats;
+  final int maxParticipants;
+  final bool hasSeats;
+
+  const _EventSeatsBadge({
+    required this.availableSeats,
+    required this.maxParticipants,
+    required this.hasSeats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = hasSeats ? AppColors.success : AppColors.danger;
+
+    return Container(
+      width: 88,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.groups_rounded,
+            color: color,
+            size: 19,
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          Text(
+            '$availableSeats/$maxParticipants',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+            ),
+          ),
+          const Text(
+            'мест',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventDateTile extends StatelessWidget {
+  final String day;
+  final String month;
+  final Color color;
+
+  const _EventDateTile({
+    required this.day,
+    required this.month,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 66,
+      height: 74,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.09),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            day,
+            style: TextStyle(
+              color: color,
+              fontSize: 27,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          Text(
+            month,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _EventInfoRow({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.11),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 17,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _EventPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.11),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(color: color.withValues(alpha: 0.13)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: color,
+              size: 17,
+            ),
+            const SizedBox(width: AppSpacing.xxs),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventMapBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _EventMapBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: AppColors.surface,
+              size: 18,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.surface,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventMapButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EventMapButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface.withValues(alpha: 0.96),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+          ),
+          child: const Icon(
+            Icons.fullscreen_rounded,
+            color: AppColors.textSecondary,
+            size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventRouteMarker extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _EventRouteMarker({
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.24),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(AppSpacing.xxs),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          color: AppColors.surface,
+          size: 19,
+        ),
+      ),
+    );
   }
 }
 
@@ -665,7 +1187,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Карта маршрута'),
+        title: const Text('Карта маршрута'),
       ),
       body: Stack(
         children: [
@@ -686,16 +1208,14 @@ class _FullScreenMapState extends State<FullScreenMap> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c'],
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               ),
               PolylineLayer(
                 polylines: [
                   Polyline(
                     points: widget.routePoints,
-                    color: Colors.blue,
-                    strokeWidth: 4.0,
+                    color: AppColors.route,
+                    strokeWidth: 5.0,
                   ),
                 ],
               ),
@@ -706,18 +1226,9 @@ class _FullScreenMapState extends State<FullScreenMap> {
                       width: 30.0,
                       height: 30.0,
                       point: widget.routePoints.first,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.directions_run,
-                          color: Colors.white,
-                          size: 16,
-                        ),
+                      child: const _EventRouteMarker(
+                        icon: Icons.play_arrow_rounded,
+                        color: AppColors.success,
                       ),
                     ),
                   if (widget.routePoints.isNotEmpty)
@@ -725,18 +1236,9 @@ class _FullScreenMapState extends State<FullScreenMap> {
                       width: 30.0,
                       height: 30.0,
                       point: widget.routePoints.last,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.flag,
-                          color: Colors.white,
-                          size: 16,
-                        ),
+                      child: const _EventRouteMarker(
+                        icon: Icons.flag_rounded,
+                        color: AppColors.route,
                       ),
                     ),
                 ],
@@ -757,9 +1259,9 @@ class _FullScreenMapState extends State<FullScreenMap> {
                       _mapController.camera.zoom + 1,
                     );
                   },
-                  child: Icon(Icons.add),
+                  child: const Icon(Icons.add),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 FloatingActionButton(
                   mini: true,
                   heroTag: 'zoom_out_${widget.hashCode}',
@@ -769,7 +1271,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
                       _mapController.camera.zoom - 1,
                     );
                   },
-                  child: Icon(Icons.remove),
+                  child: const Icon(Icons.remove),
                 ),
               ],
             ),
