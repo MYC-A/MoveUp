@@ -15,6 +15,7 @@ import 'package:flutter_application_1/screens/SplashScreen.dart';
 import 'package:flutter_application_1/services_api/auth_service.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -67,16 +68,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: PushNotificationService.navigatorKey,
       title: 'MoveUp',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        bottomNavigationBarTheme: BottomNavigationBarThemeData(
-          backgroundColor: Colors.white,
-          selectedItemColor: Colors.amber[800],
-          unselectedItemColor: Colors.grey,
-          showUnselectedLabels: true,
-        ),
-      ),
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
       // Настройка локализаций
       localizationsDelegates: [
         GlobalMaterialLocalizations.delegate,
