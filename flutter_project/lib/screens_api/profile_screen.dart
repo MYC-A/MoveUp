@@ -4,11 +4,16 @@ import 'package:flutter_application_1/screens_api/NotificationsScreen.dart';
 import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
 import 'package:flutter_application_1/screens_api/followers_modal.dart';
 import 'package:flutter_application_1/screens_api/following_modal.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 import '../services_api/lk_service.dart';
 import 'dart:async'; // Для использования Timer
 import 'package:image_picker/image_picker.dart'; // Для выбора изображения
 
 class ProfileScreen extends StatefulWidget {
+  final VoidCallback? onLogout;
+
+  const ProfileScreen({Key? key, this.onLogout}) : super(key: key);
+
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
 }
@@ -118,12 +123,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Личный кабинет'),
-        centerTitle: true,
-        backgroundColor: Colors.blueAccent,
-        elevation: 0,
+        title: Text('Профиль'),
         actions: [
           NotificationIcon(lkService: lkService),
+          if (widget.onLogout != null)
+            IconButton(
+              tooltip: 'Выйти',
+              icon: const Icon(Icons.logout),
+              onPressed: widget.onLogout,
+            ),
         ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -132,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
               child: CircularProgressIndicator(
-                color: Colors.blueAccent,
+                color: AppColors.primary,
               ),
             );
           } else if (snapshot.hasError) {

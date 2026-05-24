@@ -15,6 +15,7 @@ import 'package:flutter_application_1/screens/SplashScreen.dart';
 import 'package:flutter_application_1/services_api/auth_service.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -186,7 +187,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _screens[index] = EventScreen();
           break;
         case 2:
-          _screens[index] = ProfileScreen();
+          _screens[index] = ProfileScreen(onLogout: _logout);
           break;
         case 3:
           _screens[index] = ChatListScreen(
@@ -239,15 +240,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('MoveUp'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: _logout,
-          ),
-        ],
-      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: List.generate(_screens.length, (index) {
@@ -306,7 +298,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               constraints: BoxConstraints(minWidth: 18, minHeight: 18),
               padding: EdgeInsets.symmetric(horizontal: 5),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: AppColors.danger,
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,
