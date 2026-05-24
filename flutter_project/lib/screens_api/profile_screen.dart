@@ -5,6 +5,9 @@ import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
 import 'package:flutter_application_1/screens_api/followers_modal.dart';
 import 'package:flutter_application_1/screens_api/following_modal.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_error_state.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import '../services_api/lk_service.dart';
 import 'dart:async'; // Для использования Timer
 import 'package:image_picker/image_picker.dart'; // Для выбора изображения
@@ -138,24 +141,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         future: lkService.fetchProfile(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            );
+            return const AppLoading(label: 'Загружаем профиль');
           } else if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Ошибка: ${snapshot.error}',
-                style: TextStyle(fontSize: 16, color: Colors.red),
-              ),
+            return AppErrorState(
+              message: '${snapshot.error}',
+              onRetry: () => setState(() {}),
             );
           } else if (!snapshot.hasData) {
-            return Center(
-              child: Text(
-                'Нет данных',
-                style: TextStyle(fontSize: 16),
-              ),
+            return const AppEmptyState(
+              icon: Icons.person_outline,
+              title: 'Профиль не найден',
+              message: 'Попробуйте обновить экран позже.',
             );
           }
 
@@ -192,7 +188,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Container(
                                 padding: EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: Colors.blueAccent,
+                                  color: AppColors.primary,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -350,7 +346,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                     child: Text('Просмотреть мероприятия'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
                       padding:
                           EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                     ),
@@ -423,7 +418,7 @@ class _NotificationIconState extends State<NotificationIcon> {
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: Colors.red,
+                  color: AppColors.danger,
                   shape: BoxShape.circle,
                 ),
               ),

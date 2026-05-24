@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_error_state.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onNotificationsUpdated;
@@ -14,6 +19,8 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final LkService lkService = LkService();
   Map<String, dynamic> notifications = {};
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -26,15 +33,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _loadNotifications() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final data = await lkService.fetchNotifications();
+      if (!mounted) return;
       setState(() {
         notifications = data;
       });
     } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -58,12 +82,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Уведомления'),
-          centerTitle: true,
-          backgroundColor: Colors.blueAccent,
-          elevation: 0,
+          title: const Text('Уведомления'),
           bottom: TabBar(
-            tabs: [
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            indicatorColor: AppColors.primary,
+            tabs: const [
               Tab(text: 'Мои мероприятия'),
               Tab(text: 'Мои заявки'),
             ],
@@ -89,44 +113,63 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     required List<dynamic> notifications,
     required String type,
   }) {
-    return ListView(
-      children: [
-        if (notifications.isEmpty)
-          Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Нет уведомлений',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ),
-        ...notifications.map((notification) {
-          return ListTile(
-            title: Text(notification['event_title']),
-            subtitle: Text('Количество: ${notification['count']}'),
-            trailing: notification['is_new']
-                ? Icon(Icons.circle, color: Colors.red, size: 12)
-                : Icon(Icons.arrow_forward),
-            onTap: () async {
-              // Помечаем уведомление как прочитанное перед переходом
-              await _markNotificationAsRead(notification['event_id'], type);
+    if (_isLoading) {
+      return const AppLoading(label: 'Загружаем уведомления');
+    }
 
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EventApplicationsScreen(
-                    eventId: notification['event_id'],
-                  ),
+    if (_errorMessage != null) {
+      return AppErrorState(
+        message: _errorMessage,
+        onRetry: _loadNotifications,
+      );
+    }
+
+    if (notifications.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.notifications_none,
+        title: 'Нет уведомлений',
+        message: 'Здесь появятся новые заявки и изменения по событиям.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: notifications.length,
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        final notification = notifications[index];
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          title: Text(
+            notification['event_title'],
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          subtitle: Text('Количество: ${notification['count']}'),
+          trailing: notification['is_new']
+              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
+              : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
+          onTap: () async {
+            // Помечаем уведомление как прочитанное перед переходом
+            await _markNotificationAsRead(notification['event_id'], type);
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EventApplicationsScreen(
+                  eventId: notification['event_id'],
                 ),
-              ).then((_) {
-                // Обновляем уведомления после возврата
-                _loadNotifications();
-              });
-            },
-          );
-        }).toList(),
-      ],
+              ),
+            ).then((_) {
+              // Обновляем уведомления после возврата
+              _loadNotifications();
+            });
+          },
+        );
+      },
     );
   }
 }

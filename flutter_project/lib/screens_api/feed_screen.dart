@@ -16,6 +16,12 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:flutter_application_1/screens_api/profile_screen.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_error_state.dart';
+import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 // Единый CacheManager для всего приложения
 final customCacheManager = CacheManager(
@@ -48,6 +54,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final List<MapController> _mapControllers = [];
   int? _currentUserId;
   Timer? _debounceTimer;
+  String? _loadError;
 
   @override
   void initState() {
@@ -112,6 +119,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     if (_isLoading || (!_hasMore && !refresh)) return;
     setState(() {
       _isLoading = true;
+      _loadError = null;
       if (refresh) {
         _skip = 0;
         _posts.clear();
@@ -136,6 +144,11 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       });
       debugPrint("Посты загружены: ${newPosts.length}");
     } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadError = e.toString();
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка загрузки постов: $e')),
       );
@@ -145,6 +158,13 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _handleRefresh() {
+    if (_latestPostId == null) {
+      return _loadPosts(refresh: true);
+    }
+    return _refreshPosts();
   }
 
   Future<void> _refreshPosts() async {
@@ -323,85 +343,43 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          'Активности',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Roboto',
-            fontSize: 24,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        iconTheme: IconThemeData(color: Colors.black),
+        title: const Text('Активности'),
         actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(Icons.refresh, color: Colors.black),
-            onPressed: _refreshPosts,
-          ),
-          IconButton(
-            icon: Icon(Icons.add, color: Colors.black),
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            AppIconButton(
+              icon: Icons.refresh,
+              tooltip: 'Обновить ленту',
+              onPressed: _handleRefresh,
+            ),
+          AppIconButton(
+            icon: Icons.add,
+            tooltip: 'Создать пост',
             onPressed: _showPostOptions,
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFE0F7FA), Color(0xFFB2EBF2)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+      body: ColoredBox(
+        color: AppColors.background,
         child: PageStorage(
           bucket: _bucket,
           child: RefreshIndicator(
-            onRefresh: _refreshPosts,
+            color: AppColors.primary,
+            onRefresh: _handleRefresh,
             child: Stack(
               children: [
-                ListView.separated(
-                  key: PageStorageKey('feed_list'),
-                  controller: _scrollController,
-                  physics: AlwaysScrollableScrollPhysics(),
-                  itemCount: _posts.length + (_hasMore ? 1 : 0),
-                  separatorBuilder: (context, index) =>
-                      Divider(height: 1, color: Colors.grey[300]),
-                  itemBuilder: (context, index) {
-                    if (index == _posts.length) {
-                      return Center(child: CircularProgressIndicator());
-                    }
-                    final post = _posts[index];
-                    return PostItem(
-                      key: ValueKey(post.id),
-                      post: post,
-                      mapController: _mapControllers[index],
-                      onMapTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                FullScreenMap(routeData: post.routeData),
-                          ),
-                        );
-                      },
-                      isValidRoute: _isValidRoute,
-                      zoomToRoute: _zoomToRoute,
-                      webSocketService: _webSocketService,
-                      loadPosts: _loadPosts,
-                      likePost: _likePost,
-                      currentUserId: _currentUserId, // Передаем _currentUserId
-                    );
-                  },
-                ),
+                _buildFeedContent(),
                 if (_isRefreshing)
                   Positioned(
                     top: 0,
@@ -412,8 +390,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                         margin: EdgeInsets.all(8),
                         padding: EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.surface,
                           shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.border),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black12,
@@ -431,6 +410,88 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFeedContent() {
+    if (_posts.isEmpty) {
+      if (_isLoading) {
+        return _buildStateList(
+          const AppLoading(label: 'Загружаем ленту'),
+        );
+      }
+
+      if (_loadError != null) {
+        return _buildStateList(
+          AppErrorState(
+            message: _loadError,
+            onRetry: () => _loadPosts(refresh: true),
+          ),
+        );
+      }
+
+      return _buildStateList(
+        AppEmptyState(
+          icon: Icons.dynamic_feed_outlined,
+          title: 'Пока нет публикаций',
+          message: 'Создайте первый пост или обновите ленту.',
+          action: ElevatedButton.icon(
+            onPressed: _showPostOptions,
+            icon: const Icon(Icons.add),
+            label: const Text('Создать пост'),
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      key: PageStorageKey('feed_list'),
+      controller: _scrollController,
+      physics: AlwaysScrollableScrollPhysics(),
+      itemCount: _posts.length + (_hasMore ? 1 : 0),
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        if (index == _posts.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+            child: AppLoading(),
+          );
+        }
+        final post = _posts[index];
+        return PostItem(
+          key: ValueKey(post.id),
+          post: post,
+          mapController: _mapControllers[index],
+          onMapTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FullScreenMap(routeData: post.routeData),
+              ),
+            );
+          },
+          isValidRoute: _isValidRoute,
+          zoomToRoute: _zoomToRoute,
+          webSocketService: _webSocketService,
+          loadPosts: _loadPosts,
+          likePost: _likePost,
+          currentUserId: _currentUserId,
+        );
+      },
+    );
+  }
+
+  Widget _buildStateList(Widget child) {
+    return ListView(
+      key: const PageStorageKey('feed_state'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.58,
+          child: child,
+        ),
+      ],
     );
   }
 }

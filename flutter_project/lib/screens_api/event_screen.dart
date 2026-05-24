@@ -7,6 +7,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_error_state.dart';
+import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 class EventScreen extends StatefulWidget {
   @override
@@ -26,6 +32,7 @@ class _EventScreenState extends State<EventScreen> {
   final ScrollController _scrollController = ScrollController();
   int? _latestEventId;
   bool _isRefreshing = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -58,6 +65,7 @@ class _EventScreenState extends State<EventScreen> {
     if (_isLoading || (!_hasMore && !refresh)) return;
     setState(() {
       _isLoading = true;
+      _loadError = null;
       if (refresh) {
         _skip = 0;
         _events.clear();
@@ -86,6 +94,11 @@ class _EventScreenState extends State<EventScreen> {
         }
       });
     } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadError = e.toString();
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка загрузки мероприятий: $e')),
       );
@@ -94,6 +107,13 @@ class _EventScreenState extends State<EventScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _handleRefresh() {
+    if (_latestEventId == null) {
+      return _loadEvents(refresh: true);
+    }
+    return _refreshEvents();
   }
 
   Future<void> _refreshEvents() async {
@@ -164,58 +184,46 @@ class _EventScreenState extends State<EventScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Список мероприятий',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        iconTheme: IconThemeData(color: Colors.black),
+        title: const Text('События'),
         actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(Icons.refresh, color: Colors.black),
-            onPressed: _refreshEvents,
-          ),
-          IconButton(
-            icon: Icon(Icons.add, color: Colors.black),
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            AppIconButton(
+              icon: Icons.refresh,
+              tooltip: 'Обновить события',
+              onPressed: _handleRefresh,
+            ),
+          AppIconButton(
+            icon: Icons.add,
+            tooltip: 'Создать событие',
             onPressed: () async {
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => CreateEventScreen()),
               );
               if (result == true) {
-                _refreshEvents();
+                _handleRefresh();
               }
             },
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refreshEvents,
+        color: AppColors.primary,
+        onRefresh: _handleRefresh,
         child: Stack(
           children: [
-            ListView.builder(
-              controller: _scrollController,
-              physics: AlwaysScrollableScrollPhysics(),
-              itemCount: _events.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _events.length) {
-                  return Center(child: CircularProgressIndicator());
-                }
-                final event = _events[index];
-                return _buildEventCard(event, index);
-              },
-            ),
+            _buildEventsContent(),
             if (_isRefreshing)
               Positioned(
                 top: 0,
@@ -226,8 +234,9 @@ class _EventScreenState extends State<EventScreen> {
                     margin: EdgeInsets.all(8),
                     padding: EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.border),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black12,
@@ -243,6 +252,74 @@ class _EventScreenState extends State<EventScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEventsContent() {
+    if (_events.isEmpty) {
+      if (_isLoading) {
+        return _buildStateList(
+          const AppLoading(label: 'Загружаем события'),
+        );
+      }
+
+      if (_loadError != null) {
+        return _buildStateList(
+          AppErrorState(
+            message: _loadError,
+            onRetry: () => _loadEvents(refresh: true),
+          ),
+        );
+      }
+
+      return _buildStateList(
+        AppEmptyState(
+          icon: Icons.event_available_outlined,
+          title: 'Пока нет событий',
+          message: 'Создайте событие или обновите список.',
+          action: ElevatedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => CreateEventScreen()),
+              );
+              if (result == true) {
+                _handleRefresh();
+              }
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Создать событие'),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      physics: AlwaysScrollableScrollPhysics(),
+      itemCount: _events.length + (_hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == _events.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+            child: AppLoading(),
+          );
+        }
+        final event = _events[index];
+        return _buildEventCard(event, index);
+      },
+    );
+  }
+
+  Widget _buildStateList(Widget child) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.58,
+          child: child,
+        ),
+      ],
     );
   }
 
