@@ -48,6 +48,7 @@ docs/agent/
 .gemini/
 .openai/
 .aider*
+.codex-work/
 AGENTS.md
 CLAUDE.md
 GEMINI.md

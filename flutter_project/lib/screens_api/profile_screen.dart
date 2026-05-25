@@ -388,6 +388,8 @@ class _OwnProfileHeroCard extends StatelessWidget {
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: textTheme.titleLarge?.copyWith(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -666,6 +668,8 @@ class _ProfileActionTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -673,6 +677,8 @@ class _ProfileActionTile extends StatelessWidget {
                     const SizedBox(height: AppSpacing.xxs),
                     Text(
                       subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -728,10 +734,8 @@ class _ActivityMetric extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: AppSpacing.xxs),
-            Text(
+            _ProfileFittedText(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -775,10 +779,8 @@ class _ProfileStat extends StatelessWidget {
               ),
         ),
         const SizedBox(height: AppSpacing.xxs),
-        Text(
+        _ProfileFittedText(
           label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -794,6 +796,30 @@ class _ProfileStat extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         child: content,
+      ),
+    );
+  }
+}
+
+class _ProfileFittedText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+
+  const _ProfileFittedText(this.text, {this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          style: style,
+        ),
       ),
     );
   }
