@@ -138,6 +138,7 @@ class EventDetailsScreen extends StatelessWidget {
                                 urlTemplate:
                                     'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                 subdomains: ['a', 'b', 'c'],
+                                userAgentPackageName: 'com.example.runTracker',
                               ),
                               MarkerLayer(
                                 markers: [

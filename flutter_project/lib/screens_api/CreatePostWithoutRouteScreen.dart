@@ -456,6 +456,7 @@ class _CreatePostWithoutRouteScreenState
                       urlTemplate:
                           'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                       subdomains: ['a', 'b', 'c'],
+                      userAgentPackageName: 'com.example.runTracker',
                     ),
                     if (_selectedLocation != null)
                       MarkerLayer(

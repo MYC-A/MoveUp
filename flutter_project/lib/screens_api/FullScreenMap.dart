@@ -137,6 +137,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
           TileLayer(
             urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             subdomains: ['a', 'b', 'c'],
+            userAgentPackageName: 'com.example.runTracker',
           ),
           if (widget.routeData.length == 1) ...[
             MarkerLayer(

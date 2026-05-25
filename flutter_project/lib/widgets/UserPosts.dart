@@ -387,6 +387,8 @@ class _UserPostsState extends State<UserPosts> {
                                   urlTemplate:
                                       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                   subdomains: ['a', 'b', 'c'],
+                                  userAgentPackageName:
+                                      'com.example.runTracker',
                                 ),
                                 if (post.routeData.length == 1)
                                   MarkerLayer(

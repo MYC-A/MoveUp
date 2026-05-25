@@ -265,6 +265,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                               urlTemplate:
                                   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                               subdomains: ['a', 'b', 'c'],
+                              userAgentPackageName: 'com.example.runTracker',
                             ),
                             PolylineLayer(
                               polylines: [
