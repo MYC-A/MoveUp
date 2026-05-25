@@ -309,12 +309,6 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
 
     // Таймер для обновления данных
     Timer.periodic(Duration(seconds: 1), (timer) async {
-      bool isRunning = await FlutterBackgroundService().isRunning();
-      if (!isRunning) {
-        timer.cancel();
-        return;
-      }
-
       // Отправляем данные в уведомление
       service.invoke(
         'update',

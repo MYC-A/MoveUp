@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
@@ -1581,7 +1582,7 @@ class _RoutePreviewPainter extends CustomPainter {
     }
 
     final firstPoint = project(routePoints.first);
-    final path = Path()..moveTo(firstPoint.dx, firstPoint.dy);
+    final path = ui.Path()..moveTo(firstPoint.dx, firstPoint.dy);
     for (final point in routePoints.skip(1)) {
       final projected = project(point);
       path.lineTo(projected.dx, projected.dy);
