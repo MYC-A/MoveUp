@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/ChatScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
@@ -175,6 +177,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return value[0].toUpperCase();
   }
 
+  String? _avatarUrl(dynamic value) {
+    final rawUrl = (value ?? '').toString().trim();
+    if (rawUrl.isEmpty) return null;
+    return AppConfig.normalizeMediaUrl(rawUrl);
+  }
+
   void _notifyUnreadTotal(
     Map<int, int> personalCount,
     Map<int, int> groupCount,
@@ -300,6 +308,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget _buildPersonalChatTile(Map<String, dynamic> user) {
     final userId = user['id'] as int;
     final fullName = user['full_name']?.toString() ?? 'Пользователь';
+    final avatarUrl = _avatarUrl(user['avatar_url']);
     final unreadCount = _unreadPersonalMessagesCount[userId] ?? 0;
 
     return _ChatOverviewTile(
@@ -307,6 +316,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       subtitle: unreadCount > 0 ? '$unreadCount непрочитанных' : 'Личный чат',
       icon: Icons.person_rounded,
       initial: _initialForName(fullName),
+      avatarUrl: avatarUrl,
       accent: AppColors.primary,
       unreadCount: unreadCount,
       onTap: () {
@@ -356,6 +366,7 @@ class _ChatOverviewTile extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final String? initial;
+  final String? avatarUrl;
   final Color accent;
   final int unreadCount;
   final VoidCallback onTap;
@@ -365,6 +376,7 @@ class _ChatOverviewTile extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     this.initial,
+    this.avatarUrl,
     required this.accent,
     required this.unreadCount,
     required this.onTap,
@@ -393,26 +405,11 @@ class _ChatOverviewTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.11),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: accent.withValues(alpha: 0.15)),
-                ),
-                child: Center(
-                  child: initial != null
-                      ? Text(
-                          initial!,
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        )
-                      : Icon(icon, color: accent, size: 26),
-                ),
+              _ChatAvatar(
+                avatarUrl: avatarUrl,
+                icon: icon,
+                initial: initial,
+                accent: accent,
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -456,6 +453,82 @@ class _ChatOverviewTile extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatAvatar extends StatelessWidget {
+  final String? avatarUrl;
+  final IconData icon;
+  final String? initial;
+  final Color accent;
+
+  const _ChatAvatar({
+    required this.avatarUrl,
+    required this.icon,
+    required this.initial,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = avatarUrl?.trim();
+
+    return Container(
+      width: 52,
+      height: 52,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.11),
+        shape: BoxShape.circle,
+        border: Border.all(color: accent.withValues(alpha: 0.15)),
+      ),
+      child: imageUrl == null || imageUrl.isEmpty
+          ? _ChatAvatarFallback(icon: icon, initial: initial, accent: accent)
+          : CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => _ChatAvatarFallback(
+                icon: icon,
+                initial: initial,
+                accent: accent,
+              ),
+              errorWidget: (_, __, ___) => _ChatAvatarFallback(
+                icon: icon,
+                initial: initial,
+                accent: accent,
+              ),
+            ),
+    );
+  }
+}
+
+class _ChatAvatarFallback extends StatelessWidget {
+  final IconData icon;
+  final String? initial;
+  final Color accent;
+
+  const _ChatAvatarFallback({
+    required this.icon,
+    required this.initial,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (initial == null) {
+      return Icon(icon, color: accent, size: 26);
+    }
+
+    return Center(
+      child: Text(
+        initial!,
+        style: TextStyle(
+          color: accent,
+          fontSize: 20,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );

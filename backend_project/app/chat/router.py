@@ -45,11 +45,13 @@ async def get_chat_page(
             "user": {
                 "id": user_data.id,
                 "full_name": user_data.full_name,
+                "avatar_url": user_data.avatar_url,
             },
             "users_with_messages": [
                 {
                     "id": user.id,
                     "full_name": user.full_name,
+                    "avatar_url": user.avatar_url,
                 }
                 for user in users_with_messages
                 if user.id != user_data.id
@@ -73,11 +75,13 @@ async def get_chat_page(
             "user": {
                 "id": user_data.id,
                 "full_name": user_data.full_name,
+                "avatar_url": user_data.avatar_url,
             },
             "users_with_messages": [
                 {
                     "id": user.id,
                     "full_name": user.full_name,
+                    "avatar_url": user.avatar_url,
                 }
                 for user in users_with_messages
                 if user.id != user_data.id
