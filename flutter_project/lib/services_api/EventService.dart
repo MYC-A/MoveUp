@@ -11,6 +11,33 @@ class EventService {
   final FlutterSecureStorage storage = const FlutterSecureStorage();
   final String openRouteApiKey = AppConfig.openRouteServiceApiKey;
 
+  static const List<String> fallbackCities = [
+    'Москва',
+    'Санкт-Петербург',
+    'Новосибирск',
+    'Екатеринбург',
+    'Казань',
+    'Нижний Новгород',
+    'Челябинск',
+    'Красноярск',
+    'Самара',
+    'Уфа',
+    'Ростов-на-Дону',
+    'Омск',
+    'Краснодар',
+    'Воронеж',
+    'Пермь',
+    'Волгоград',
+    'Саратов',
+    'Тюмень',
+    'Ижевск',
+    'Иркутск',
+    'Сочи',
+    'Калининград',
+    'Владивосток',
+    'Хабаровск',
+  ];
+
   // Построение маршрута через OpenRouteService
   Future<Map<String, dynamic>> buildRoute(
       List<LatLng> points, bool roundTrip) async {
@@ -99,15 +126,34 @@ class EventService {
     required int limit,
     String sortBy = 'id',
     String sortOrder = 'desc',
+    String? query,
+    String? city,
+    bool availableOnly = false,
+    bool activeOnly = true,
   }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw Exception('Токен не найден');
     }
 
-    final url = Uri.parse(
-        '$baseUrl/events/?skip=$skip&limit=$limit&sort_by=$sortBy&sort_order=$sortOrder&format=json');
-    print('Requesting URL: $url');
+    final queryParameters = <String, String>{
+      'skip': '$skip',
+      'limit': '$limit',
+      'sort_by': sortBy,
+      'sort_order': sortOrder,
+      'format': 'json',
+      'available_only': '$availableOnly',
+      'active_only': '$activeOnly',
+    };
+    if (query != null && query.trim().isNotEmpty) {
+      queryParameters['q'] = query.trim();
+    }
+    if (city != null && city.trim().isNotEmpty) {
+      queryParameters['city'] = city.trim();
+    }
+
+    final url = Uri.parse('$baseUrl/events/')
+        .replace(queryParameters: queryParameters);
 
     final response = await http.get(
       url,
@@ -117,9 +163,6 @@ class EventService {
       },
     );
 
-    print('Response status: ${response.statusCode}');
-    print('Response body: ${response.body}');
-
     if (response.statusCode == 200) {
       final String responseBody = utf8.decode(response.bodyBytes);
       final List<dynamic> data = jsonDecode(responseBody);
@@ -127,6 +170,20 @@ class EventService {
     } else {
       throw Exception('Ошибка загрузки мероприятий: ${response.statusCode}');
     }
+  }
+
+  Future<List<String>> getEventCities() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/events/cities'));
+      if (response.statusCode == 200) {
+        final String responseBody = utf8.decode(response.bodyBytes);
+        final List<dynamic> data = jsonDecode(responseBody);
+        return data.map((city) => city.toString()).toList();
+      }
+    } catch (_) {
+      // Фоллбек нужен, чтобы форма создания не блокировалась без backend.
+    }
+    return fallbackCities;
   }
 
   Future<void> participateEvent(int eventId) async {
@@ -166,8 +223,6 @@ class EventService {
       throw Exception('Токен не найден');
     }
 
-    print("Отправлен: ${event.createGroupChat}");
-
     final url = Uri.parse('$baseUrl/events/create');
     final response = await http.post(
       url,
@@ -180,6 +235,7 @@ class EventService {
         'description': event.description,
         'event_type': event.eventType,
         'goal': event.goal,
+        'city': event.city,
         'start_time': event.startTime?.toIso8601String(),
         'end_time': event.endTime?.toIso8601String(),
         'difficulty': event.difficulty,

@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
+from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
 from app.users.dependensies_user import get_current_user
 from app.db.base import get_db
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 from fastapi.templating import Jinja2Templates
 
 from ..chat.models import GroupChat, group_chat_participants
@@ -77,6 +79,7 @@ async def create_event(
         "description": event.description,
         "event_type": event.event_type.value,
         "goal": event.goal,
+        "city": event.city,
         "start_time": event.start_time,
         "end_time": event.end_time,
         "difficulty": event.difficulty,
@@ -85,7 +88,10 @@ async def create_event(
         "organizer_id": event.organizer_id,
         "available_seats": event.available_seats,
         "group_chat_id": event.group_chat_id,
-        "route_data": event.route_data
+        "route_data": event.route_data,
+        "organizer_name": current_user.full_name or current_user.username,
+        "participants_count": max(event.max_participants - event.available_seats, 0),
+        "is_expired": False,
     }
 
     # Возвращаем данные через Pydantic-модель
@@ -102,6 +108,16 @@ async def participate_event(
     event = await EventDAO.find_one_or_none_by_id(event_id, session=db)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    event_finish = event.end_time or event.start_time
+    now = datetime.utcnow()
+    if event_finish and event_finish.tzinfo is not None:
+        now = datetime.now(event_finish.tzinfo)
+    if event_finish and event_finish < now:
+        raise HTTPException(
+            status_code=400,
+            detail="Мероприятие уже завершилось"
+        )
 
     # Проверка на организатора
     if event.organizer_id == current_user.id:
@@ -144,6 +160,10 @@ async def get_events(
     limit: int = Query(5, ge=1, le=100, description="Лимит записей"),
     sort_by: str = Query("id", description="Поле для сортировки: id, start_time, title"),
     sort_order: str = Query("desc", description="Порядок сортировки: asc или desc"),
+    q: Optional[str] = Query(None, description="Поиск по названию, описанию, городу или организатору"),
+    city: Optional[str] = Query(None, description="Город из списка поддерживаемых городов"),
+    available_only: bool = Query(False, description="Показывать только события со свободными местами"),
+    active_only: bool = Query(True, description="Скрывать завершенные события"),
     db: AsyncSession = Depends(get_db),
     format: str = Query("html", description="Формат ответа: html или json")
 ):
@@ -159,12 +179,20 @@ async def get_events(
         raise HTTPException(status_code=422, detail=f"Недопустимый формат. Разрешены: {valid_formats}")
 
     try:
+        canonical = canonical_city(city) if city else None
+        if city and canonical is None:
+            raise HTTPException(status_code=422, detail="Выберите город из списка")
+
         events = await EventDAO.find_all(
             session=db,
             skip=skip,
             limit=limit,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
+            q=q,
+            city=canonical,
+            available_only=available_only,
+            active_only=active_only,
         )
 
         events_read = [EventRead.model_validate(event) for event in events]
@@ -182,8 +210,15 @@ async def get_events(
 
         return templates.TemplateResponse("events.html", {"request": request, "events": events_dict})
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки мероприятий: {str(e)}")
+
+
+@router.get("/cities", response_model=List[str])
+async def get_event_cities():
+    return list(EVENT_CITIES)
 
 @router.get("/{event_id}", response_model=EventRead)
 async def get_event_details(

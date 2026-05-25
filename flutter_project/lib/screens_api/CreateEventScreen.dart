@@ -19,6 +19,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final TextEditingController _goalController = TextEditingController();
   final TextEditingController _maxParticipantsController =
       TextEditingController();
+  List<String> _cities = EventService.fallbackCities;
+  String? _selectedCity;
+  bool _isLoadingCities = false;
   String _eventType = 'Бег';
   String _difficulty = 'Новичок';
   DateTime? _startTime;
@@ -34,6 +37,42 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   int _redLineDuration = 0;
   int? _selectedMarkerIndex;
   bool _createGroupChat = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _goalController.dispose();
+    _maxParticipantsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCities() async {
+    setState(() {
+      _isLoadingCities = true;
+    });
+
+    final cities = await _eventService.getEventCities();
+    if (!mounted) return;
+    setState(() {
+      _cities = cities;
+      _isLoadingCities = false;
+    });
+  }
+
+  bool _isKnownCity(String? value) {
+    if (value == null) return false;
+    final normalized = value.trim().toLowerCase().replaceAll('ё', 'е');
+    return _cities.any(
+      (city) => city.toLowerCase().replaceAll('ё', 'е') == normalized,
+    );
+  }
 
   Future<void> _optimizeRoute() async {
     if (_routePoints.length < 2) {
@@ -108,6 +147,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final errors = <String>[];
 
     if (_titleController.text.isEmpty) errors.add('Название мероприятия');
+    if (!_isKnownCity(_selectedCity)) errors.add('Город из списка');
     if (_maxParticipantsController.text.isEmpty)
       errors.add('Максимум участников');
     if (_startTime == null) errors.add('Время начала');
@@ -120,6 +160,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           content: Text('Заполните обязательные поля: ${errors.join(", ")}'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final maxParticipants = int.tryParse(_maxParticipantsController.text);
+    if (maxParticipants == null || maxParticipants <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Укажите корректное количество участников'),
+          backgroundColor: Colors.red,
         ),
       );
       return;
@@ -151,11 +202,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       goal: _goalController.text.isEmpty
           ? "Цель не указана"
           : _goalController.text,
+      city: _selectedCity!.trim(),
       startTime: _startTime,
       endTime: _endTime,
       difficulty: EventTranslations.getDifficultyValue(
           _difficulty), // Преобразование в английское значение
-      maxParticipants: int.parse(_maxParticipantsController.text),
+      maxParticipants: maxParticipants,
       isPublic: _isPublic,
       routeData: routePointsToSave
           .map((point) => {
@@ -167,12 +219,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
 
     try {
-      print("_createGroupChat отправлен: $_createGroupChat");
       await _eventService.createEvent(eventCreate);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Мероприятие успешно создано!')),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка создания мероприятия: $e')),
@@ -320,6 +371,54 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           ),
                           maxLines: 3,
                         ),
+                        SizedBox(height: 16),
+                        Autocomplete<String>(
+                          optionsBuilder: (TextEditingValue value) {
+                            final query =
+                                value.text.trim().toLowerCase().replaceAll('ё', 'е');
+                            if (query.isEmpty) {
+                              return _cities.take(8);
+                            }
+                            return _cities.where((city) {
+                              final normalized =
+                                  city.toLowerCase().replaceAll('ё', 'е');
+                              return normalized.contains(query);
+                            }).take(12);
+                          },
+                          onSelected: (city) {
+                            setState(() {
+                              _selectedCity = city;
+                            });
+                          },
+                          fieldViewBuilder: (
+                            context,
+                            textEditingController,
+                            focusNode,
+                            onFieldSubmitted,
+                          ) {
+                            return TextFormField(
+                              controller: textEditingController,
+                              focusNode: focusNode,
+                              decoration: InputDecoration(
+                                labelText: 'Город*',
+                                helperText: _isLoadingCities
+                                    ? 'Загружаем список городов'
+                                    : 'Выберите город из списка',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                prefixIcon:
+                                    Icon(Icons.location_city, color: Colors.green),
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedCity =
+                                      _isKnownCity(value) ? value.trim() : null;
+                                });
+                              },
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -413,7 +512,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           title: Text('Создать групповой чат'),
                           value: _createGroupChat,
                           onChanged: (value) {
-                            print("_createGroupChat: $value");
                             setState(() {
                               _createGroupChat = value;
                             });

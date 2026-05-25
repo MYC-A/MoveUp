@@ -1,12 +1,13 @@
 #routes_profile.py
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.templating import Jinja2Templates
 from minio import Minio, S3Error
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, update
+from sqlalchemy import delete, func, or_, update
 from pathlib import Path
 import os
 
@@ -15,6 +16,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from app.db.base import get_db
 from app.event.dao_event import EventParticipantDAO
 from app.event.models_event import Event, EventParticipant, ApprovedType
+from app.chat.models import group_chat_participants
 from app.lk.schemas_profile import EventsResponseAll
 from app.posts.schemas_posts import PostInDB, PostInProfile
 from app.users.models_user import User
@@ -244,15 +246,27 @@ async def get_user_events(
     current_user: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100)
+    limit: int = Query(10, ge=1, le=100),
+    include_expired: bool = Query(False)
 ):
     # Получаем мероприятия текущего пользователя
-    result = await db.execute(
+    now = datetime.utcnow()
+    query = (
         select(Event)
         .filter(Event.organizer_id == current_user)
-        .offset(skip)
-        .limit(limit)
     )
+
+    if not include_expired:
+        query = query.filter(
+            or_(
+                Event.end_time >= now,
+                (Event.end_time.is_(None) & Event.start_time.is_(None)),
+                (Event.end_time.is_(None) & (Event.start_time >= now)),
+            )
+        )
+
+    query = query.order_by(Event.start_time.asc()).offset(skip).limit(limit)
+    result = await db.execute(query)
     events = result.scalars().all()
 
     # Преобразуем данные в JSON-совместимый формат
@@ -262,11 +276,26 @@ async def get_user_events(
             "id": event.id,
             "title": event.title,
             "description": event.description,
+            "city": event.city,
             "start_time": event.start_time,
-            "end_time": event.end_time
+            "end_time": event.end_time,
+            "max_participants": event.max_participants,
+            "available_seats": event.available_seats,
+            "participants_count": max(event.max_participants - event.available_seats, 0),
+            "is_expired": _is_event_expired(event.start_time, event.end_time),
         })
 
     return {"events": events_data}
+
+
+def _is_event_expired(start_time, end_time) -> bool:
+    event_finish = end_time or start_time
+    if event_finish is None:
+        return False
+    now = datetime.utcnow()
+    if event_finish.tzinfo is not None:
+        now = datetime.now(event_finish.tzinfo)
+    return event_finish < now
 
 @router.get("/{user_id}", response_model=UserRead)
 async def get_user_profile(
@@ -468,9 +497,17 @@ async def get_event_applications(
 async def approve_application(
     event_id: int,
     participant_id: int,
+    current_user: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        event_result = await db.execute(
+            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+        )
+        event = event_result.scalars().first()
+        if not event:
+            raise ValueError("Событие не найдено или вы не являетесь организатором")
+
         # Обновляем статус участника
         participant = await EventParticipantDAO.update_participant(
             participant_id=participant_id,
@@ -478,15 +515,31 @@ async def approve_application(
             new_status=ApprovedType.APPROVED,
             session=db,
         )
-        # Получаем мероприятие по ID
-        event = await db.get(Event, event_id)
-        if not event:
-            raise ValueError("Мероприятие не найдено")
+
+        if event.group_chat_id is not None:
+            existing_chat_member = await db.execute(
+                select(group_chat_participants).where(
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id) &
+                    (group_chat_participants.c.user_id == participant.user_id)
+                )
+            )
+            if existing_chat_member.first() is None:
+                await db.execute(
+                    group_chat_participants.insert().values(
+                        group_chat_id=event.group_chat_id,
+                        user_id=participant.user_id,
+                    )
+                )
+                await db.commit()
+
         # Возвращаем данные мероприятия
         return {
             "id": event.id,
             "title": event.title,
             "group_chat_id": event.group_chat_id,  # Может быть null
+            "participant_id": participant.id,
+            "user_id": participant.user_id,
+            "status": participant.approved.value,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -501,6 +554,13 @@ async def reject_application(
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        event_result = await db.execute(
+            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+        )
+        event = event_result.scalars().first()
+        if not event:
+            raise ValueError("Событие не найдено или вы не являетесь организатором")
+
         await EventParticipantDAO.update_participant(
             participant_id=participant_id,
             event_id=event_id,
@@ -510,6 +570,94 @@ async def reject_application(
         return {"message": "Заявка отклонена"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/event/{event_id}/participants")
+async def get_event_participants(
+    event_id: int,
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100)
+):
+    event_result = await db.execute(
+        select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+    )
+    event = event_result.scalars().first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Событие не найдено или вы не являетесь организатором")
+
+    result = await db.execute(
+        select(EventParticipant)
+        .filter(
+            EventParticipant.event_id == event_id,
+            EventParticipant.approved == ApprovedType.APPROVED,
+        )
+        .options(selectinload(EventParticipant.user))
+        .offset(skip)
+        .limit(limit)
+    )
+    participants = result.scalars().all()
+
+    total_participants = await db.execute(
+        select(func.count())
+        .select_from(EventParticipant)
+        .filter(
+            EventParticipant.event_id == event_id,
+            EventParticipant.approved == ApprovedType.APPROVED,
+        )
+    )
+
+    return {
+        "participants": [
+            {
+                "id": participant.id,
+                "user_id": participant.user_id,
+                "user_name": participant.user.full_name,
+                "user_avatar": participant.user.avatar_url or "/static/images/default-avatar.png",
+                "status": participant.approved.value,
+            }
+            for participant in participants
+        ],
+        "total_participants": total_participants.scalar(),
+    }
+
+
+@router.delete("/event/{event_id}/participants/{participant_id}")
+async def remove_event_participant(
+    event_id: int,
+    participant_id: int,
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        event_result = await db.execute(
+            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+        )
+        event = event_result.scalars().first()
+        if not event:
+            raise ValueError("Событие не найдено или вы не являетесь организатором")
+
+        participant = await EventParticipantDAO.remove_participant(
+            participant_id=participant_id,
+            event_id=event_id,
+            session=db,
+        )
+
+        if event.group_chat_id is not None:
+            await db.execute(
+                delete(group_chat_participants).where(
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id) &
+                    (group_chat_participants.c.user_id == participant.user_id)
+                )
+            )
+            await db.commit()
+
+        return {"message": "Участник удален", "participant_id": participant_id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 @router.get("/profile/notifications", response_model=dict)
 async def get_user_notifications(

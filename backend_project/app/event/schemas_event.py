@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
 
 from app.event.models_event import Event
+from app.event.cities import canonical_city
 
 # Pydantic модели
 class EventType(str, Enum):
@@ -28,6 +29,7 @@ class EventCreate(BaseModel):
     description: Optional[str] = Field(None, description="Описание мероприятия")
     event_type: EventType = Field(..., description="Тип мероприятия")
     goal: Optional[str] = Field(None, description="Цель мероприятия")
+    city: Optional[str] = Field(None, description="Город мероприятия")
     start_time: Optional[datetime] = Field(None, description="Время начала")
     end_time: Optional[datetime] = Field(None, description="Время окончания")
     difficulty: str = Field(..., description="Уровень сложности (новичок, любитель, профессионал)")
@@ -36,12 +38,24 @@ class EventCreate(BaseModel):
     route_data: List[RoutePoint] = Field(..., description="Точки маршрута в JSON-формате")
     create_group_chat: bool = Field(default=False, description="Флаг для создания группового чата")
 
+    @field_validator("city")
+    @classmethod
+    def validate_city(cls, value):
+        if value is None or not value.strip():
+            return None
+
+        city = canonical_city(value)
+        if city is None:
+            raise ValueError("Выберите город из списка")
+        return city
+
 class EventRead(BaseModel):
     id: int
     title: str
     description: Optional[str]
     event_type: EventType
     goal: Optional[str]
+    city: Optional[str] = None
     start_time: Optional[datetime]
     end_time: Optional[datetime]
     difficulty: str
@@ -51,6 +65,9 @@ class EventRead(BaseModel):
     available_seats: int
     route_data: Optional[List[dict]] = None
     group_chat_id: Optional[int] = None
+    organizer_name: Optional[str] = None
+    participants_count: int = 0
+    is_expired: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,9 +77,29 @@ class EventRead(BaseModel):
         """Преобразуем route_data для совместимости"""
         if isinstance(data, Event):
             # Для ORM-объектов
-            data_dict = data.__dict__
-            if 'route_data' in data_dict:
-                data_dict['route_data'] = data.route_data
+            data_dict = {
+                "id": data.id,
+                "title": data.title,
+                "description": data.description,
+                "event_type": data.event_type,
+                "goal": data.goal,
+                "city": data.city,
+                "start_time": data.start_time,
+                "end_time": data.end_time,
+                "difficulty": data.difficulty,
+                "max_participants": data.max_participants,
+                "is_public": data.is_public,
+                "organizer_id": data.organizer_id,
+                "available_seats": data.available_seats,
+                "route_data": data.route_data,
+                "group_chat_id": data.group_chat_id,
+                "participants_count": max(data.max_participants - data.available_seats, 0),
+                "is_expired": _is_event_expired(data.start_time, data.end_time),
+            }
+
+            organizer = data.__dict__.get("organizer")
+            if organizer is not None:
+                data_dict["organizer_name"] = organizer.full_name or organizer.username
             return data_dict
         return data
 
@@ -70,3 +107,13 @@ class EventParticipantCreate(BaseModel):
     event_id: int = Field(..., description="ID мероприятия")
     user_id: int = Field(..., description="ID пользователя")
     approved: ApprovedType = Field(default=ApprovedType.AWAITS, description="Статус заявки")
+
+
+def _is_event_expired(start_time: Optional[datetime], end_time: Optional[datetime]) -> bool:
+    event_finish = end_time or start_time
+    if event_finish is None:
+        return False
+    now = datetime.utcnow()
+    if event_finish.tzinfo is not None:
+        now = datetime.now(event_finish.tzinfo)
+    return event_finish < now

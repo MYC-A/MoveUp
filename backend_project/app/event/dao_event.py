@@ -1,9 +1,12 @@
-from typing import Any, List
+from datetime import datetime
+from typing import Any, List, Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from .models_event import Event, EventParticipant, ApprovedType
 from app.dao.base import BaseDAO
+from app.users.models_user import User
 
 
 class EventDAO(BaseDAO):
@@ -17,6 +20,10 @@ class EventDAO(BaseDAO):
             limit: int = 10,
             sort_by: str = "id",
             sort_order: str = "desc",
+            q: Optional[str] = None,
+            city: Optional[str] = None,
+            available_only: bool = False,
+            active_only: bool = True,
             **filter_by: Any
     ) -> List[Event]:
         # Маппинг полей для сортировки
@@ -28,18 +35,54 @@ class EventDAO(BaseDAO):
 
         order_clause = sort_column.desc() if sort_order.lower() == "desc" else sort_column.asc()
 
-        query = (
-            select(Event)
-            .filter_by(**filter_by)
-            .order_by(order_clause)
-            .offset(skip)
-            .limit(limit)
-        )
+        query = select(Event).options(
+            selectinload(Event.organizer),
+            selectinload(Event.participants),
+        ).filter_by(**filter_by)
+
+        if active_only:
+            now = datetime.utcnow()
+            query = query.where(
+                or_(
+                    Event.end_time >= now,
+                    (Event.end_time.is_(None) & Event.start_time.is_(None)),
+                    (Event.end_time.is_(None) & (Event.start_time >= now)),
+                )
+            )
+
+        if city:
+            query = query.where(Event.city == city)
+
+        if available_only:
+            query = query.where(Event.available_seats > 0)
+
+        if q:
+            search = f"%{q.strip()}%"
+            query = query.outerjoin(User, Event.organizer_id == User.id).where(
+                or_(
+                    Event.title.ilike(search),
+                    Event.description.ilike(search),
+                    Event.goal.ilike(search),
+                    Event.city.ilike(search),
+                    User.full_name.ilike(search),
+                    User.username.ilike(search),
+                )
+            )
+
+        query = query.order_by(order_clause).offset(skip).limit(limit)
         result = await session.execute(query)
         return result.scalars().all()
+
     @classmethod
     async def find_one_or_none_by_id(cls, event_id: int, session: AsyncSession):
-        query = select(cls.model).where(cls.model.id == event_id)
+        query = (
+            select(cls.model)
+            .options(
+                selectinload(Event.organizer),
+                selectinload(Event.participants).selectinload(EventParticipant.user),
+            )
+            .where(cls.model.id == event_id)
+        )
         result = await session.execute(query)
         return result.scalar_one_or_none()
 
@@ -168,6 +211,9 @@ class EventParticipantDAO(BaseDAO):
             # Текущий статус участника
             current_status = participant.approved
 
+            if current_status == new_status:
+                return participant
+
             # Если новый статус — APPROVED
             if new_status == ApprovedType.APPROVED:
                 if event.available_seats <= 0:
@@ -180,6 +226,38 @@ class EventParticipantDAO(BaseDAO):
 
             # Обновляем статус участника
             participant.approved = new_status
+            participant.status_changed = True
+            await session.commit()
+            return participant
+        except Exception as e:
+            await session.rollback()
+            raise e
+
+    @classmethod
+    async def remove_participant(
+            cls,
+            participant_id: int,
+            event_id: int,
+            session: AsyncSession,
+    ) -> EventParticipant:
+        try:
+            result = await session.execute(
+                select(EventParticipant)
+                .where(EventParticipant.id == participant_id)
+                .where(EventParticipant.event_id == event_id)
+            )
+            participant = result.scalar_one_or_none()
+            if not participant:
+                raise ValueError("Участник мероприятия не найден")
+
+            event = await session.get(Event, event_id)
+            if not event:
+                raise ValueError("Мероприятие не найдено")
+
+            if participant.approved == ApprovedType.APPROVED:
+                event.available_seats = min(event.available_seats + 1, event.max_participants)
+
+            await session.delete(participant)
             await session.commit()
             return participant
         except Exception as e:

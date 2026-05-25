@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
@@ -30,7 +32,12 @@ class _EventScreenState extends State<EventScreen> {
   bool _hasMore = true;
   final List<MapController> _mapControllers = [];
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   final Set<int> _fittedMapEventIds = {};
+  List<String> _cities = EventService.fallbackCities;
+  String? _selectedCity;
+  bool _availableOnly = false;
+  Timer? _searchDebounce;
   int? _latestEventId;
   bool _isRefreshing = false;
   String? _loadError;
@@ -39,6 +46,7 @@ class _EventScreenState extends State<EventScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    _loadCities();
     _loadEvents();
   }
 
@@ -49,7 +57,17 @@ class _EventScreenState extends State<EventScreen> {
       controller.dispose();
     }
     _scrollController.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCities() async {
+    final cities = await _eventService.getEventCities();
+    if (!mounted) return;
+    setState(() {
+      _cities = cities;
+    });
   }
 
   void _handleScroll() {
@@ -83,7 +101,11 @@ class _EventScreenState extends State<EventScreen> {
         limit: _limit,
         sortBy: 'id',
         sortOrder: 'desc',
+        query: _searchController.text,
+        city: _selectedCity,
+        availableOnly: _availableOnly,
       );
+      if (!mounted) return;
       setState(() {
         _events.addAll(newEvents);
         _skip += _limit;
@@ -105,9 +127,11 @@ class _EventScreenState extends State<EventScreen> {
         SnackBar(content: Text('Ошибка загрузки мероприятий: $e')),
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -138,6 +162,9 @@ class _EventScreenState extends State<EventScreen> {
         limit: _limit,
         sortBy: 'id',
         sortOrder: 'desc',
+        query: _searchController.text,
+        city: _selectedCity,
+        availableOnly: _availableOnly,
       );
 
       final newEventsToAdd =
@@ -260,7 +287,36 @@ class _EventScreenState extends State<EventScreen> {
   }
 
   String _eventPlaceLabel(Event event) {
+    if (event.city?.isNotEmpty == true) {
+      return event.city!;
+    }
     return event.routeData.isEmpty ? 'Маршрут не указан' : 'Маршрут на карте';
+  }
+
+  String _seatsLabel(Event event) {
+    if (event.availableSeats <= 0) return 'Нет мест';
+    if (event.availableSeats == 1) return 'Осталось 1 место';
+    if (event.availableSeats <= 3) {
+      return 'Осталось ${event.availableSeats} места';
+    }
+    return '${event.availableSeats} свободно';
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      _loadEvents(refresh: true);
+    });
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+    setState(() {
+      _selectedCity = null;
+      _availableOnly = false;
+    });
+    _loadEvents(refresh: true);
   }
 
   @override
@@ -340,6 +396,15 @@ class _EventScreenState extends State<EventScreen> {
   }
 
   Widget _buildEventsContent() {
+    return Column(
+      children: [
+        _buildFilters(),
+        Expanded(child: _buildEventsList()),
+      ],
+    );
+  }
+
+  Widget _buildEventsList() {
     if (_events.isEmpty) {
       if (_isLoading) {
         return _buildStateList(
@@ -398,6 +463,128 @@ class _EventScreenState extends State<EventScreen> {
         final event = _events[index];
         return _buildEventCard(event, index);
       },
+    );
+  }
+
+  Widget _buildFilters() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
+      color: AppColors.background,
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            decoration: InputDecoration(
+              hintText: 'Поиск по событию, городу или организатору',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Очистить поиск',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        _searchController.clear();
+                        _loadEvents(refresh: true);
+                      },
+                    ),
+              filled: true,
+              fillColor: AppColors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: AppColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: AppColors.border),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedCity ?? '',
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.location_city_rounded),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xs,
+                    ),
+                  ),
+                  hint: const Text('Город'),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: '',
+                      child: Text('Все города'),
+                    ),
+                    ..._cities.map(
+                      (city) => DropdownMenuItem<String>(
+                        value: city,
+                        child: Text(city, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCity = value?.isEmpty == true ? null : value;
+                    });
+                    _loadEvents(refresh: true);
+                  },
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              FilterChip(
+                selected: _availableOnly,
+                avatar: Icon(
+                  Icons.event_seat_rounded,
+                  color: _availableOnly
+                      ? AppColors.surface
+                      : AppColors.textSecondary,
+                ),
+                label: const Text('Есть места'),
+                onSelected: (value) {
+                  setState(() {
+                    _availableOnly = value;
+                  });
+                  _loadEvents(refresh: true);
+                },
+                selectedColor: AppColors.primary,
+                checkmarkColor: AppColors.surface,
+                labelStyle: TextStyle(
+                  color: _availableOnly
+                      ? AppColors.surface
+                      : AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (_selectedCity != null || _availableOnly)
+                IconButton(
+                  tooltip: 'Сбросить фильтры',
+                  icon: const Icon(Icons.filter_alt_off_rounded),
+                  onPressed: _clearFilters,
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -484,6 +671,19 @@ class _EventScreenState extends State<EventScreen> {
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
                       ),
+                      if (event.organizerName?.isNotEmpty == true) ...[
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          'Организатор: ${event.organizerName}',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -565,9 +765,7 @@ class _EventScreenState extends State<EventScreen> {
                 ),
                 _EventPill(
                   icon: Icons.group_rounded,
-                  label: hasSeats
-                      ? '${event.availableSeats} свободно'
-                      : 'Мест нет',
+                  label: _seatsLabel(event),
                   color: hasSeats ? AppColors.success : AppColors.danger,
                 ),
               ],
@@ -584,7 +782,7 @@ class _EventScreenState extends State<EventScreen> {
                   hasSeats ? Icons.send_rounded : Icons.block_rounded,
                   size: 20,
                 ),
-                label: Text(hasSeats ? 'Записаться' : 'Мест нет'),
+                label: Text(hasSeats ? 'Записаться' : 'Нет мест'),
                 style: ElevatedButton.styleFrom(
                   elevation: 0,
                   backgroundColor: AppColors.primary,
@@ -815,7 +1013,11 @@ class _EventSeatsBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = hasSeats ? AppColors.success : AppColors.danger;
+    final color = hasSeats
+        ? (availableSeats <= 2 ? AppColors.activity : AppColors.success)
+        : AppColors.danger;
+    final valueLabel = hasSeats ? '$availableSeats/$maxParticipants' : 'Нет';
+    final caption = hasSeats ? 'мест' : 'мест';
 
     return Container(
       width: 88,
@@ -838,7 +1040,7 @@ class _EventSeatsBadge extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xxs),
           Text(
-            '$availableSeats/$maxParticipants',
+            valueLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -848,8 +1050,8 @@ class _EventSeatsBadge extends StatelessWidget {
               height: 1.05,
             ),
           ),
-          const Text(
-            'мест',
+          Text(
+            caption,
             style: TextStyle(
               color: AppColors.textSecondary,
               fontSize: 12,

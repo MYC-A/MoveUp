@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import text
 from app.core.config import settings
 
 # Создаем асинхронный движок
@@ -31,3 +32,20 @@ async def init_db():
     async with engine.begin() as conn:
         # Создаем все таблицы, если они отсутствуют
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_schema_compatibility(conn)
+
+
+async def ensure_schema_compatibility(conn):
+    # Проект пока живет без Alembic, поэтому держим маленькие безопасные
+    # добавления колонок для уже созданных локальных баз.
+    dialect = conn.dialect.name
+
+    if dialect == "postgresql":
+        await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR"))
+        return
+
+    if dialect == "sqlite":
+        columns = await conn.execute(text("PRAGMA table_info(events)"))
+        column_names = {row[1] for row in columns.fetchall()}
+        if "city" not in column_names:
+            await conn.execute(text("ALTER TABLE events ADD COLUMN city VARCHAR"))

@@ -6,9 +6,14 @@ from enum import Enum
 class EventResponse(BaseModel):
     id: int
     title: str
-    description: str
-    start_time: datetime  # Используем datetime вместо строки
-    end_time: datetime  # Используем datetime вместо строки    # Используем строку вместо datetime
+    description: Optional[str] = None
+    city: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    max_participants: Optional[int] = None
+    available_seats: Optional[int] = None
+    participants_count: int = 0
+    is_expired: bool = False
 
 class EventsResponseAll(BaseModel):
     events: List[EventResponse]

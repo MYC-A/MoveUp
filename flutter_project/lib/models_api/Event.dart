@@ -6,6 +6,7 @@ class Event {
   final String? description;
   final String eventType;
   final String? goal;
+  final String? city;
   final DateTime? startTime;
   final DateTime? endTime;
   final String difficulty;
@@ -14,6 +15,10 @@ class Event {
   final int organizerId;
   final int availableSeats;
   final List<Map<String, dynamic>> routeData;
+  final int? groupChatId;
+  final String? organizerName;
+  final int participantsCount;
+  final bool isExpired;
 
   Event({
     required this.id,
@@ -21,6 +26,7 @@ class Event {
     this.description,
     required this.eventType,
     this.goal,
+    this.city,
     this.startTime,
     this.endTime,
     required this.difficulty,
@@ -29,6 +35,10 @@ class Event {
     required this.organizerId,
     required this.availableSeats,
     required this.routeData,
+    this.groupChatId,
+    this.organizerName,
+    this.participantsCount = 0,
+    this.isExpired = false,
   });
 
   factory Event.fromJson(Map<String, dynamic> json) {
@@ -38,6 +48,7 @@ class Event {
       description: json['description'],
       eventType: json['event_type'],
       goal: json['goal'],
+      city: json['city'],
       startTime: json['start_time'] != null
           ? DateTime.parse(json['start_time'])
           : null,
@@ -48,10 +59,14 @@ class Event {
       isPublic: json['is_public'],
       organizerId: json['organizer_id'],
       availableSeats: json['available_seats'],
+      groupChatId: json['group_chat_id'],
+      organizerName: json['organizer_name'],
+      participantsCount: json['participants_count'] ?? 0,
+      isExpired: json['is_expired'] ?? false,
       routeData: (json['route_data'] as List?)
               ?.map((point) => {
-                    'latitude': point['latitude'] as double,
-                    'longitude': point['longitude'] as double,
+                    'latitude': (point['latitude'] as num).toDouble(),
+                    'longitude': (point['longitude'] as num).toDouble(),
                     'timestamp': point['timestamp'] != null
                         ? DateTime.parse(point['timestamp'])
                         : null,
@@ -73,6 +88,7 @@ class EventCreate {
   final String? description;
   final String eventType;
   final String? goal;
+  final String city;
   final DateTime? startTime;
   final DateTime? endTime;
   final String difficulty;
@@ -86,6 +102,7 @@ class EventCreate {
     this.description,
     required this.eventType,
     this.goal,
+    required this.city,
     this.startTime,
     this.endTime,
     required this.difficulty,
@@ -101,6 +118,7 @@ class EventCreate {
       'description': description,
       'event_type': eventType,
       'goal': goal,
+      'city': city,
       'start_time': startTime?.toIso8601String(),
       'end_time': endTime?.toIso8601String(),
       'difficulty': difficulty,
@@ -123,6 +141,7 @@ class EventCreate {
       description: json['description'],
       eventType: json['event_type'],
       goal: json['goal'],
+      city: json['city'] ?? '',
       startTime: json['start_time'] != null
           ? DateTime.parse(json['start_time'])
           : null,
@@ -133,8 +152,8 @@ class EventCreate {
       isPublic: json['is_public'],
       routeData: (json['route_data'] as List)
           .map((point) => {
-                'latitude': point['latitude'] as double,
-                'longitude': point['longitude'] as double,
+                'latitude': (point['latitude'] as num).toDouble(),
+                'longitude': (point['longitude'] as num).toDouble(),
                 'timestamp': point['timestamp'] != null
                     ? DateTime.parse(point['timestamp'])
                     : null,

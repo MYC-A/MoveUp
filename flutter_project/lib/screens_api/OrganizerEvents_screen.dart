@@ -160,6 +160,15 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   }
 
   Widget _buildEventCard(dynamic event) {
+    final city = event['city'] == null || event['city'].toString().isEmpty
+        ? 'Город не указан'
+        : event['city'].toString();
+    final availableSeats = event['available_seats'];
+    final maxParticipants = event['max_participants'];
+    final seatsText = availableSeats == null || maxParticipants == null
+        ? ''
+        : '\nМеста: $availableSeats/$maxParticipants';
+
     return Card(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 4,
@@ -167,7 +176,7 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
       child: ListTile(
         title: Text(event['title']),
         subtitle: Text(
-          'Дата: ${Helper.formatDateTime(event['start_time'])} - ${Helper.formatDateTime(event['end_time'])}',
+          '$city\nДата: ${Helper.formatDateTime(event['start_time'])} - ${Helper.formatDateTime(event['end_time'])}$seatsText',
         ),
         trailing: ElevatedButton(
           onPressed: () {

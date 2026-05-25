@@ -24,6 +24,7 @@ class Event(Base):
     description = Column(String, nullable=True)
     event_type = Column(Enum(EventType), nullable=False)
     goal = Column(String, nullable=True)
+    city = Column(String, nullable=True)
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
     difficulty = Column(String, nullable=False)

@@ -137,6 +137,27 @@ class LkService {
     }
   }
 
+  Future<Map<String, dynamic>> fetchEventParticipants(
+      int eventId, int skip, int limit) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+
+    final response = await http.get(
+      Uri.parse(
+          '$baseUrl/profile/event/$eventId/participants?skip=$skip&limit=$limit'),
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode == 200) {
+      final String responseBody = utf8.decode(response.bodyBytes);
+      return json.decode(responseBody);
+    } else {
+      throw Exception('Failed to load event participants: ${response.body}');
+    }
+  }
+
   Future<Map<String, dynamic>> approveApplication(
       int eventId, int participantId) async {
     final token = await storage.read(key: 'access_token');
@@ -175,6 +196,22 @@ class LkService {
 
     if (response.statusCode != 200) {
       throw Exception('Failed to reject application: ${response.body}');
+    }
+  }
+
+  Future<void> removeEventParticipant(int eventId, int participantId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/profile/event/$eventId/participants/$participantId'),
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Ошибка удаления участника: ${response.body}');
     }
   }
 
