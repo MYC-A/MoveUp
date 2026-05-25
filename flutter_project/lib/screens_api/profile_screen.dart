@@ -238,8 +238,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _isBioExpanded = !_isBioExpanded;
                     });
                   },
-                  onAvatarTap: _showImageSourceDialog,
-                  onEditBioTap: () => _showEditBioDialog(user['bio']),
                   onFollowersTap: _openFollowers,
                   onFollowingTap: _openFollowing,
                   onEventsTap: _openOrganizerEvents,
@@ -268,8 +266,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
   final String bio;
   final bool isBioExpanded;
   final VoidCallback onBioToggle;
-  final VoidCallback onAvatarTap;
-  final VoidCallback onEditBioTap;
   final VoidCallback onFollowersTap;
   final VoidCallback onFollowingTap;
   final VoidCallback onEventsTap;
@@ -281,8 +277,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
     required this.bio,
     required this.isBioExpanded,
     required this.onBioToggle,
-    required this.onAvatarTap,
-    required this.onEditBioTap,
     required this.onFollowersTap,
     required this.onFollowingTap,
     required this.onEventsTap,
@@ -341,51 +335,21 @@ class _OwnProfileHeroCard extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  GestureDetector(
-                    onTap: onAvatarTap,
-                    child: Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 56,
-                          backgroundColor: AppColors.surface,
-                          child: CircleAvatar(
-                            radius: 52,
-                            backgroundColor: AppColors.surfaceMuted,
-                            backgroundImage: avatarUrl.isNotEmpty
-                                ? NetworkImage(avatarUrl)
-                                : null,
-                            child: avatarUrl.isEmpty
-                                ? const Icon(
-                                    Icons.person,
-                                    size: 48,
-                                    color: AppColors.textMuted,
-                                  )
-                                : null,
-                          ),
-                        ),
-                        Positioned(
-                          right: 2,
-                          bottom: 2,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.surface,
-                                width: 3,
-                              ),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.all(AppSpacing.xs),
-                              child: Icon(
-                                Icons.edit,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                  CircleAvatar(
+                    radius: 56,
+                    backgroundColor: AppColors.surface,
+                    child: CircleAvatar(
+                      radius: 52,
+                      backgroundColor: AppColors.surfaceMuted,
+                      backgroundImage:
+                          avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                      child: avatarUrl.isEmpty
+                          ? const Icon(
+                              Icons.person,
+                              size: 48,
+                              color: AppColors.textMuted,
+                            )
+                          : null,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
@@ -419,7 +383,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
                           child:
                               Text(isBioExpanded ? 'Свернуть' : 'Развернуть'),
                         ),
-                      _ProfileBioButton(onPressed: onEditBioTap),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
@@ -482,33 +445,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
         ],
-      ),
-    );
-  }
-}
-
-class _ProfileBioButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _ProfileBioButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 260),
-      child: TextButton(
-        onPressed: onPressed,
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.edit_note),
-              SizedBox(width: AppSpacing.xs),
-              Text('Редактировать биографию'),
-            ],
-          ),
-        ),
       ),
     );
   }

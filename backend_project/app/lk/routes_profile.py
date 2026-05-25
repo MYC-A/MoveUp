@@ -811,11 +811,22 @@ async def get_user_applications(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
+    now = datetime.utcnow()
+    active_event_filter = or_(
+        Event.end_time >= now,
+        (Event.end_time.is_(None) & Event.start_time.is_(None)),
+        (Event.end_time.is_(None) & (Event.start_time >= now)),
+    )
+
     query = (
         select(EventParticipant)
-        .options(joinedload(EventParticipant.event))  # Загружаем связанные мероприятия
-        .filter(EventParticipant.user_id == user_id)
-        .order_by(EventParticipant.id.desc())  # Новые заявки сверху
+        .join(Event, EventParticipant.event_id == Event.id)
+        .options(joinedload(EventParticipant.event))
+        .filter(
+            EventParticipant.user_id == user_id,
+            active_event_filter,
+        )
+        .order_by(Event.start_time.asc(), EventParticipant.id.desc())
         .offset(skip)
         .limit(limit)
     )
@@ -829,7 +840,11 @@ async def get_user_applications(
                 "id": app.id,
                 "event_id": app.event.id,
                 "event_title": app.event.title,
-                "event_date": app.event.start_time.strftime("%Y-%m-%d"),
+                "event_city": app.event.city,
+                "event_date": app.event.start_time.strftime("%Y-%m-%d") if app.event.start_time else None,
+                "event_start_time": app.event.start_time,
+                "event_end_time": app.event.end_time,
+                "is_expired": _is_event_expired(app.event.start_time, app.event.end_time),
                 "status": app.approved.value
             }
             for app in applications
