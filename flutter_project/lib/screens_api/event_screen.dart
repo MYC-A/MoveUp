@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
@@ -23,6 +24,11 @@ class EventScreen extends StatefulWidget {
 
 class _EventScreenState extends State<EventScreen> {
   static const double _loadMoreThreshold = 200;
+  static const int _maxLiveInlineMaps = 2;
+  static const int _previewRouteMaxPoints = 120;
+  static const double _inlineMapVisibilityThreshold = 0.38;
+  static const Duration _inlineMapActivationDelay =
+      Duration(milliseconds: 450);
 
   final EventService _eventService = EventService();
   final List<Event> _events = [];
@@ -34,6 +40,9 @@ class _EventScreenState extends State<EventScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final Set<int> _fittedMapEventIds = {};
+  final List<int> _activeInlineMapEventIds = [];
+  final Map<int, Timer> _mapActivationTimers = {};
+  final Map<int, double> _visibleMapFractions = {};
   List<String> _cities = EventService.fallbackCities;
   String? _selectedCity;
   bool _availableOnly = false;
@@ -55,6 +64,9 @@ class _EventScreenState extends State<EventScreen> {
     _scrollController.removeListener(_handleScroll);
     for (var controller in _mapControllers) {
       controller.dispose();
+    }
+    for (var timer in _mapActivationTimers.values) {
+      timer.cancel();
     }
     _scrollController.dispose();
     _searchDebounce?.cancel();
@@ -82,6 +94,8 @@ class _EventScreenState extends State<EventScreen> {
 
   Future<void> _loadEvents({bool refresh = false}) async {
     if (_isLoading || (!_hasMore && !refresh)) return;
+    final controllersToDispose =
+        refresh ? List<MapController>.from(_mapControllers) : <MapController>[];
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -89,11 +103,13 @@ class _EventScreenState extends State<EventScreen> {
         _skip = 0;
         _events.clear();
         _mapControllers.clear();
+        _clearInlineMapState();
         _fittedMapEventIds.clear();
         _hasMore = true;
         _latestEventId = null;
       }
     });
+    _disposeControllersAfterFrame(controllersToDispose);
 
     try {
       final newEvents = await _eventService.getEvents(
@@ -202,6 +218,98 @@ class _EventScreenState extends State<EventScreen> {
         padding: EdgeInsets.all(50),
       ),
     );
+  }
+
+  void _clearInlineMapState() {
+    for (var timer in _mapActivationTimers.values) {
+      timer.cancel();
+    }
+    _mapActivationTimers.clear();
+    _visibleMapFractions.clear();
+    _activeInlineMapEventIds.clear();
+  }
+
+  void _disposeControllersAfterFrame(List<MapController> controllers) {
+    if (controllers.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (var controller in controllers) {
+        controller.dispose();
+      }
+    });
+  }
+
+  void _handleInlineMapVisibility(int eventId, double visibleFraction) {
+    if (!mounted) return;
+    _visibleMapFractions[eventId] = visibleFraction;
+
+    if (visibleFraction >= _inlineMapVisibilityThreshold) {
+      if (_activeInlineMapEventIds.contains(eventId) ||
+          _mapActivationTimers.containsKey(eventId)) {
+        return;
+      }
+
+      final activationTimer = Timer(
+        _inlineMapActivationDelay,
+        () {
+          if (!mounted) return;
+
+          final latestFraction = _visibleMapFractions[eventId] ?? 0;
+          setState(() {
+            _mapActivationTimers.remove(eventId);
+            if (latestFraction < _inlineMapVisibilityThreshold) return;
+
+            _activeInlineMapEventIds.remove(eventId);
+            _activeInlineMapEventIds.add(eventId);
+
+            while (_activeInlineMapEventIds.length > _maxLiveInlineMaps) {
+              final removedEventId = _activeInlineMapEventIds.removeAt(0);
+              _fittedMapEventIds.remove(removedEventId);
+            }
+          });
+        },
+      );
+      setState(() {
+        _mapActivationTimers[eventId] = activationTimer;
+      });
+      return;
+    }
+
+    final pendingTimer = _mapActivationTimers.remove(eventId);
+    pendingTimer?.cancel();
+    if (visibleFraction <= 0.05 &&
+        _activeInlineMapEventIds.contains(eventId)) {
+      setState(() {
+        _activeInlineMapEventIds.remove(eventId);
+      });
+    } else if (pendingTimer != null) {
+      setState(() {});
+    }
+  }
+
+  void _handleInlineMapReady(
+    int eventId,
+    List<LatLng> routePoints,
+    MapController mapController,
+  ) {
+    if (routePoints.isEmpty || _fittedMapEventIds.contains(eventId)) return;
+    _fittedMapEventIds.add(eventId);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || !_activeInlineMapEventIds.contains(eventId)) return;
+        _zoomToRoute(routePoints, mapController);
+      });
+    });
+  }
+
+  List<LatLng> _previewRoutePoints(List<LatLng> routePoints) {
+    if (routePoints.length <= _previewRouteMaxPoints) return routePoints;
+    final step = (routePoints.length - 1) / (_previewRouteMaxPoints - 1);
+    return List.generate(_previewRouteMaxPoints, (index) {
+      final sourceIndex =
+          (index * step).round().clamp(0, routePoints.length - 1) as int;
+      return routePoints[sourceIndex];
+    });
   }
 
   String _formatTime(DateTime? dateTime) {
@@ -446,6 +554,7 @@ class _EventScreenState extends State<EventScreen> {
     return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
+      cacheExtent: 360,
       padding: const EdgeInsets.fromLTRB(
         0,
         AppSpacing.sm,
@@ -835,17 +944,15 @@ class _EventScreenState extends State<EventScreen> {
     }
 
     final routePoints = event.routePoints;
+    final previewRoutePoints = _previewRoutePoints(routePoints);
+    final hasLiveMap = index < _mapControllers.length &&
+        _activeInlineMapEventIds.contains(event.id);
+    final isPreparingMap = _mapActivationTimers.containsKey(event.id);
 
     return VisibilityDetector(
-      key: Key('map_${event.id}'),
+      key: Key('map_visibility_${event.id}'),
       onVisibilityChanged: (info) {
-        if (info.visibleFraction > 0.28 &&
-            !_fittedMapEventIds.contains(event.id)) {
-          _fittedMapEventIds.add(event.id);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _zoomToRoute(routePoints, _mapControllers[index]);
-          });
-        }
+        _handleInlineMapVisibility(event.id, info.visibleFraction);
       },
       child: Container(
         height: 214,
@@ -864,57 +971,84 @@ class _EventScreenState extends State<EventScreen> {
           borderRadius: BorderRadius.circular(22),
           child: Stack(
             children: [
-              FlutterMap(
-                mapController: _mapControllers[index],
-                options: MapOptions(
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
-                  initialCenter: routePoints.isNotEmpty
-                      ? routePoints.first
-                      : const LatLng(55.7558, 37.6176),
-                  initialZoom: 13.0,
+              Positioned.fill(
+                child: _EventMapPlaceholder(
+                  routePoints: previewRoutePoints,
+                  color: accent,
+                  isPreparingMap: isPreparingMap,
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  ),
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: routePoints,
-                        color: accent,
-                        strokeWidth: 5.0,
+              ),
+              if (hasLiveMap)
+                Positioned.fill(
+                  child: FlutterMap(
+                    mapController: _mapControllers[index],
+                    options: MapOptions(
+                      backgroundColor: Colors.transparent,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
+                      ),
+                      initialCenter: previewRoutePoints.isNotEmpty
+                          ? previewRoutePoints.first
+                          : const LatLng(55.7558, 37.6176),
+                      initialZoom: 13.0,
+                      onMapReady: () {
+                        _handleInlineMapReady(
+                          event.id,
+                          previewRoutePoints,
+                          _mapControllers[index],
+                        );
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        keepBuffer: 0,
+                        panBuffer: 0,
+                        userAgentPackageName: 'com.moveup.app',
+                        tileDisplay: const TileDisplay.fadeIn(
+                          duration: Duration(milliseconds: 180),
+                          startOpacity: 0,
+                          reloadStartOpacity: 0,
+                        ),
+                      ),
+                      PolylineLayer(
+                        polylines: [
+                          if (previewRoutePoints.isNotEmpty)
+                            Polyline(
+                              points: previewRoutePoints,
+                              color: accent,
+                              strokeWidth: 5.0,
+                            ),
+                        ],
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          if (previewRoutePoints.isNotEmpty)
+                            Marker(
+                              width: 42.0,
+                              height: 42.0,
+                              point: previewRoutePoints.first,
+                              child: const _EventRouteMarker(
+                                icon: Icons.play_arrow_rounded,
+                                color: AppColors.success,
+                              ),
+                            ),
+                          if (previewRoutePoints.isNotEmpty)
+                            Marker(
+                              width: 46.0,
+                              height: 46.0,
+                              point: previewRoutePoints.last,
+                              child: _EventRouteMarker(
+                                icon: Icons.flag_rounded,
+                                color: accent,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
-                  MarkerLayer(
-                    markers: [
-                      if (routePoints.isNotEmpty)
-                        Marker(
-                          width: 42.0,
-                          height: 42.0,
-                          point: routePoints.first,
-                          child: _EventRouteMarker(
-                            icon: Icons.play_arrow_rounded,
-                            color: AppColors.success,
-                          ),
-                        ),
-                      if (routePoints.isNotEmpty)
-                        Marker(
-                          width: 46.0,
-                          height: 46.0,
-                          point: routePoints.last,
-                          child: _EventRouteMarker(
-                            icon: Icons.flag_rounded,
-                            color: accent,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
               Positioned(
                 left: AppSpacing.sm,
                 top: AppSpacing.sm,
@@ -1308,6 +1442,185 @@ class _EventMapButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _EventMapPlaceholder extends StatelessWidget {
+  final List<LatLng> routePoints;
+  final Color color;
+  final bool isPreparingMap;
+
+  const _EventMapPlaceholder({
+    required this.routePoints,
+    required this.color,
+    required this.isPreparingMap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _RoutePreviewPainter(
+              routePoints: routePoints,
+              color: color,
+            ),
+          ),
+        ),
+        Positioned(
+          left: AppSpacing.md,
+          right: AppSpacing.md,
+          bottom: AppSpacing.md,
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.94),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Icon(
+                  Icons.route_rounded,
+                  color: color,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  isPreparingMap ? 'Готовим карту' : 'Маршрут на карте',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (isPreparingMap)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RoutePreviewPainter extends CustomPainter {
+  final List<LatLng> routePoints;
+  final Color color;
+
+  const _RoutePreviewPainter({
+    required this.routePoints,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final background = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.routeSoft.withValues(alpha: 0.96),
+          AppColors.surfaceMuted.withValues(alpha: 0.92),
+        ],
+      ).createShader(rect);
+
+    canvas.drawRect(rect, background);
+
+    final gridPaint = Paint()
+      ..color = AppColors.surface.withValues(alpha: 0.34)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 5; i++) {
+      final dx = size.width * i / 5;
+      final dy = size.height * i / 5;
+      canvas.drawLine(Offset(dx, 0), Offset(dx, size.height), gridPaint);
+      canvas.drawLine(Offset(0, dy), Offset(size.width, dy), gridPaint);
+    }
+
+    if (routePoints.isEmpty) return;
+
+    final routeRect = rect.deflate(30);
+    var minLat = routePoints.first.latitude;
+    var maxLat = routePoints.first.latitude;
+    var minLng = routePoints.first.longitude;
+    var maxLng = routePoints.first.longitude;
+
+    for (final point in routePoints) {
+      minLat = math.min(minLat, point.latitude);
+      maxLat = math.max(maxLat, point.latitude);
+      minLng = math.min(minLng, point.longitude);
+      maxLng = math.max(maxLng, point.longitude);
+    }
+
+    final latRange = math.max(maxLat - minLat, 0.000001);
+    final lngRange = math.max(maxLng - minLng, 0.000001);
+
+    Offset project(LatLng point) {
+      final x = routeRect.left +
+          ((point.longitude - minLng) / lngRange) * routeRect.width;
+      final y = routeRect.top +
+          ((maxLat - point.latitude) / latRange) * routeRect.height;
+      return Offset(x, y);
+    }
+
+    final firstPoint = project(routePoints.first);
+    final path = Path()..moveTo(firstPoint.dx, firstPoint.dy);
+    for (final point in routePoints.skip(1)) {
+      final projected = project(point);
+      path.lineTo(projected.dx, projected.dy);
+    }
+
+    final routeShadowPaint = Paint()
+      ..color = AppColors.surface.withValues(alpha: 0.92)
+      ..strokeWidth = 10
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final routePaint = Paint()
+      ..color = color
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawPath(path, routeShadowPaint);
+    canvas.drawPath(path, routePaint);
+
+    final start = project(routePoints.first);
+    final finish = project(routePoints.last);
+    _drawRouteDot(canvas, start, AppColors.success, 6);
+    _drawRouteDot(canvas, finish, color, 8);
+  }
+
+  void _drawRouteDot(Canvas canvas, Offset center, Color color, double radius) {
+    canvas.drawCircle(
+      center,
+      radius + 4,
+      Paint()..color = AppColors.surface.withValues(alpha: 0.94),
+    );
+    canvas.drawCircle(center, radius, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoutePreviewPainter oldDelegate) {
+    return oldDelegate.routePoints != routePoints || oldDelegate.color != color;
   }
 }
 
