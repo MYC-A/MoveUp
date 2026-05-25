@@ -5,6 +5,12 @@ import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/screens_api/GroupChatScreen.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 class ChatListScreen extends StatefulWidget {
   final bool initiallyActive;
@@ -246,17 +252,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Чаты'),
+        title: const Text('Чаты'),
         actions: [
-          IconButton(
-            icon: Icon(Icons.add),
+          AppIconButton(
+            icon: Icons.add,
+            tooltip: 'Создать групповой чат',
             onPressed: _showCreateGroupChatDialog,
           ),
         ],
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const AppLoading(label: 'Загружаем чаты')
           : _buildChatList(),
     );
   }
@@ -264,16 +272,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget _buildChatList() {
     final itemCount = _users.length + _groupChats.length;
     if (itemCount == 0) {
-      return Center(
-        child: Text(
-          'Пока нет чатов',
-          style: TextStyle(color: Colors.grey),
-        ),
+      return const AppEmptyState(
+        icon: Icons.chat_bubble_outline_rounded,
+        title: 'Пока нет чатов',
+        message: 'Когда появятся переписки, они будут здесь.',
       );
     }
 
-    return ListView.builder(
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
       itemCount: itemCount,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
         if (index < _users.length) {
           return _buildPersonalChatTile(_users[index]);
@@ -288,17 +302,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final fullName = user['full_name']?.toString() ?? 'Пользователь';
     final unreadCount = _unreadPersonalMessagesCount[userId] ?? 0;
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.blue,
-        child: Text(
-          _initialForName(fullName),
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-      title: Text(fullName),
-      subtitle: Text('Личный чат'),
-      trailing: _buildUnreadBadge(unreadCount),
+    return _ChatOverviewTile(
+      title: fullName,
+      subtitle: unreadCount > 0 ? '$unreadCount непрочитанных' : 'Личный чат',
+      icon: Icons.person_rounded,
+      initial: _initialForName(fullName),
+      accent: AppColors.primary,
+      unreadCount: unreadCount,
       onTap: () {
         Navigator.push(
           context,
@@ -317,14 +327,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final groupChatName = groupChat['name']?.toString() ?? 'Групповой чат';
     final unreadCount = _unreadGroupMessagesCount[groupChatId] ?? 0;
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.green,
-        child: Icon(Icons.group, color: Colors.white),
-      ),
-      title: Text(groupChatName),
-      subtitle: Text('Групповой чат'),
-      trailing: _buildUnreadBadge(unreadCount),
+    return _ChatOverviewTile(
+      title: groupChatName,
+      subtitle:
+          unreadCount > 0 ? '$unreadCount непрочитанных' : 'Групповой чат',
+      icon: Icons.groups_rounded,
+      accent: AppColors.route,
+      unreadCount: unreadCount,
       onTap: () {
         Navigator.push(
           context,
@@ -340,16 +349,141 @@ class _ChatListScreenState extends State<ChatListScreen> {
       },
     );
   }
+}
 
-  Widget? _buildUnreadBadge(int unreadCount) {
-    if (unreadCount <= 0) return null;
+class _ChatOverviewTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String? initial;
+  final Color accent;
+  final int unreadCount;
+  final VoidCallback onTap;
 
-    return CircleAvatar(
-      radius: 12,
-      backgroundColor: Colors.red,
+  const _ChatOverviewTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    this.initial,
+    required this.accent,
+    required this.unreadCount,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.72)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.11),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: accent.withValues(alpha: 0.15)),
+                ),
+                child: Center(
+                  child: initial != null
+                      ? Text(
+                          initial!,
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        )
+                      : Icon(icon, color: accent, size: 26),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xxs),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: unreadCount > 0
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        fontSize: 14,
+                        fontWeight:
+                            unreadCount > 0 ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              if (unreadCount > 0)
+                _ChatUnreadBadge(count: unreadCount)
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textMuted,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatUnreadBadge extends StatelessWidget {
+  final int count;
+
+  const _ChatUnreadBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: AppColors.danger,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      alignment: Alignment.center,
       child: Text(
-        unreadCount.toString(),
-        style: TextStyle(color: Colors.white, fontSize: 12),
+        count > 99 ? '99+' : count.toString(),
+        style: const TextStyle(
+          color: AppColors.surface,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }

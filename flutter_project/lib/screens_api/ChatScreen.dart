@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 class ChatScreen extends StatefulWidget {
   final int recipientId;
@@ -41,10 +45,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initChat() async {
     try {
-      await _getCurrentUserId();
-      if (!mounted || currentUserId == null) return;
-      await _loadMessages();
+      final results = await Future.wait<dynamic>([
+        _chatService.getCachedCurrentUserId(),
+        _chatService.getMessagesBetweenUsers(
+          widget.recipientId,
+          limit: _pageSize,
+        ),
+      ]);
       if (!mounted) return;
+
+      currentUserId = results[0] as int?;
+      final messages = List<Map<String, dynamic>>.from(results[1] as List);
+      if (currentUserId == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _messages = messages;
+        _hasMoreMessages = messages.length == _pageSize;
+        _isLoading = false;
+      });
+      _emitMessages();
+      _scrollToBottom(animated: false);
       _connectToChat();
       await _markMessagesAsRead();
     } catch (e) {
@@ -66,14 +91,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _getCurrentUserId() async {
-    final data = await _chatService.getChatData();
-    if (!mounted) return;
-    setState(() {
-      currentUserId = data['user']['id'];
-    });
-  }
-
   void _emitMessages() {
     if (!_messagesController.isClosed) {
       _messagesController.add(_messages);
@@ -88,7 +105,8 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    if (_scrollController.position.pixels <= 80) {
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 120) {
       _loadOlderMessages();
     }
   }
@@ -96,25 +114,34 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isNearBottom() {
     if (!_scrollController.hasClients) return true;
 
-    final distanceFromBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.offset;
-    return distanceFromBottom < 120;
+    return _scrollController.position.pixels < 120;
   }
 
   void _scrollToBottom({
-    Duration delay = const Duration(milliseconds: 100),
+    Duration delay = Duration.zero,
+    bool animated = true,
   }) {
     if (_messages.isEmpty) return;
 
-    Future.delayed(delay, () {
+    void scroll() {
       if (!mounted || !_scrollController.hasClients) return;
 
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
+      if (animated) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(0);
+      }
+    }
+
+    if (delay == Duration.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => scroll());
+    } else {
+      Future.delayed(delay, scroll);
+    }
   }
 
   @override
@@ -129,30 +156,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _chatService.disconnect();
     _messagesController.close();
     super.dispose();
-  }
-
-  Future<void> _loadMessages() async {
-    try {
-      final messages = await _chatService.getMessagesBetweenUsers(
-        widget.recipientId,
-        limit: _pageSize,
-      );
-      if (!mounted) return;
-      setState(() {
-        _messages = messages;
-        _hasMoreMessages = messages.length == _pageSize;
-        _isLoading = false;
-      });
-      _emitMessages();
-      _scrollToBottom(delay: const Duration(milliseconds: 150));
-    } catch (e) {
-      debugPrint('Ошибка загрузки сообщений: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   Future<void> _loadOlderMessages() async {
@@ -277,26 +280,69 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessage(Map<String, dynamic> message) {
     final isMe = message['sender_id'] == currentUserId;
+    final text = message['content']?.toString() ?? '';
+    final time = _formatMessageTime(message['created_at']?.toString());
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      padding: const EdgeInsets.symmetric(
+        vertical: AppSpacing.xxs,
+        horizontal: AppSpacing.md,
+      ),
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.8,
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
           child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isMe ? Colors.blue[100] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
             ),
-            child: Text(
-              message['content']?.toString() ?? '',
-              style: TextStyle(
-                fontSize: 16,
-                color: isMe ? Colors.white : Colors.black,
+            decoration: BoxDecoration(
+              color: isMe ? AppColors.primary : AppColors.surface,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isMe ? 20 : AppRadii.md),
+                bottomRight: Radius.circular(isMe ? AppRadii.md : 20),
               ),
+              border: isMe ? null : Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    height: 1.28,
+                    color: isMe ? AppColors.surface : AppColors.textPrimary,
+                  ),
+                ),
+                if (time != null) ...[
+                  const SizedBox(height: AppSpacing.xxs),
+                  Text(
+                    time,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: isMe
+                          ? AppColors.surface.withValues(alpha: 0.72)
+                          : AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -304,71 +350,107 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String? _formatMessageTime(String? rawDate) {
+    if (rawDate == null || rawDate.isEmpty) return null;
+    final parsed = DateTime.tryParse(rawDate);
+    if (parsed == null) return null;
+
+    final hour = parsed.hour.toString().padLeft(2, '0');
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Text(widget.recipientId == currentUserId
-            ? 'Избранное'
-            : 'Чат с пользователем'),
+        title: Text(widget.recipientId == currentUserId ? 'Избранное' : 'Чат'),
       ),
       body: Column(
         children: [
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoading(label: 'Загружаем сообщения')
                 : StreamBuilder<List<Map<String, dynamic>>>(
                     stream: _messagesController.stream,
                     initialData: _messages,
                     builder: (context, snapshot) {
+                      final messages = snapshot.data ?? const [];
                       return ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.only(bottom: 8),
-                        itemCount: snapshot.data?.length ?? 0,
+                        reverse: true,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
+                        itemCount: messages.length + (_isLoadingOlder ? 1 : 0),
                         itemBuilder: (context, index) {
-                          return _buildMessage(snapshot.data![index]);
+                          if (_isLoadingOlder && index == messages.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(AppSpacing.md),
+                              child: AppLoading(),
+                            );
+                          }
+
+                          final messageIndex = messages.length - 1 - index;
+                          return _buildMessage(messages[messageIndex]);
                         },
                       );
                     },
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: 120, // Максимальная высота (примерно 5 строк)
-                    ),
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Введите сообщение...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.sm,
+              ),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxHeight:
+                            120, // Максимальная высота (примерно 5 строк)
                       ),
-                      maxLines: null, // Автоматическое количество строк
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: const InputDecoration(
+                          hintText: 'Введите сообщение...',
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        maxLines: null, // Автоматическое количество строк
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: IconButton(
-                    icon: Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
+                  const SizedBox(width: AppSpacing.xs),
+                  Material(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                    child: IconButton(
+                      tooltip: 'Отправить',
+                      icon: const Icon(Icons.send_rounded,
+                          color: AppColors.surface),
+                      onPressed: _sendMessage,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

@@ -11,6 +11,23 @@ class ChatService {
   final FlutterSecureStorage storage = const FlutterSecureStorage();
   IOWebSocketChannel? _channel;
 
+  Future<int?> getCachedCurrentUserId() async {
+    final cachedUserId = await storage.read(key: 'user_id');
+    final parsedCachedUserId =
+        cachedUserId == null ? null : int.tryParse(cachedUserId);
+    if (parsedCachedUserId != null) {
+      return parsedCachedUserId;
+    }
+
+    final data = await getChatData();
+    final userId = data['user']?['id'];
+    if (userId is int) {
+      await storage.write(key: 'user_id', value: userId.toString());
+      return userId;
+    }
+    return null;
+  }
+
   // Получить данные чата (GET /chat/)
   Future<Map<String, dynamic>> getChatData() async {
     final token = await storage.read(key: 'access_token');

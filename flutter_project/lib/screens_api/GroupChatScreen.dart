@@ -4,6 +4,11 @@ import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
+import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:intl/intl.dart';
 
 class GroupChatScreen extends StatefulWidget {
@@ -48,52 +53,35 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   Future<void> _initChat() async {
     try {
-      await _getCurrentUserId();
+      final results = await Future.wait<dynamic>([
+        _chatService.getCachedCurrentUserId(),
+        _chatService.getGroupMessages(
+          widget.groupChatId,
+          limit: _pageSize,
+        ),
+      ]);
       if (!mounted) return;
-      await _loadMessages();
-      if (!mounted) return;
+
+      currentUserId = results[0] as int?;
+      final messages = List<Map<String, dynamic>>.from(results[1] as List);
+      if (currentUserId == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _messages = messages;
+        _hasMoreMessages = messages.length == _pageSize;
+        _isLoading = false;
+      });
+      _emitMessages();
+      _scrollToBottom(animated: false);
       _connectToWebSocket();
       await _markMessagesAsRead();
     } catch (e) {
       debugPrint('Ошибка инициализации группового чата: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _getCurrentUserId() async {
-    try {
-      final data = await _chatService.getChatData();
-      if (mounted) {
-        setState(() {
-          currentUserId = data['user']['id'];
-        });
-      }
-    } catch (e) {
-      debugPrint('Ошибка получения ID пользователя: $e');
-    }
-  }
-
-  Future<void> _loadMessages() async {
-    try {
-      final messages = await _chatService.getGroupMessages(
-        widget.groupChatId,
-        limit: _pageSize,
-      );
-      if (mounted) {
-        setState(() {
-          _messages = messages;
-          _hasMoreMessages = messages.length == _pageSize;
-          _isLoading = false;
-        });
-        _emitMessages();
-        _scrollToBottomWithDelay();
-      }
-    } catch (e) {
-      debugPrint('Ошибка загрузки сообщений: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -125,7 +113,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       return;
     }
 
-    if (_scrollController.position.pixels <= 80) {
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 120) {
       _loadOlderMessages();
     }
   }
@@ -133,9 +122,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _isNearBottom() {
     if (!_scrollController.hasClients) return true;
 
-    final distanceFromBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.offset;
-    return distanceFromBottom < 120;
+    return _scrollController.position.pixels < 120;
   }
 
   Future<void> _loadOlderMessages() async {
@@ -201,23 +188,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   void _scrollToBottom({
-    Duration delay = const Duration(milliseconds: 100),
+    Duration delay = Duration.zero,
+    bool animated = true,
   }) {
     if (_messages.isEmpty) return;
 
-    Future.delayed(delay, () {
+    void scroll() {
       if (!mounted || !_scrollController.hasClients) return;
 
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
-  }
+      if (animated) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(0);
+      }
+    }
 
-  void _scrollToBottomWithDelay() {
-    _scrollToBottom(delay: const Duration(milliseconds: 200));
+    if (delay == Duration.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => scroll());
+    } else {
+      Future.delayed(delay, scroll);
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -335,44 +329,110 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final senderName = message['sender_name']?.toString() ?? 'Пользователь';
     final createdAt = message['created_at']?.toString() ?? '';
 
-    return Column(
-      crossAxisAlignment:
-          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        if (!isTemp)
-          Padding(
-            padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
-            child: Text(
-              "$senderName - ${_formatDateTime(createdAt)}",
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ),
-        Container(
-          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isMe ? Colors.blue[100] : Colors.grey[200],
-            borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppSpacing.xxs,
+        horizontal: AppSpacing.md,
+      ),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              Text(
-                message['content']?.toString() ?? '',
-                style: TextStyle(
-                  color: isTemp ? Colors.grey : Colors.black,
+              if (!isMe && !isTemp)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: AppSpacing.xs,
+                    bottom: AppSpacing.xxs,
+                  ),
+                  child: Text(
+                    senderName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: isMe ? AppColors.primary : AppColors.surface,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(20),
+                    topRight: const Radius.circular(20),
+                    bottomLeft: Radius.circular(isMe ? 20 : AppRadii.md),
+                    bottomRight: Radius.circular(isMe ? AppRadii.md : 20),
+                  ),
+                  border: isMe ? null : Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message['content']?.toString() ?? '',
+                      style: TextStyle(
+                        color: isTemp
+                            ? AppColors.textMuted
+                            : (isMe
+                                ? AppColors.surface
+                                : AppColors.textPrimary),
+                        fontSize: 15.5,
+                        height: 1.28,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xxs),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatDateTime(createdAt),
+                          style: TextStyle(
+                            color: isMe
+                                ? AppColors.surface.withValues(alpha: 0.72)
+                                : AppColors.textMuted,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (isMe && !isTemp) ...[
+                          const SizedBox(width: AppSpacing.xxs),
+                          Icon(
+                            isRead ? Icons.done_all : Icons.done,
+                            color: isRead
+                                ? AppColors.routeSoft
+                                : AppColors.surface.withValues(alpha: 0.72),
+                            size: 16,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              if (isMe && !isTemp)
-                Icon(
-                  isRead ? Icons.done_all : Icons.done,
-                  color: isRead ? Colors.blue : Colors.grey,
-                  size: 16,
-                ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -421,11 +481,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(widget.groupChatName),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
+          AppIconButton(
+            icon: Icons.add,
+            tooltip: 'Добавить участника',
             onPressed: _showAddParticipantsModal,
           ),
         ],
@@ -434,58 +496,85 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         children: [
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoading(label: 'Загружаем сообщения')
                 : StreamBuilder<List<Map<String, dynamic>>>(
                     stream: _messagesController.stream,
                     initialData: _messages,
                     builder: (context, snapshot) {
+                      final messages = snapshot.data ?? const [];
                       return ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.only(bottom: 8),
-                        itemCount: snapshot.data?.length ?? 0,
+                        reverse: true,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
+                        itemCount: messages.length + (_isLoadingOlder ? 1 : 0),
                         itemBuilder: (context, index) {
-                          return _buildMessage(snapshot.data![index]);
+                          if (_isLoadingOlder && index == messages.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(AppSpacing.md),
+                              child: AppLoading(),
+                            );
+                          }
+
+                          final messageIndex = messages.length - 1 - index;
+                          return _buildMessage(messages[messageIndex]);
                         },
                       );
                     },
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: 120, // Максимальная высота (примерно 5 строк)
-                    ),
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Введите сообщение...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.sm,
+              ),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxHeight:
+                            120, // Максимальная высота (примерно 5 строк)
                       ),
-                      maxLines: null, // Автоматическое количество строк
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: const InputDecoration(
+                          hintText: 'Введите сообщение...',
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        maxLines: null, // Автоматическое количество строк
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: IconButton(
-                    icon: Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
+                  const SizedBox(width: AppSpacing.xs),
+                  Material(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                    child: IconButton(
+                      tooltip: 'Отправить',
+                      icon: const Icon(Icons.send_rounded,
+                          color: AppColors.surface),
+                      onPressed: _sendMessage,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
