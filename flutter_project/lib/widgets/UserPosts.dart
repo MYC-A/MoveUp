@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/app_config.dart';
-import 'package:flutter_application_1/screens_api/PostDetails_screen.dart';
 import 'package:flutter_application_1/services_api/post_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -13,6 +12,8 @@ import 'package:flutter_application_1/models_api/post.dart';
 import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'dart:async';
+import 'package:flutter_application_1/widgets/post_comments_sheet.dart';
+import 'package:flutter_application_1/widgets/photo_viewer.dart';
 
 class UserPosts extends StatefulWidget {
   final int userId;
@@ -108,7 +109,8 @@ class _UserPostsState extends State<UserPosts> {
           for (var url in post.photoUrls!) {
             precacheImage(
               CachedNetworkImageProvider(
-                url.replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme),
+                url.replaceAll(
+                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme),
                 cacheManager: customCacheManager,
               ),
               context,
@@ -175,7 +177,10 @@ class _UserPostsState extends State<UserPosts> {
                   'Обновлён лайк для поста $postId: likesCount=${post.likesCount}, likedByCurrentUser=${post.likedByCurrentUser}');
               break;
             case 'comment':
-              post.commentsCount += 1;
+              final commentsCount = update['comments_count'];
+              post.commentsCount = commentsCount is num
+                  ? commentsCount.toInt()
+                  : post.commentsCount + 1;
               posts = List.from(posts);
               debugPrint(
                   'Обновлён комментарий для поста $postId: commentsCount=${post.commentsCount}');
@@ -196,6 +201,24 @@ class _UserPostsState extends State<UserPosts> {
         SnackBar(content: Text('Ошибка лайка: $e')),
       );
     }
+  }
+
+  void _applyCommentsCount(Post post, int? count) {
+    if (count == null || count <= post.commentsCount || !mounted) return;
+
+    setState(() {
+      post.commentsCount = count;
+    });
+  }
+
+  Future<void> _openComments(Post post) async {
+    final updatedCount = await showPostCommentsSheet(
+      context: context,
+      postId: post.id,
+      initialCommentsCount: post.commentsCount,
+      onCommentsCountChanged: (count) => _applyCommentsCount(post, count),
+    );
+    _applyCommentsCount(post, updatedCount);
   }
 
   bool _isValidRoute(List<dynamic> routeData) {
@@ -269,7 +292,8 @@ class _UserPostsState extends State<UserPosts> {
             final post = posts[index];
             final String avatarUrl =
                 (post.userAvatarUrl ?? 'https://via.placeholder.com/150')
-                    .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
+                    .replaceAll(
+                        'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
 
             return Card(
               margin: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -528,8 +552,8 @@ class _UserPostsState extends State<UserPosts> {
                           itemCount: post.photoUrls!.length,
                           itemBuilder: (context, index) {
                             final String imageUrl = post.photoUrls![index]
-                                .replaceAll(
-                                    'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
+                                .replaceAll('localhost:9000',
+                                    AppConfig.mediaBaseUrlWithoutScheme);
 
                             return GestureDetector(
                               onTap: () {
@@ -540,7 +564,8 @@ class _UserPostsState extends State<UserPosts> {
                                       photoUrls: post.photoUrls!
                                           .map((url) => url.replaceAll(
                                               'localhost:9000',
-                                              AppConfig.mediaBaseUrlWithoutScheme))
+                                              AppConfig
+                                                  .mediaBaseUrlWithoutScheme))
                                           .toList(),
                                       initialIndex: index,
                                     ),
@@ -606,19 +631,7 @@ class _UserPostsState extends State<UserPosts> {
                               IconButton(
                                 icon: Icon(Icons.comment,
                                     color: Colors.blueAccent, size: 24),
-                                onPressed: () {
-                                  webSocketService.disconnect();
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          PostDetailsScreen(postId: post.id!),
-                                    ),
-                                  ).then((_) {
-                                    webSocketService.connectToFeed();
-                                    _loadPosts();
-                                  });
-                                },
+                                onPressed: () => _openComments(post),
                               ),
                               Text(
                                 '${post.commentsCount}',

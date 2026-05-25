@@ -390,6 +390,7 @@ async def add_comment(
     comment_data = {
         "type": "comment",
         "post_id": post_id,
+        "comments_count": post.comments_count,
         "comment": {
             "id": new_comment.id,
             "user_id": new_comment.user_id,

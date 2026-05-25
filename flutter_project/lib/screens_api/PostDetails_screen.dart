@@ -5,14 +5,13 @@ import 'package:flutter_application_1/models/RunningRoute.dart';
 import 'package:flutter_application_1/services/StorageService.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 import '../models_api/post.dart';
 import '../services_api/post_service.dart';
 import '../services_api/web_socket_channel.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_application_1/widgets/photo_viewer.dart';
 
 class PostDetailsScreen extends StatefulWidget {
   final int postId;
@@ -164,10 +163,17 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
             break;
           case 'comment':
             final newComment = Comment.fromJson(update['comment']);
-            if (!_comments.any((c) => c.id == newComment.id)) {
-              _post.commentsCount += 1;
+            final isNewComment = !_comments.any((c) => c.id == newComment.id);
+            if (isNewComment) {
               _comments.add(newComment);
             }
+
+            final commentsCount = update['comments_count'];
+            _post.commentsCount = commentsCount is num
+                ? commentsCount.toInt()
+                : isNewComment
+                    ? _post.commentsCount + 1
+                    : _post.commentsCount;
             break;
         }
       });
@@ -845,63 +851,6 @@ class _InfoTile extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class PhotoViewer extends StatelessWidget {
-  final List<String> photoUrls;
-  final int initialIndex;
-
-  const PhotoViewer({
-    Key? key,
-    required this.photoUrls,
-    this.initialIndex = 0,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.close, color: Colors.black),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
-      ),
-      body: PhotoViewGallery.builder(
-        itemCount: photoUrls.length,
-        builder: (context, index) {
-          final imageUrl = photoUrls[index].replaceAll(
-            'localhost:9000',
-            AppConfig.mediaBaseUrlWithoutScheme,
-          );
-          return PhotoViewGalleryPageOptions(
-            imageProvider: CachedNetworkImageProvider(
-              imageUrl,
-              cacheManager: CacheManager(
-                Config(
-                  'customCacheKey',
-                  stalePeriod: Duration(days: 7),
-                  maxNrOfCacheObjects: 100,
-                ),
-              ),
-            ),
-            minScale: PhotoViewComputedScale.contained,
-            maxScale: PhotoViewComputedScale.covered * 2,
-          );
-        },
-        scrollPhysics: BouncingScrollPhysics(),
-        backgroundDecoration: BoxDecoration(
-          color: Colors.white,
-        ),
-        pageController: PageController(initialPage: initialIndex),
-        onPageChanged: (index) {},
-      ),
     );
   }
 }

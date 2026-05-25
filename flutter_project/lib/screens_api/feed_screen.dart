@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens/RouteHistoryScreen.dart';
 import 'package:flutter_application_1/screens_api/CreatePostWithoutRouteScreen.dart';
-import 'package:flutter_application_1/screens_api/PostDetails_screen.dart';
 import 'package:flutter_application_1/screens_api/UserProfiles.dart';
 import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
 import '../services_api/post_service.dart';
@@ -23,6 +22,9 @@ import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:flutter_application_1/widgets/photo_viewer.dart';
+import 'package:flutter_application_1/widgets/post_comments_sheet.dart';
+import 'package:flutter_application_1/utils/post_route_downloader.dart';
 
 // Единый CacheManager для всего приложения
 final customCacheManager = CacheManager(
@@ -250,7 +252,10 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                   'Обновлён лайк для поста $postId: likesCount=${post.likesCount}, likedByCurrentUser=${post.likedByCurrentUser}');
               break;
             case 'comment':
-              post.commentsCount += 1;
+              final commentsCount = update['comments_count'];
+              post.commentsCount = commentsCount is num
+                  ? commentsCount.toInt()
+                  : post.commentsCount + 1;
               _posts = List.from(_posts); // Принудительное обновление списка
               debugPrint(
                   'Обновлён комментарий для поста $postId: commentsCount=${post.commentsCount}');
@@ -578,6 +583,24 @@ class _PostItemState extends State<PostItem>
     }
   }
 
+  void _applyCommentsCount(Post post, int? count) {
+    if (count == null || count <= post.commentsCount || !mounted) return;
+
+    setState(() {
+      post.commentsCount = count;
+    });
+  }
+
+  Future<void> _openComments(Post post) async {
+    final updatedCount = await showPostCommentsSheet(
+      context: context,
+      postId: post.id,
+      initialCommentsCount: post.commentsCount,
+      onCommentsCountChanged: (count) => _applyCommentsCount(post, count),
+    );
+    _applyCommentsCount(post, updatedCount);
+  }
+
   void _showPostMenu(Post post, bool hasRoute) {
     showModalBottomSheet(
       context: context,
@@ -585,7 +608,7 @@ class _PostItemState extends State<PostItem>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -596,19 +619,28 @@ class _PostItemState extends State<PostItem>
                   leading: const Icon(Icons.person_outline),
                   title: const Text('Открыть профиль'),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     _navigateToUserProfile(post.userId);
                   },
                 ),
-                if (hasRoute)
+                if (hasRoute) ...[
                   ListTile(
                     leading: const Icon(Icons.map_outlined),
                     title: const Text('Открыть маршрут'),
                     onTap: () {
-                      Navigator.pop(context);
+                      Navigator.pop(sheetContext);
                       widget.onMapTap();
                     },
                   ),
+                  ListTile(
+                    leading: const Icon(Icons.download_outlined),
+                    title: const Text('Скачать маршрут'),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await saveRouteFromPost(context, post);
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -1144,18 +1176,7 @@ class _PostItemState extends State<PostItem>
               iconColor: AppColors.textSecondary,
               label: '${post.commentsCount} комментариев',
               alignEnd: true,
-              onTap: () {
-                widget.webSocketService.disconnect();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PostDetailsScreen(postId: post.id),
-                  ),
-                ).then((_) {
-                  widget.webSocketService.switchToFeed();
-                  widget.loadPosts();
-                });
-              },
+              onTap: () => _openComments(post),
             ),
           ),
         ],
@@ -1585,25 +1606,4 @@ class _FullScreenMapState extends State<FullScreenMap> {
   }
 }
 
-*/
-
-/*
-Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.comment, color: Colors.grey),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => PostDetailsScreen(
-                                          postId: post.id, // Передаем postId
-                                        ),
-                                      ),
-                                    ).then((_) {
-                                      _webSocketService
-                                          .switchToFeed(); // Возвращаемся к ленте
-                                    });
-                                  },
-                                ),
 */

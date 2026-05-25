@@ -52,7 +52,7 @@ class PostService {
   }
 
   // Добавить комментарий
-  Future<void> addComment(int postId, String content) async {
+  Future<Comment> addComment(int postId, String content) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw Exception('Токен не найден');
@@ -68,9 +68,26 @@ class PostService {
       body: json.encode({'content': content}),
     );
 
-    if (response.statusCode != 200) {
-      throw Exception('Ошибка добавления комментария: ${response.body}');
+    if (response.statusCode == 200) {
+      final String responseBody = utf8.decode(response.bodyBytes);
+      final decoded = json.decode(responseBody);
+      final dynamic commentJson =
+          decoded is Map<String, dynamic> && decoded['comment'] is Map
+              ? decoded['comment']
+              : decoded;
+
+      if (commentJson is Map<String, dynamic>) {
+        return Comment.fromJson(commentJson);
+      }
+
+      if (commentJson is Map) {
+        return Comment.fromJson(Map<String, dynamic>.from(commentJson));
+      }
+
+      throw Exception('Некорректный ответ сервера при добавлении комментария');
     }
+
+    throw Exception('Ошибка добавления комментария: ${response.body}');
   }
 
   // Получить комментарии для поста с пагинацией
