@@ -27,6 +27,36 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime? _startTime;
   DateTime? _endTime;
   bool _isPublic = true;
+  static const double _maxRouteDistanceKm = 200;
+  static const LatLng _defaultMapCenter = LatLng(55.7558, 37.6176);
+  static final Map<String, LatLng> _cityCenters = {
+    'москва': const LatLng(55.7558, 37.6176),
+    'санкт-петербург': const LatLng(59.9343, 30.3351),
+    'новосибирск': const LatLng(55.0084, 82.9357),
+    'екатеринбург': const LatLng(56.8389, 60.6057),
+    'казань': const LatLng(55.7961, 49.1064),
+    'нижний новгород': const LatLng(56.2965, 43.9361),
+    'челябинск': const LatLng(55.1644, 61.4368),
+    'красноярск': const LatLng(56.0153, 92.8932),
+    'самара': const LatLng(53.1959, 50.1002),
+    'уфа': const LatLng(54.7388, 55.9721),
+    'ростов-на-дону': const LatLng(47.2357, 39.7015),
+    'омск': const LatLng(54.9885, 73.3242),
+    'краснодар': const LatLng(45.0355, 38.9753),
+    'воронеж': const LatLng(51.6608, 39.2003),
+    'пермь': const LatLng(58.0105, 56.2502),
+    'волгоград': const LatLng(48.708, 44.5133),
+    'саратов': const LatLng(51.5336, 46.0343),
+    'тюмень': const LatLng(57.153, 65.5343),
+    'ижевск': const LatLng(56.8526, 53.2045),
+    'иркутск': const LatLng(52.2864, 104.2807),
+    'сочи': const LatLng(43.5855, 39.7231),
+    'калининград': const LatLng(54.7104, 20.4522),
+    'владивосток': const LatLng(43.1155, 131.8855),
+    'хабаровск': const LatLng(48.4802, 135.0719),
+  };
+
+  final MapController _mapController = MapController();
   final List<LatLng> _routePoints = [];
   List<LatLng> _optimizedRoutePoints = [];
   bool _isOptimizing = false;
@@ -66,21 +96,46 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
   }
 
+  String _normalizeCityName(String value) {
+    return value.trim().toLowerCase().replaceAll('ё', 'е');
+  }
+
   bool _isKnownCity(String? value) {
     if (value == null) return false;
-    final normalized = value.trim().toLowerCase().replaceAll('ё', 'е');
-    return _cities.any(
-      (city) => city.toLowerCase().replaceAll('ё', 'е') == normalized,
-    );
+    final normalized = _normalizeCityName(value);
+    return _cities.any((city) => _normalizeCityName(city) == normalized);
+  }
+
+  void _selectCity(String city) {
+    final trimmedCity = city.trim();
+    setState(() {
+      _selectedCity = trimmedCity;
+    });
+    _moveMapToCity(trimmedCity);
+  }
+
+  void _moveMapToCity(String city) {
+    final center = _cityCenters[_normalizeCityName(city)];
+    if (center == null) return;
+
+    try {
+      _mapController.move(center, 11.5);
+    } catch (_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(center, 11.5);
+      });
+    }
   }
 
   Future<void> _optimizeRoute() async {
     if (_routePoints.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text('Добавьте минимум две точки для оптимизации маршрута.')),
-      );
+      _showRouteMessage('Добавьте минимум две точки для оптимизации маршрута.');
+      return;
+    }
+
+    if (_blueLineDistance > _maxRouteDistanceKm) {
+      _showRouteTooLongMessage();
       return;
     }
 
@@ -92,43 +147,61 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       final data = await _eventService.buildRoute(_routePoints, false);
       final coordinates =
           data['features'][0]['geometry']['coordinates'] as List;
+      final routeInfo = _extractRouteInfo(data);
+
+      if (routeInfo.distanceKm > _maxRouteDistanceKm) {
+        _showRouteTooLongMessage();
+        return;
+      }
+
       setState(() {
         _optimizedRoutePoints =
             coordinates.map((coord) => LatLng(coord[1], coord[0])).toList();
         _showOptimizedRoute = true;
-        _updateRouteInfo(data);
+        _redLineDistance = routeInfo.distanceKm;
+        _redLineDuration = routeInfo.durationMinutes;
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка оптимизации маршрута: $e')),
       );
     } finally {
-      setState(() {
-        _isOptimizing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isOptimizing = false;
+        });
+      }
     }
   }
 
-  void _updateRouteInfo(Map<String, dynamic> route) {
+  ({double distanceKm, int durationMinutes}) _extractRouteInfo(
+    Map<String, dynamic> route,
+  ) {
     if (route['features'] != null && route['features'].isNotEmpty) {
-      final segments = route['features'][0]['properties']['segments'];
-      final totalDistance =
-          segments.fold(0.0, (sum, seg) => sum + seg['distance']);
-      final totalDuration =
-          segments.fold(0.0, (sum, seg) => sum + seg['duration']);
+      final segments = route['features'][0]['properties']['segments'] as List;
+      final totalDistance = segments.fold<double>(
+        0,
+        (sum, seg) => sum + ((seg['distance'] as num?)?.toDouble() ?? 0),
+      );
+      final totalDuration = segments.fold<double>(
+        0,
+        (sum, seg) => sum + ((seg['duration'] as num?)?.toDouble() ?? 0),
+      );
 
-      setState(() {
-        _redLineDistance = totalDistance / 1000; // в км
-        _redLineDuration = (totalDuration / 60).ceil(); // в минутах
-      });
+      return (
+        distanceKm: totalDistance / 1000,
+        durationMinutes: (totalDuration / 60).ceil(),
+      );
     }
+
+    return (distanceKm: 0, durationMinutes: 0);
   }
 
   void _updateBlueLineInfo() {
     if (_routePoints.length > 1) {
       final distance = _eventService.calculateDistance(_routePoints);
-      const speed = 5; // Скорость 5 км/ч
-      final duration = ((distance / speed) * 60).ceil(); // Время в минутах
+      const speed = 5;
+      final duration = ((distance / speed) * 60).ceil();
 
       setState(() {
         _blueLineDistance = distance;
@@ -140,6 +213,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _blueLineDuration = 0;
       });
     }
+  }
+
+  void _clearRoute() {
+    setState(() {
+      _routePoints.clear();
+      _optimizedRoutePoints = [];
+      _selectedMarkerIndex = null;
+      _showOptimizedRoute = false;
+      _blueLineDistance = 0;
+      _redLineDistance = 0;
+      _blueLineDuration = 0;
+      _redLineDuration = 0;
+    });
+  }
+
+  bool _isRouteTooLong(List<LatLng> points) {
+    return _eventService.calculateDistance(points) > _maxRouteDistanceKm;
+  }
+
+  void _showRouteTooLongMessage() {
+    _showRouteMessage('Маршрут не должен быть длиннее 200 км.');
+  }
+
+  void _showRouteMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   Future<void> _submitForm() async {
@@ -191,6 +291,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _showOptimizedRoute && _optimizedRoutePoints.isNotEmpty
             ? _optimizedRoutePoints
             : _routePoints;
+    final routeDistance =
+        _showOptimizedRoute && _optimizedRoutePoints.isNotEmpty
+            ? _redLineDistance
+            : _eventService.calculateDistance(routePointsToSave);
+
+    if (routeDistance > _maxRouteDistanceKm) {
+      _showRouteTooLongMessage();
+      return;
+    }
 
     final eventCreate = EventCreate(
       title: _titleController.text,
@@ -290,21 +399,32 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   void _onMapTap(TapPosition tapPosition, LatLng latLng) {
+    final candidate = List<LatLng>.from(_routePoints);
+
     if (_selectedMarkerIndex != null) {
-      setState(() {
+      candidate[_selectedMarkerIndex!] = latLng;
+    } else {
+      candidate.add(latLng);
+    }
+
+    if (candidate.length > 1 && _isRouteTooLong(candidate)) {
+      _showRouteTooLongMessage();
+      return;
+    }
+
+    setState(() {
+      if (_selectedMarkerIndex != null) {
         _routePoints[_selectedMarkerIndex!] = latLng;
         _selectedMarkerIndex = null;
-        _updateBlueLineInfo();
-        _showOptimizedRoute = false;
-      });
-      _optimizeRoute();
-    } else {
-      setState(() {
+      } else {
         _routePoints.add(latLng);
-        _updateBlueLineInfo();
-        _showOptimizedRoute = false;
-      });
-    }
+      }
+      _optimizedRoutePoints = [];
+      _showOptimizedRoute = false;
+      _redLineDistance = 0;
+      _redLineDuration = 0;
+    });
+    _updateBlueLineInfo();
   }
 
   @override
@@ -374,22 +494,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         SizedBox(height: 16),
                         Autocomplete<String>(
                           optionsBuilder: (TextEditingValue value) {
-                            final query =
-                                value.text.trim().toLowerCase().replaceAll('ё', 'е');
+                            final query = _normalizeCityName(value.text);
                             if (query.isEmpty) {
                               return _cities.take(8);
                             }
                             return _cities.where((city) {
-                              final normalized =
-                                  city.toLowerCase().replaceAll('ё', 'е');
+                              final normalized = _normalizeCityName(city);
                               return normalized.contains(query);
                             }).take(12);
                           },
-                          onSelected: (city) {
-                            setState(() {
-                              _selectedCity = city;
-                            });
-                          },
+                          onSelected: _selectCity,
                           fieldViewBuilder: (
                             context,
                             textEditingController,
@@ -407,8 +521,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                prefixIcon:
-                                    Icon(Icons.location_city, color: Colors.green),
+                                prefixIcon: Icon(Icons.location_city,
+                                    color: Colors.green),
                               ),
                               onChanged: (value) {
                                 setState(() {
@@ -607,18 +721,31 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('Маршрут*',
+                            Expanded(
+                              child: Text(
+                                'Маршрут*',
                                 style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _routePoints.isEmpty
-                                        ? Colors.red
-                                        : Colors.black)),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: _routePoints.isEmpty
+                                      ? Colors.red
+                                      : Colors.black,
+                                ),
+                              ),
+                            ),
                             if (_routePoints.isEmpty)
                               Padding(
                                 padding: EdgeInsets.only(left: 8),
-                                child: Text('(минимум 2 точки)',
-                                    style: TextStyle(color: Colors.red)),
+                                child: Text(
+                                  '(минимум 2 точки)',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            if (_routePoints.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: _clearRoute,
+                                icon: Icon(Icons.delete_sweep_outlined),
+                                label: Text('Стереть'),
                               ),
                           ],
                         ),
@@ -637,8 +764,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: FlutterMap(
+                              mapController: _mapController,
                               options: MapOptions(
-                                initialCenter: LatLng(55.7558, 37.6176),
+                                initialCenter: _defaultMapCenter,
                                 initialZoom: 13.0,
                                 onTap: _onMapTap,
                               ),
@@ -680,9 +808,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                               setState(() {
                                                 _routePoints
                                                     .removeAt(entry.key);
-                                                _updateBlueLineInfo();
+                                                _optimizedRoutePoints = [];
+                                                _selectedMarkerIndex = null;
                                                 _showOptimizedRoute = false;
+                                                _redLineDistance = 0;
+                                                _redLineDuration = 0;
                                               });
+                                              _updateBlueLineInfo();
                                             },
                                             child: Icon(
                                               Icons.location_on,
@@ -711,6 +843,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               ),
                             ),
                           ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Лимит длины маршрута: до 200 км',
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
                         SizedBox(height: 16),
                         Row(
                           children: [

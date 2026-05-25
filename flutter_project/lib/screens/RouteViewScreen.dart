@@ -187,7 +187,7 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                             .map((point) => point.coordinates)
                             .toList(),
                         strokeWidth: 4.0,
-                        color: Colors.blue.withOpacity(0.7),
+                        color: Colors.blue.withValues(alpha: 0.7),
                       ),
                     ],
                   ),
@@ -205,7 +205,7 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.blue.withOpacity(0.5),
+                                color: Colors.blue.withValues(alpha: 0.5),
                                 spreadRadius: 3,
                                 blurRadius: 7,
                                 offset: Offset(0, 3),
@@ -234,8 +234,8 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                                 horizontal: 4,
                                 vertical: 2), // Отступы для текста
                             decoration: BoxDecoration(
-                              color:
-                                  Colors.white.withOpacity(0.8), // Фон текста
+                              color: Colors.white
+                                  .withValues(alpha: 0.8), // Фон текста
                               borderRadius:
                                   BorderRadius.circular(4), // Скругление углов
                             ),
@@ -272,8 +272,8 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                                   horizontal: 4,
                                   vertical: 2), // Отступы для текста
                               decoration: BoxDecoration(
-                                color:
-                                    Colors.white.withOpacity(0.8), // Фон текста
+                                color: Colors.white
+                                    .withValues(alpha: 0.8), // Фон текста
                                 borderRadius: BorderRadius.circular(
                                     4), // Скругление углов
                               ),
