@@ -56,7 +56,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Редактировать биографию'),
+        title: const Text(
+          'Редактировать биографию',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
         content: TextField(
           controller: _bioController,
           maxLines: 4,
@@ -388,8 +392,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: textTheme.titleLarge?.copyWith(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -417,11 +419,7 @@ class _OwnProfileHeroCard extends StatelessWidget {
                           child:
                               Text(isBioExpanded ? 'Свернуть' : 'Развернуть'),
                         ),
-                      TextButton.icon(
-                        onPressed: onEditBioTap,
-                        icon: const Icon(Icons.edit_note),
-                        label: const Text('Био'),
-                      ),
+                      _ProfileBioButton(onPressed: onEditBioTap),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
@@ -484,6 +482,33 @@ class _OwnProfileHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileBioButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _ProfileBioButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: TextButton(
+        onPressed: onPressed,
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.edit_note),
+              SizedBox(width: AppSpacing.xs),
+              Text('Редактировать биографию'),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -605,8 +630,8 @@ class _ProfileActionCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _ProfileActionTile(
             icon: Icons.edit_note,
-            title: 'Редактировать био',
-            subtitle: 'Обновить описание профиля',
+            title: 'Редактировать биографию',
+            subtitle: 'Описание профиля',
             color: AppColors.primary,
             onTap: onEditBioTap,
           ),
@@ -668,8 +693,6 @@ class _ProfileActionTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -677,8 +700,6 @@ class _ProfileActionTile extends StatelessWidget {
                     const SizedBox(height: AppSpacing.xxs),
                     Text(
                       subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -734,8 +755,10 @@ class _ActivityMetric extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: AppSpacing.xxs),
-            _ProfileFittedText(
+            Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -779,8 +802,10 @@ class _ProfileStat extends StatelessWidget {
               ),
         ),
         const SizedBox(height: AppSpacing.xxs),
-        _ProfileFittedText(
+        Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -796,30 +821,6 @@ class _ProfileStat extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         child: content,
-      ),
-    );
-  }
-}
-
-class _ProfileFittedText extends StatelessWidget {
-  final String text;
-  final TextStyle? style;
-
-  const _ProfileFittedText(this.text, {this.style});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.center,
-        child: Text(
-          text,
-          maxLines: 1,
-          softWrap: false,
-          style: style,
-        ),
       ),
     );
   }
