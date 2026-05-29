@@ -1,10 +1,14 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from datetime import datetime
+from math import atan2, cos, radians, sin, sqrt
 from typing import Optional, List
 from enum import Enum
 
 from app.event.models_event import Event
 from app.event.cities import canonical_city
+
+MAX_ROUTE_DISTANCE_KM = 200
+EARTH_RADIUS_KM = 6371
 
 # Pydantic модели
 class EventType(str, Enum):
@@ -19,8 +23,8 @@ class ApprovedType(str, Enum):
     DENIED = "DENIED"
 
 class RoutePoint(BaseModel):
-    latitude: float = Field(..., description="Широта точки маршрута")
-    longitude: float = Field(..., description="Долгота точки маршрута")
+    latitude: float = Field(..., ge=-90, le=90, description="Широта точки маршрута")
+    longitude: float = Field(..., ge=-180, le=180, description="Долгота точки маршрута")
     timestamp: Optional[datetime] = Field(None, description="Временная метка точки")
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +52,17 @@ class EventCreate(BaseModel):
         if city is None:
             raise ValueError("Выберите город из списка")
         return city
+
+    @field_validator("route_data")
+    @classmethod
+    def validate_route_distance(cls, value):
+        if len(value) < 2:
+            return value
+
+        distance_km = _calculate_route_distance_km(value)
+        if distance_km > MAX_ROUTE_DISTANCE_KM:
+            raise ValueError(f"Маршрут не должен быть длиннее {MAX_ROUTE_DISTANCE_KM} км")
+        return value
 
 class EventRead(BaseModel):
     id: int
@@ -107,6 +122,30 @@ class EventParticipantCreate(BaseModel):
     event_id: int = Field(..., description="ID мероприятия")
     user_id: int = Field(..., description="ID пользователя")
     approved: ApprovedType = Field(default=ApprovedType.AWAITS, description="Статус заявки")
+
+
+def _calculate_route_distance_km(points: List[RoutePoint]) -> float:
+    total_distance = 0.0
+
+    for index in range(len(points) - 1):
+        start = points[index]
+        end = points[index + 1]
+        lat1 = radians(start.latitude)
+        lon1 = radians(start.longitude)
+        lat2 = radians(end.latitude)
+        lon2 = radians(end.longitude)
+
+        d_lat = lat2 - lat1
+        d_lon = lon2 - lon1
+        a = (
+            sin(d_lat / 2) ** 2
+            + cos(lat1) * cos(lat2) * sin(d_lon / 2) ** 2
+        )
+        a = min(1.0, max(0.0, a))
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        total_distance += EARTH_RADIUS_KM * c
+
+    return total_distance
 
 
 def _is_event_expired(start_time: Optional[datetime], end_time: Optional[datetime]) -> bool:

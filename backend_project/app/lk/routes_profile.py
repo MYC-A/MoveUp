@@ -665,42 +665,48 @@ async def get_user_notifications(
     db: AsyncSession = Depends(get_db)
 ):
     # Получаем мероприятия, которые организовал текущий пользователь
-    organized_events = await db.execute(
+    organized_events_result = await db.execute(
         select(Event.id, Event.title)  # Выбираем ID и название мероприятий
         .filter(Event.organizer_id == current_user)
     )
-    organized_events = organized_events.all()  # Получаем список кортежей (id, title)
+    organized_events = organized_events_result.all()  # Получаем список кортежей (id, title)
+    organized_event_titles = {event_id: title for event_id, title in organized_events}
+    organized_event_ids = list(organized_event_titles.keys())
 
     # Получаем новые заявки на мероприятия, которые организовал пользователь
-    new_applications = await db.execute(
-        select(EventParticipant.event_id, func.count())
-        .filter(
-            EventParticipant.event_id.in_([event.id for event in organized_events]),
-            EventParticipant.approved == ApprovedType.AWAITS,
-            EventParticipant.is_new == True  # Только новые заявки
+    if organized_event_ids:
+        new_applications_result = await db.execute(
+            select(EventParticipant.event_id, func.count())
+            .filter(
+                EventParticipant.event_id.in_(organized_event_ids),
+                EventParticipant.approved == ApprovedType.AWAITS,
+                EventParticipant.is_new == True  # Только новые заявки
+            )
+            .group_by(EventParticipant.event_id)
         )
-        .group_by(EventParticipant.event_id)
-    )
-    new_applications = new_applications.all()  # Список кортежей (event_id, count)
+        new_applications = new_applications_result.all()  # Список кортежей (event_id, count)
+    else:
+        new_applications = []
 
     # Получаем изменения в статусе заявок, которые подал пользователь
-    user_applications_changes = await db.execute(
-        select(EventParticipant.event_id, func.count())
+    user_applications_changes_result = await db.execute(
+        select(EventParticipant.event_id, Event.title, func.count())
+        .join(Event, EventParticipant.event_id == Event.id)
         .filter(
             EventParticipant.user_id == current_user,
             EventParticipant.approved != ApprovedType.AWAITS,
             EventParticipant.status_changed == True  # Только изменения статуса
         )
-        .group_by(EventParticipant.event_id)
+        .group_by(EventParticipant.event_id, Event.title)
     )
-    user_applications_changes = user_applications_changes.all()  # Список кортежей (event_id, count)
+    user_applications_changes = user_applications_changes_result.all()
 
     # Формируем ответ
     return {
         "new_applications": [
             {
                 "event_id": event_id,
-                "event_title": next(event.title for event in organized_events if event.id == event_id),
+                "event_title": organized_event_titles.get(event_id, "Мероприятие"),
                 "count": count,
                 "is_new": True  # Флаг для новых уведомлений
             }
@@ -709,11 +715,11 @@ async def get_user_notifications(
         "user_applications_changes": [
             {
                 "event_id": event_id,
-                "event_title": next(event.title for event in organized_events if event.id == event_id),
+                "event_title": event_title,
                 "count": count,
                 "is_new": True  # Флаг для новых уведомлений
             }
-            for event_id, count in user_applications_changes
+            for event_id, event_title, count in user_applications_changes
         ]
     }
 

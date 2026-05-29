@@ -60,6 +60,8 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!mounted) return;
+
     if (!serviceEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Пожалуйста, включите GPS')),
@@ -68,8 +70,12 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
+    if (!mounted) return;
+
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
+      if (!mounted) return;
+
       if (permission == LocationPermission.denied) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Доступ к местоположению отклонен')),
@@ -86,18 +92,23 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
     }
 
     Position position = await Geolocator.getCurrentPosition();
+    if (!mounted) return;
+
     setState(() {
       _currentPosition = LatLng(position.latitude, position.longitude);
     });
 
     _positionStreamSubscription =
         Geolocator.getPositionStream().listen((Position position) {
+      if (!mounted) return;
+
+      final currentPosition = LatLng(position.latitude, position.longitude);
       setState(() {
-        _currentPosition = LatLng(position.latitude, position.longitude);
+        _currentPosition = currentPosition;
       });
 
       if (_isFollowing) {
-        _mapController.move(_currentPosition!, _mapController.camera.zoom);
+        _mapController.move(currentPosition, _mapController.camera.zoom);
       }
     });
   }

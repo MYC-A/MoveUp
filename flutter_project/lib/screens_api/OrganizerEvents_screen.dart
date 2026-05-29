@@ -82,13 +82,10 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
     try {
       final data = await lkService.fetchEvents(skipEvents, limitEvents);
       final loadedEvents = List<dynamic>.from(data['events'] ?? const []);
-      final activeEvents = loadedEvents.where((event) {
-        return event is Map && !_isExpiredEvent(event);
-      }).toList();
 
       if (!mounted) return;
       setState(() {
-        events.addAll(activeEvents);
+        events.addAll(loadedEvents);
         skipEvents += loadedEvents.length;
         hasMoreEvents = loadedEvents.length == limitEvents;
         isLoadingEvents = false;
@@ -125,13 +122,10 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
       );
       final loadedApplications =
           List<dynamic>.from(data['applications'] ?? const []);
-      final activeApplications = loadedApplications.where((application) {
-        return application is Map && !_isExpiredApplication(application);
-      }).toList();
 
       if (!mounted) return;
       setState(() {
-        userApplications.addAll(activeApplications);
+        userApplications.addAll(loadedApplications);
         skipApplications += loadedApplications.length;
         final hasMore = data['has_more'];
         hasMoreApplications = hasMore is bool
@@ -444,28 +438,6 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
         ],
       ),
     );
-  }
-
-  bool _isExpiredEvent(Map<dynamic, dynamic> event) {
-    if (event['is_expired'] == true) return true;
-    final finish =
-        _parseDate(event['end_time']) ?? _parseDate(event['start_time']);
-    if (finish == null) return false;
-    return finish.isBefore(DateTime.now());
-  }
-
-  bool _isExpiredApplication(Map<dynamic, dynamic> application) {
-    if (application['is_expired'] == true) return true;
-    final finish = _parseDate(application['event_end_time']) ??
-        _parseDate(application['event_start_time']);
-    if (finish == null) return false;
-    return finish.isBefore(DateTime.now());
-  }
-
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value.toLocal();
-    return DateTime.tryParse(value.toString())?.toLocal();
   }
 
   String _formatDateRange(dynamic start, dynamic end) {

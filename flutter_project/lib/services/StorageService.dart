@@ -8,6 +8,7 @@ import '../models/RoutePoint.dart';
 
 class StorageService {
   static const String _tableName = 'routes';
+  static const int _databaseVersion = 2;
   static Database? _database;
 
   // Получение размера базы данных
@@ -85,8 +86,9 @@ class StorageService {
 
       final db = await openDatabase(
         path,
-        version: 1,
+        version: _databaseVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
         onOpen: (db) async {
           print('База данных открыта, версия: ${await db.getVersion()}');
         },
@@ -102,7 +104,9 @@ class StorageService {
       print('Таблица $_tableName существует: $tableExists');
       if (!tableExists) {
         print('Создаём таблицу $_tableName');
-        await _onCreate(db, 1);
+        await _onCreate(db, _databaseVersion);
+      } else {
+        await _ensureRouteMetadataColumns(db);
       }
 
       return db;
@@ -125,7 +129,8 @@ class StorageService {
           duration INTEGER,
           description TEXT,
           photos TEXT,
-          is_downloaded INTEGER DEFAULT 0
+          is_downloaded INTEGER DEFAULT 0,
+          source_post_id TEXT
         )
       ''');
       print('Таблица создана: $_tableName');
@@ -133,6 +138,47 @@ class StorageService {
       print('Ошибка при создании таблицы: $e');
       rethrow;
     }
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _ensureRouteMetadataColumns(db);
+    }
+  }
+
+  Future<void> _ensureRouteMetadataColumns(Database db) async {
+    final tableExists = (Sqflite.firstIntValue(
+              await db.rawQuery(
+                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$_tableName'"),
+            ) ??
+            0) >
+        0;
+    if (!tableExists) {
+      await _onCreate(db, _databaseVersion);
+      return;
+    }
+
+    final columns = await db.rawQuery('PRAGMA table_info($_tableName)');
+    final columnNames = columns
+        .map((column) => column['name']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    if (!columnNames.contains('is_downloaded')) {
+      await db.execute(
+        'ALTER TABLE $_tableName ADD COLUMN is_downloaded INTEGER DEFAULT 0',
+      );
+    }
+
+    if (!columnNames.contains('source_post_id')) {
+      await db
+          .execute('ALTER TABLE $_tableName ADD COLUMN source_post_id TEXT');
+    }
+
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_source_post_id '
+      'ON $_tableName(source_post_id)',
+    );
   }
 
   // Сохранение маршрута
@@ -154,7 +200,7 @@ class StorageService {
             'duration': route.duration.inSeconds,
             'description': route.description,
             'photos': photosJson,
-            'is_downloaded': route.is_downloaded ?? 0,
+            'is_downloaded': route.is_downloaded,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -181,6 +227,7 @@ class StorageService {
       final pointsJson =
           jsonEncode(route.points.map((point) => point.toJson()).toList());
       final photosJson = jsonEncode(route.photos);
+      final sourcePostId = route.id.trim().isEmpty ? null : route.id.trim();
 
       await db.transaction((txn) async {
         await txn.insert(
@@ -194,6 +241,7 @@ class StorageService {
             'description': route.description,
             'photos': photosJson,
             'is_downloaded': 1,
+            'source_post_id': sourcePostId,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -331,7 +379,7 @@ class StorageService {
             'duration': route.duration.inSeconds,
             'description': route.description,
             'photos': photosJson,
-            'is_downloaded': route.is_downloaded ?? 0,
+            'is_downloaded': route.is_downloaded,
           },
           where: 'id = ?',
           whereArgs: [route.id],
