@@ -775,6 +775,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   urlTemplate:
                                       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                   subdomains: ['a', 'b', 'c'],
+                                  userAgentPackageName:
+                                      'com.example.runTracker',
                                 ),
                                 PolylineLayer(
                                   polylines: [
