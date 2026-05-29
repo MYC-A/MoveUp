@@ -12,6 +12,7 @@ import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:flutter_application_1/widgets/UserPosts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services_api/lk_service.dart';
@@ -29,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final LkService lkService = LkService();
   final TextEditingController _bioController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
+  final ScrollController _scrollController = ScrollController();
 
   late Future<Map<String, dynamic>> _profileFuture;
   bool _isBioExpanded = false;
@@ -42,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _bioController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -49,6 +52,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _profileFuture = lkService.fetchProfile();
     });
+  }
+
+  Future<void> _handleRefresh() async {
+    final future = lkService.fetchProfile();
+    setState(() {
+      _profileFuture = future;
+    });
+    await future;
   }
 
   void _showEditBioDialog(String? currentBio) {
@@ -216,40 +227,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 AppConfig.mediaBaseUrlWithoutScheme,
               );
           final bio = (user['bio'] ?? 'Нет биографии').toString();
+          final userId = (user['id'] as num?)?.toInt();
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.md,
-              AppSpacing.xxl,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _OwnProfileHeroCard(
-                  user: user,
-                  stats: stats,
-                  avatarUrl: avatarUrl,
-                  bio: bio,
-                  isBioExpanded: _isBioExpanded,
-                  onBioToggle: () {
-                    setState(() {
-                      _isBioExpanded = !_isBioExpanded;
-                    });
-                  },
-                  onFollowersTap: _openFollowers,
-                  onFollowingTap: _openFollowing,
-                  onEventsTap: _openOrganizerEvents,
+          return RefreshIndicator(
+            onRefresh: _handleRefresh,
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                      AppSpacing.md,
+                      AppSpacing.lg,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _OwnProfileHeroCard(
+                          user: user,
+                          stats: stats,
+                          avatarUrl: avatarUrl,
+                          bio: bio,
+                          isBioExpanded: _isBioExpanded,
+                          onBioToggle: () {
+                            setState(() {
+                              _isBioExpanded = !_isBioExpanded;
+                            });
+                          },
+                          onFollowersTap: _openFollowers,
+                          onFollowingTap: _openFollowing,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        _ActivitySummaryCard(stats: stats),
+                        const SizedBox(height: AppSpacing.lg),
+                        _ProfileActionCard(
+                          onEventsTap: _openOrganizerEvents,
+                          onEditBioTap: () => _showEditBioDialog(user['bio']),
+                          onAvatarTap: _showImageSourceDialog,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'Мои публикации',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                _ActivitySummaryCard(stats: stats),
-                const SizedBox(height: AppSpacing.lg),
-                _ProfileActionCard(
-                  onEventsTap: _openOrganizerEvents,
-                  onEditBioTap: () => _showEditBioDialog(user['bio']),
-                  onAvatarTap: _showImageSourceDialog,
-                ),
+                if (userId != null)
+                  UserPosts(
+                    userId: userId,
+                    scrollController: _scrollController,
+                  )
+                else
+                  const SliverToBoxAdapter(child: SizedBox.shrink()),
               ],
             ),
           );
@@ -268,7 +301,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
   final VoidCallback onBioToggle;
   final VoidCallback onFollowersTap;
   final VoidCallback onFollowingTap;
-  final VoidCallback onEventsTap;
 
   const _OwnProfileHeroCard({
     required this.user,
@@ -279,7 +311,6 @@ class _OwnProfileHeroCard extends StatelessWidget {
     required this.onBioToggle,
     required this.onFollowersTap,
     required this.onFollowingTap,
-    required this.onEventsTap,
   });
 
   @override
@@ -430,11 +461,11 @@ class _OwnProfileHeroCard extends StatelessWidget {
                       const _ProfileStatsDivider(),
                       Expanded(
                         child: _ProfileStat(
-                          icon: Icons.event_available_outlined,
+                          icon: Icons.article_outlined,
                           value: '${stats['posts_count'] ?? 0}',
                           label: 'Посты',
                           color: AppColors.activity,
-                          onTap: onEventsTap,
+                          onTap: null,
                         ),
                       ),
                     ],

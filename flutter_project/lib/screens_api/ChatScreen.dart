@@ -173,10 +173,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoadingOlder = true;
     });
 
-    final oldMaxScrollExtent = _scrollController.hasClients
-        ? _scrollController.position.maxScrollExtent
-        : 0.0;
-
     try {
       final olderMessages = await _chatService.getMessagesBetweenUsers(
         widget.recipientId,
@@ -198,18 +194,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoadingOlder = false;
       });
       _emitMessages();
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-
-        final scrollDelta =
-            _scrollController.position.maxScrollExtent - oldMaxScrollExtent;
-        final targetOffset = (_scrollController.offset + scrollDelta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.jumpTo(targetOffset.toDouble());
-      });
+      // В reverse:true ListView позиция привязана к низу, поэтому ручная
+      // коррекция скролла не нужна (раньше она вызывала лавинообразную
+      // догрузку до начала переписки с одного свайпа).
     } catch (e) {
       debugPrint('Ошибка загрузки старых сообщений: $e');
       if (mounted) {

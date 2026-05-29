@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
@@ -140,10 +141,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       _isLoadingOlder = true;
     });
 
-    final oldMaxScrollExtent = _scrollController.hasClients
-        ? _scrollController.position.maxScrollExtent
-        : 0.0;
-
     try {
       final olderMessages = await _chatService.getGroupMessages(
         widget.groupChatId,
@@ -165,18 +162,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         _isLoadingOlder = false;
       });
       _emitMessages();
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-
-        final scrollDelta =
-            _scrollController.position.maxScrollExtent - oldMaxScrollExtent;
-        final targetOffset = (_scrollController.offset + scrollDelta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.jumpTo(targetOffset.toDouble());
-      });
+      // В reverse:true ListView позиция привязана к низу, поэтому при добавлении
+      // старых сообщений сверху вьюпорт не сдвигается и ручная коррекция скролла
+      // не нужна (раньше она вызывала лавинообразную догрузку до начала чата).
     } catch (e) {
       debugPrint('Ошибка загрузки старых групповых сообщений: $e');
       if (mounted) {
@@ -263,6 +251,71 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось отправить сообщение')),
+      );
+    }
+  }
+
+  Future<void> _showParticipants() async {
+    try {
+      final participants =
+          await _chatService.getGroupChatParticipants(widget.groupChatId);
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        builder: (context) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Text(
+                    'Участники (${participants.length})',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: participants.length,
+                    itemBuilder: (context, index) {
+                      final participant = participants[index];
+                      final rawAvatar =
+                          (participant['avatar_url'] ?? '').toString();
+                      final avatarUrl = rawAvatar.isEmpty
+                          ? ''
+                          : rawAvatar.replaceAll('localhost:9000',
+                              AppConfig.mediaBaseUrlWithoutScheme);
+                      final isMe = participant['id'] == currentUserId;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: avatarUrl.isNotEmpty
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                          child: avatarUrl.isEmpty
+                              ? const Icon(Icons.person)
+                              : null,
+                        ),
+                        title: Text(
+                          '${participant['full_name'] ?? 'Пользователь'}'
+                          '${isMe ? ' (вы)' : ''}',
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить участников: $e')),
       );
     }
   }
@@ -384,8 +437,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   ],
                 ),
                 child: Column(
-                  crossAxisAlignment:
-                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  // Текст и время внутри пузыря всегда выравниваем по левому краю —
+                  // сторону сообщения задаёт Align снаружи (моё — справа, чужое — слева).
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -483,7 +537,22 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(widget.groupChatName),
+        title: InkWell(
+          onTap: _showParticipants,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  widget.groupChatName,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.expand_more, size: 20),
+            ],
+          ),
+        ),
         actions: [
           AppIconButton(
             icon: Icons.add,

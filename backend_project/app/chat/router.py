@@ -437,3 +437,14 @@ async def leave_group_chat(
         group_chat_id, current_user.id
     )
     return {"status": "ok", "msg": "Left group chat"}
+
+
+@router.get("/group_chats/{group_chat_id}/participants")
+async def get_group_chat_participants(
+    group_chat_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Список участников группового чата (имя + аватар). Только для участников."""
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+    return await GroupMessagesDAO.get_group_chat_participant_details(group_chat_id)

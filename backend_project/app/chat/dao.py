@@ -318,6 +318,28 @@ class GroupMessagesDAO(BaseDAO):
             return result.first() is not None
 
     @classmethod
+    async def get_group_chat_participant_details(cls, group_chat_id: int):
+        """Список участников чата с именем и аватаром (для просмотра состава)."""
+        async with async_session_maker() as session:
+            query = (
+                select(User.id, User.full_name, User.avatar_url)
+                .join(
+                    group_chat_participants,
+                    group_chat_participants.c.user_id == User.id,
+                )
+                .where(group_chat_participants.c.group_chat_id == group_chat_id)
+            )
+            result = await session.execute(query)
+            return [
+                {
+                    "id": row.id,
+                    "full_name": row.full_name,
+                    "avatar_url": row.avatar_url,
+                }
+                for row in result.all()
+            ]
+
+    @classmethod
     async def get_group_chat_name(cls, group_chat_id: int) -> str | None:
         async with async_session_maker() as session:
             query = select(GroupChat.name).where(GroupChat.id == group_chat_id)

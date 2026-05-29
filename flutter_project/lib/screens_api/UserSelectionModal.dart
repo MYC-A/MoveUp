@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
 
 class UserSelectionModal extends StatefulWidget {
@@ -79,9 +80,16 @@ class _UserSelectionModalState extends State<UserSelectionModal> {
           itemBuilder: (context, index) {
             if (index < followers.length) {
               final follower = followers[index];
+              final rawAvatar = (follower['avatar_url'] ?? '').toString();
+              final avatarUrl = rawAvatar.isEmpty
+                  ? ''
+                  : rawAvatar.replaceAll(
+                      'localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
               return ListTile(
                 leading: CircleAvatar(
-                  backgroundImage: NetworkImage(follower['avatar_url'] ?? ''),
+                  backgroundImage:
+                      avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl.isEmpty ? const Icon(Icons.person) : null,
                 ),
                 title: Text(follower['full_name'] ?? 'Нет имени'),
                 onTap: () {

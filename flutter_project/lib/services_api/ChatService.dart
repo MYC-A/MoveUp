@@ -294,6 +294,26 @@ class ChatService {
     }
   }
 
+  // Список участников группового чата (GET /chat/group_chats/{id}/participants)
+  Future<List<Map<String, dynamic>>> getGroupChatParticipants(
+      int groupChatId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+    final url =
+        Uri.parse('$baseUrl/chat/group_chats/$groupChatId/participants');
+    final response = await http.get(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode == 200) {
+      final body = utf8.decode(response.bodyBytes);
+      return List<Map<String, dynamic>>.from(json.decode(body));
+    }
+    throw Exception('Ошибка загрузки участников: ${response.body}');
+  }
+
   // Покинуть групповой чат (POST /chat/group_chats/{group_chat_id}/leave)
   Future<void> leaveGroupChat(int groupChatId) async {
     final token = await storage.read(key: 'access_token');
