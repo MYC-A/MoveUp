@@ -407,110 +407,92 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final senderName = message['sender_name']?.toString() ?? 'Пользователь';
     final createdAt = message['created_at']?.toString() ?? '';
 
+    final content = message['content']?.toString() ?? '';
+    final textColor = isTemp
+        ? AppColors.textMuted
+        : (isMe ? AppColors.surface : AppColors.textPrimary);
+    final metaColor = isMe
+        ? AppColors.surface.withValues(alpha: 0.75)
+        : AppColors.textMuted;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: AppSpacing.xxs,
-        horizontal: AppSpacing.md,
-      ),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
-          ),
-          child: Column(
-            crossAxisAlignment:
-                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              if (!isMe && !isTemp)
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: AppSpacing.xs,
-                    bottom: AppSpacing.xxs,
-                  ),
-                  child: Text(
-                    senderName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-                decoration: BoxDecoration(
-                  color: isMe ? AppColors.primary : AppColors.surface,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(20),
-                    topRight: const Radius.circular(20),
-                    bottomLeft: Radius.circular(isMe ? 20 : AppRadii.md),
-                    bottomRight: Radius.circular(isMe ? AppRadii.md : 20),
-                  ),
-                  border: isMe ? null : Border.all(color: AppColors.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  // Текст и время внутри пузыря всегда выравниваем по левому краю —
-                  // сторону сообщения задаёт Align снаружи (моё — справа, чужое — слева).
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      message['content']?.toString() ?? '',
-                      style: TextStyle(
-                        color: isTemp
-                            ? AppColors.textMuted
-                            : (isMe
-                                ? AppColors.surface
-                                : AppColors.textPrimary),
-                        fontSize: 15.5,
-                        height: 1.28,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatDateTime(createdAt),
-                          style: TextStyle(
-                            color: isMe
-                                ? AppColors.surface.withValues(alpha: 0.72)
-                                : AppColors.textMuted,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (isMe && !isTemp) ...[
-                          const SizedBox(width: AppSpacing.xxs),
-                          Icon(
-                            isRead ? Icons.done_all : Icons.done,
-                            color: isRead
-                                ? AppColors.routeSoft
-                                : AppColors.surface.withValues(alpha: 0.72),
-                            size: 16,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 2, AppSpacing.md, 2),
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe && !isTemp)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, bottom: 2),
+              child: Text(
+                senderName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
+            ),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.76,
+            ),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: isMe ? AppColors.primary : AppColors.surface,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(isMe ? 18 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 18),
+                ),
+                border: isMe ? null : Border.all(color: AppColors.border),
+              ),
+              // Время «приклеено» к концу текста и переносится вниз, если строка
+              // не помещается — компактный вид как в обычных мессенджерах.
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                children: [
+                  Text(
+                    content,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 15.5,
+                      height: 1.25,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatDateTime(createdAt),
+                        style: TextStyle(
+                          color: metaColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (isMe && !isTemp) ...[
+                        const SizedBox(width: 3),
+                        Icon(
+                          isRead ? Icons.done_all : Icons.done,
+                          color: isRead ? AppColors.routeSoft : metaColor,
+                          size: 14,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

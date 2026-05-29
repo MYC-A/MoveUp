@@ -287,6 +287,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
+    // Сверяем с серверным временем (часы телефона могут быть неверны), с
+    // фоллбеком на локальное время, если запрос не удался.
+    final serverNow = await _eventService.getServerTime();
+    if (!mounted) return;
+    final now = serverNow ?? DateTime.now();
+    if (_startTime!.isBefore(now.subtract(const Duration(minutes: 1)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Время начала не может быть в прошлом'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (_endTime!.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Время окончания не может быть в прошлом'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final routePointsToSave =
         _showOptimizedRoute && _optimizedRoutePoints.isNotEmpty
             ? _optimizedRoutePoints

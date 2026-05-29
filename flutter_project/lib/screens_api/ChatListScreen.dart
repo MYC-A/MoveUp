@@ -323,7 +323,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ChatScreen(recipientId: userId),
+            builder: (context) =>
+                ChatScreen(recipientId: userId, recipientName: fullName),
           ),
         ).then((_) {
           _loadUnreadMessagesCount();

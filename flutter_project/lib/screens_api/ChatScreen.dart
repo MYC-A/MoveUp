@@ -12,7 +12,11 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 class ChatScreen extends StatefulWidget {
   final int recipientId;
 
-  ChatScreen({required this.recipientId});
+  /// Имя собеседника, если оно уже известно — чтобы заголовок показался сразу,
+  /// без мигания «Чат» во время загрузки профиля.
+  final String? recipientName;
+
+  ChatScreen({required this.recipientId, this.recipientName});
 
   @override
   _ChatScreenState createState() => _ChatScreenState();
@@ -40,6 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _recipientName = widget.recipientName;
     PushNotificationService.setActiveConversation(
       conversationType: 'personal',
       conversationId: widget.recipientId,
@@ -106,6 +111,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadRecipientName() async {
     if (widget.recipientId == currentUserId) return;
+    // Имя уже передали — не дёргаем сеть и не мигаем заголовком.
+    if (_recipientName != null && _recipientName!.isNotEmpty) return;
     try {
       final profile = await _lkService.fetchUserProfile(widget.recipientId);
       final name = profile['user']?['full_name']?.toString();
@@ -298,62 +305,51 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = message['content']?.toString() ?? '';
     final time = _formatMessageTime(message['created_at']?.toString());
 
+    final metaColor = isMe
+        ? AppColors.surface.withValues(alpha: 0.75)
+        : AppColors.textMuted;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: AppSpacing.xxs,
-        horizontal: AppSpacing.md,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 2, AppSpacing.md, 2),
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
           ),
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.sm,
-            ),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: isMe ? AppColors.primary : AppColors.surface,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(20),
-                topRight: const Radius.circular(20),
-                bottomLeft: Radius.circular(isMe ? 20 : AppRadii.md),
-                bottomRight: Radius.circular(isMe ? AppRadii.md : 20),
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isMe ? 18 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 18),
               ),
               border: isMe ? null : Border.all(color: AppColors.border),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
             ),
-            child: Column(
-              crossAxisAlignment:
-                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.end,
               children: [
                 Text(
                   text,
                   style: TextStyle(
                     fontSize: 15.5,
-                    height: 1.28,
+                    height: 1.25,
                     color: isMe ? AppColors.surface : AppColors.textPrimary,
                   ),
                 ),
                 if (time != null) ...[
-                  const SizedBox(height: AppSpacing.xxs),
+                  const SizedBox(width: 8),
                   Text(
                     time,
                     style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: isMe
-                          ? AppColors.surface.withValues(alpha: 0.72)
-                          : AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: metaColor,
                     ),
                   ),
                 ],

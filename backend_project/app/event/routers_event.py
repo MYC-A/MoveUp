@@ -225,6 +225,13 @@ async def get_events(
 async def get_event_cities():
     return list(EVENT_CITIES)
 
+
+@router.get("/server_time")
+async def get_server_time():
+    """Текущее серверное время (UTC) — чтобы клиент валидировал даты не по
+    возможно неверным часам телефона."""
+    return {"now": datetime.utcnow().isoformat() + "Z"}
+
 @router.get("/{event_id}", response_model=EventRead)
 async def get_event_details(
     event_id: int,

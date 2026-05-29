@@ -163,16 +163,18 @@ class StorageService {
     );
   }
 
-  // Сохранение маршрута
-  Future<void> saveRoute(RunningRoute route) async {
+  // Сохранение маршрута. Возвращает id вставленной записи (для последующего
+  // открытия/редактирования маршрута, например добавления фото).
+  Future<int> saveRoute(RunningRoute route) async {
     final db = await database;
     try {
       final pointsJson =
           jsonEncode(route.points.map((point) => point.toJson()).toList());
       final photosJson = jsonEncode(route.photos);
 
+      int insertedId = 0;
       await db.transaction((txn) async {
-        await txn.insert(
+        insertedId = await txn.insert(
           _tableName,
           {
             'name': route.name,
@@ -189,6 +191,7 @@ class StorageService {
       });
 
       debugPrint('Маршрут сохранён: ${route.name}');
+      return insertedId;
     } catch (e) {
       debugPrint('Ошибка сохранения маршрута: $e');
       rethrow;

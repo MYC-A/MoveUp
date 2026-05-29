@@ -32,6 +32,7 @@ class _UserProfilesState extends State<UserProfiles> {
 
   bool isFollowing = false;
   bool isLoadingFollowStatus = true;
+  String? _userFullName;
 
   final customCacheManager = CacheManager(
     Config(
@@ -44,7 +45,13 @@ class _UserProfilesState extends State<UserProfiles> {
   @override
   void initState() {
     super.initState();
-    _profileFuture = lkUsersService.fetchUserProfile(widget.userId);
+    _profileFuture = lkUsersService.fetchUserProfile(widget.userId)
+      ..then((p) {
+        final name = p['user']?['full_name']?.toString();
+        if (mounted && name != null && name.isNotEmpty) {
+          _userFullName = name;
+        }
+      });
     _socialStatsFuture = _fetchSocialStats();
     _checkFollowStatus();
   }
@@ -122,7 +129,10 @@ class _UserProfilesState extends State<UserProfiles> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChatScreen(recipientId: widget.userId),
+        builder: (context) => ChatScreen(
+          recipientId: widget.userId,
+          recipientName: _userFullName,
+        ),
       ),
     );
   }

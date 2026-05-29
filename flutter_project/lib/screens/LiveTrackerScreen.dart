@@ -9,6 +9,7 @@ import '../services/GpsService.dart';
 import '../services/StorageService.dart';
 import '../models/RunningRoute.dart';
 import 'CreatePostScreen.dart';
+import 'RouteDetailsScreen.dart';
 import 'RouteHistoryScreen.dart';
 import '../models/RoutePoint.dart';
 import '../theme/app_colors.dart';
@@ -686,77 +687,135 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
             timestamp: pos.timestamp))
         .toList();
 
-    // Запрос имени
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final ctrl = TextEditingController();
-        return AlertDialog(
-          title: Text('Название маршрута'),
-          content: TextField(
-              controller: ctrl,
-              decoration: InputDecoration(hintText: 'Введите название')),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: Text('Отмена')),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, ctrl.text),
-                child: Text('Сохранить')),
-          ],
-        );
-      },
-    );
+    // Запрос имени (в стиле приложения).
+    final name = await _askRouteName();
 
     if (name == null || name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Маршрут не сохранён: имя не указано')),
+        const SnackBar(content: Text('Маршрут не сохранён: имя не указано')),
       );
       _clearRoute();
       return;
     }
 
-    // Сохраняем
+    // Сохраняем и получаем id, чтобы можно было открыть/редактировать маршрут.
     _route!.name = name;
-    final savedRoute = _route!;
-    await _storageService.saveRoute(savedRoute);
+    final base = _route!;
+    final savedId = await _storageService.saveRoute(base);
     if (!mounted) {
       _clearRoute();
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Маршрут сохранён')),
-    );
 
-    // Сразу предлагаем добавить фото и создать пост (как в беговых приложениях).
-    final createPost = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Маршрут сохранён'),
-        content: const Text(
-            'Добавить фото и создать пост по этой пробежке?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Позже'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Создать пост'),
-          ),
-        ],
-      ),
+    final savedRoute = RunningRoute(
+      id: savedId > 0 ? savedId.toString() : base.id,
+      name: base.name,
+      points: base.points,
+      distance: base.distance,
+      date: base.date,
+      duration: base.duration,
+      description: base.description,
+      photos: List<String>.from(base.photos),
+      is_downloaded: 0,
     );
 
     _clearRoute();
 
-    if (createPost == true && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => CreatePostScreen(route: savedRoute),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Маршрут сохранён')),
+    );
+
+    await _showAfterSaveSheet(savedRoute);
+  }
+
+  // Стилизованный диалог ввода названия маршрута.
+  Future<String?> _askRouteName() {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Название маршрута'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            hintText: 'Например, утренняя пробежка',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
         ),
-      );
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Стилизованный лист после сохранения: добавить фото к маршруту или сразу
+  // создать пост.
+  Future<void> _showAfterSaveSheet(RunningRoute route) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Text(
+                'Маршрут сохранён',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_a_photo_outlined,
+                  color: AppColors.primary),
+              title: const Text('Добавить фото к маршруту'),
+              subtitle: const Text('Открыть маршрут и прикрепить фотографии'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RouteDetailsScreen(route: route),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.publish_outlined,
+                  color: AppColors.primary),
+              title: const Text('Создать пост'),
+              subtitle: const Text('Поделиться пробежкой в ленте'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CreatePostScreen(route: route),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _centerMapOnUser() {

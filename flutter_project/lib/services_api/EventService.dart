@@ -186,6 +186,25 @@ class EventService {
     return fallbackCities;
   }
 
+  /// Серверное время (UTC). Возвращает null, если запрос не удался —
+  /// тогда клиент валидирует по локальным часам.
+  Future<DateTime?> getServerTime() async {
+    try {
+      final response =
+          await http.get(Uri.parse('$baseUrl/events/server_time'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final raw = data['now']?.toString();
+        if (raw != null) {
+          return DateTime.tryParse(raw)?.toLocal();
+        }
+      }
+    } catch (_) {
+      // Игнорируем — будет фоллбек на локальное время.
+    }
+    return null;
+  }
+
   Future<void> participateEvent(int eventId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {

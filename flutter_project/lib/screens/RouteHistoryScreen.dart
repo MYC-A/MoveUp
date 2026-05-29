@@ -270,6 +270,7 @@ class _RouteHistoryScreenState extends State<RouteHistoryScreen>
           final route = routes[index];
           return _RouteCard(
             route: route,
+            selectionMode: widget.selectForPost,
             onOpen: () => widget.selectForPost
                 ? _selectRouteForPost(route)
                 : _navigateToRouteDetails(route),
@@ -288,11 +289,16 @@ class _RouteCard extends StatelessWidget {
   final VoidCallback onRun;
   final VoidCallback onDelete;
 
+  /// Режим выбора маршрута для поста: без удаления/«пробежать», одна кнопка
+  /// «Выложить».
+  final bool selectionMode;
+
   const _RouteCard({
     required this.route,
     required this.onOpen,
     required this.onRun,
     required this.onDelete,
+    this.selectionMode = false,
   });
 
   bool get _isDownloaded => route.is_downloaded == 1;
@@ -354,22 +360,24 @@ class _RouteCard extends StatelessWidget {
                                   ? AppColors.route
                                   : AppColors.primary,
                             ),
-                            const _RouteBadge(
-                              icon: Icons.directions_run,
-                              label: 'Для пробежки',
-                              color: AppColors.success,
-                            ),
+                            if (!selectionMode)
+                              const _RouteBadge(
+                                icon: Icons.directions_run,
+                                label: 'Для пробежки',
+                                color: AppColors.success,
+                              ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Удалить',
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    color: AppColors.danger,
-                  ),
+                  if (!selectionMode)
+                    IconButton(
+                      tooltip: 'Удалить',
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline),
+                      color: AppColors.danger,
+                    ),
                 ],
               ),
               if (route.description.trim().isNotEmpty) ...[
@@ -410,25 +418,35 @@ class _RouteCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onOpen,
-                      icon: const Icon(Icons.info_outline),
-                      label: const Text('Подробнее'),
-                    ),
+              if (selectionMode)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onOpen,
+                    icon: const Icon(Icons.publish_outlined),
+                    label: const Text('Выложить'),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onRun,
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Пробежать'),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onOpen,
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('Подробнее'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: onRun,
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text('Пробежать'),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
