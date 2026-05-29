@@ -276,8 +276,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
-    // Проверка времени
-    if (_endTime!.isBefore(_startTime!)) {
+    // Проверка времени: окончание строго позже начала (равенство тоже недопустимо).
+    if (!_endTime!.isAfter(_startTime!)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Время окончания должно быть позже времени начала'),

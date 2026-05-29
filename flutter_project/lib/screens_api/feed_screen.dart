@@ -312,7 +312,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   void _navigateToRouteHistoryScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => RouteHistoryScreen()),
+      MaterialPageRoute(
+        builder: (context) => RouteHistoryScreen(selectForPost: true),
+      ),
     ).then((_) => _refreshPosts());
   }
 
@@ -1276,8 +1278,14 @@ class _PostRouteMapState extends State<_PostRouteMap> {
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.moveup.app',
                         tileProvider: CachedTileProvider(),
-                        keepBuffer: 0,
-                        panBuffer: 0,
+                        // keepBuffer/panBuffer держат тайлы вокруг вьюпорта,
+                        // чтобы при зуме к маршруту не появлялись серые пятна.
+                        keepBuffer: 3,
+                        panBuffer: 1,
+                        // Неудачно загруженные тайлы выгружаем, когда уходят с
+                        // экрана, чтобы они перезапрашивались, а не висели серыми.
+                        evictErrorTileStrategy:
+                            EvictErrorTileStrategy.notVisible,
                         tileDisplay: const TileDisplay.fadeIn(
                           duration: Duration(milliseconds: 180),
                           startOpacity: 0,
@@ -1611,6 +1619,10 @@ class _FullScreenMapState extends State<FullScreenMap> {
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.moveup.app',
+            tileProvider: CachedTileProvider(),
+            keepBuffer: 3,
+            panBuffer: 1,
+            evictErrorTileStrategy: EvictErrorTileStrategy.notVisible,
           ),
           if (widget.routeData.length == 1) ...[
             MarkerLayer(

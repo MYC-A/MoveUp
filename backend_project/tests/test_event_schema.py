@@ -51,3 +51,32 @@ def test_route_longer_than_limit_rejected():
 
 def test_max_route_distance_constant_is_positive():
     assert MAX_ROUTE_DISTANCE_KM > 0
+
+
+def test_end_time_before_start_rejected():
+    from datetime import datetime, timedelta
+
+    start = datetime(2030, 1, 1, 12, 0)
+    with pytest.raises(ValidationError):
+        EventCreate(**_payload(start_time=start, end_time=start - timedelta(hours=1)))
+
+
+def test_end_time_equal_start_rejected():
+    from datetime import datetime
+
+    start = datetime(2030, 1, 1, 12, 0)
+    with pytest.raises(ValidationError):
+        EventCreate(**_payload(start_time=start, end_time=start))
+
+
+def test_valid_time_range_accepted():
+    from datetime import datetime, timedelta
+
+    start = datetime(2030, 1, 1, 12, 0)
+    event = EventCreate(**_payload(start_time=start, end_time=start + timedelta(hours=2)))
+    assert event.end_time > event.start_time
+
+
+def test_zero_participants_rejected():
+    with pytest.raises(ValidationError):
+        EventCreate(**_payload(max_participants=0))

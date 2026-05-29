@@ -10,11 +10,17 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/RunningRoute.dart';
 import '../services/StorageService.dart';
+import 'CreatePostScreen.dart';
 import 'RouteDetailsScreen.dart';
 import 'RouteViewScreen.dart';
 
 class RouteHistoryScreen extends StatefulWidget {
-  const RouteHistoryScreen({super.key});
+  /// Режим выбора маршрута для создания поста: тап по маршруту сразу открывает
+  /// экран создания поста (без промежуточного экрана деталей), и показываются
+  /// только свои (нескачанные) маршруты.
+  final bool selectForPost;
+
+  const RouteHistoryScreen({super.key, this.selectForPost = false});
 
   @override
   State<RouteHistoryScreen> createState() => _RouteHistoryScreenState();
@@ -158,8 +164,37 @@ class _RouteHistoryScreenState extends State<RouteHistoryScreen>
     );
   }
 
+  // Режим выбора для поста: открываем создание поста сразу и, если пост создан,
+  // закрываем экран выбора, чтобы вернуть пользователя в ленту.
+  Future<void> _selectRouteForPost(RunningRoute route) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreatePostScreen(route: route),
+      ),
+    );
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.selectForPost) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Выберите маршрут')),
+        body: _isLoading
+            ? const AppLoading(label: 'Загружаем маршруты')
+            : _error != null
+                ? AppErrorState(message: _error, onRetry: _loadRoutes)
+                : _buildRouteList(
+                    myRoutes,
+                    emptyTitle: 'Сохраненных маршрутов нет',
+                    emptyMessage:
+                        'Сначала запишите пробежку — затем сможете создать пост по маршруту.',
+                  ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -235,7 +270,9 @@ class _RouteHistoryScreenState extends State<RouteHistoryScreen>
           final route = routes[index];
           return _RouteCard(
             route: route,
-            onOpen: () => _navigateToRouteDetails(route),
+            onOpen: () => widget.selectForPost
+                ? _selectRouteForPost(route)
+                : _navigateToRouteDetails(route),
             onRun: () => _openRouteView(route),
             onDelete: () => _deleteRoute(route),
           );

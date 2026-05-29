@@ -64,6 +64,23 @@ class EventCreate(BaseModel):
             raise ValueError(f"Маршрут не должен быть длиннее {MAX_ROUTE_DISTANCE_KM} км")
         return value
 
+    @field_validator("max_participants")
+    @classmethod
+    def validate_max_participants(cls, value):
+        if value < 1:
+            raise ValueError("Количество участников должно быть не меньше 1")
+        return value
+
+    @model_validator(mode="after")
+    def validate_time_range(self):
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.end_time <= self.start_time
+        ):
+            raise ValueError("Время окончания должно быть позже времени начала")
+        return self
+
 class EventRead(BaseModel):
     id: int
     title: str

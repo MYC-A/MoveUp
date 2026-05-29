@@ -14,6 +14,7 @@ import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/UserPosts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../services_api/lk_service.dart';
 
@@ -34,11 +35,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   late Future<Map<String, dynamic>> _profileFuture;
   bool _isBioExpanded = false;
+  bool _isProfileVisible = true;
+  DateTime _lastProfileLoadAt = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _profileFuture = lkService.fetchProfile();
+  }
+
+  // ЛК — вкладка в IndexedStack (постоянно в дереве). При возврате на вкладку
+  // освежаем агрегаты (лайки/комменты/посты), но не чаще раза в 5 секунд.
+  void _onVisibilityChanged(double visibleFraction) {
+    final nowVisible = visibleFraction > 0.5;
+    if (nowVisible && !_isProfileVisible) {
+      if (DateTime.now().difference(_lastProfileLoadAt) >
+          const Duration(seconds: 5)) {
+        _reloadProfile();
+      }
+    }
+    _isProfileVisible = nowVisible;
   }
 
   @override
@@ -49,12 +65,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _reloadProfile() {
+    _lastProfileLoadAt = DateTime.now();
     setState(() {
       _profileFuture = lkService.fetchProfile();
     });
   }
 
   Future<void> _handleRefresh() async {
+    _lastProfileLoadAt = DateTime.now();
     final future = lkService.fetchProfile();
     setState(() {
       _profileFuture = future;
@@ -201,7 +219,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
+      body: VisibilityDetector(
+        key: const Key('profile_visibility'),
+        onVisibilityChanged: (info) =>
+            _onVisibilityChanged(info.visibleFraction),
+        child: FutureBuilder<Map<String, dynamic>>(
         future: _profileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -287,6 +309,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         },
+        ),
       ),
     );
   }

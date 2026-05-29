@@ -8,6 +8,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import '../services/GpsService.dart';
 import '../services/StorageService.dart';
 import '../models/RunningRoute.dart';
+import 'CreatePostScreen.dart';
 import 'RouteHistoryScreen.dart';
 import '../models/RoutePoint.dart';
 import '../theme/app_colors.dart';
@@ -716,11 +717,46 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
 
     // Сохраняем
     _route!.name = name;
-    await _storageService.saveRoute(_route!);
+    final savedRoute = _route!;
+    await _storageService.saveRoute(savedRoute);
+    if (!mounted) {
+      _clearRoute();
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Маршрут сохранён')),
     );
+
+    // Сразу предлагаем добавить фото и создать пост (как в беговых приложениях).
+    final createPost = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Маршрут сохранён'),
+        content: const Text(
+            'Добавить фото и создать пост по этой пробежке?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Позже'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Создать пост'),
+          ),
+        ],
+      ),
+    );
+
     _clearRoute();
+
+    if (createPost == true && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CreatePostScreen(route: savedRoute),
+        ),
+      );
+    }
   }
 
   void _centerMapOnUser() {

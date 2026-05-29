@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/LkUsersService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
@@ -21,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _pageSize = 30;
 
   final ChatService _chatService = ChatService();
+  final LkUsersService _lkService = LkUsersService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
@@ -28,6 +30,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingOlder = false;
   bool _hasMoreMessages = true;
   int? currentUserId;
+  String? _recipientName;
+  // Минимальный интервал между подгрузками старых сообщений — чтобы один
+  // «флинг» вверх не вызывал цепочку догрузок до начала переписки.
+  DateTime? _lastOlderLoadAt;
   final _messagesController =
       StreamController<List<Map<String, dynamic>>>.broadcast();
 
@@ -71,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _emitMessages();
       _scrollToBottom(animated: false);
       _connectToChat();
+      _loadRecipientName();
       await _markMessagesAsRead();
     } catch (e) {
       debugPrint('Ошибка инициализации чата: $e');
@@ -97,11 +104,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _loadRecipientName() async {
+    if (widget.recipientId == currentUserId) return;
+    try {
+      final profile = await _lkService.fetchUserProfile(widget.recipientId);
+      final name = profile['user']?['full_name']?.toString();
+      if (mounted && name != null && name.isNotEmpty) {
+        setState(() => _recipientName = name);
+      }
+    } catch (e) {
+      debugPrint('Не удалось загрузить имя собеседника: $e');
+    }
+  }
+
   void _handleScroll() {
     if (!_scrollController.hasClients ||
         _isLoading ||
         _isLoadingOlder ||
         !_hasMoreMessages) {
+      return;
+    }
+    // Не чаще одной догрузки в 600мс, иначе инерционный скролл вверх
+    // успевает дёрнуть подгрузку много раз подряд.
+    if (_lastOlderLoadAt != null &&
+        DateTime.now().difference(_lastOlderLoadAt!) <
+            const Duration(milliseconds: 600)) {
       return;
     }
 
@@ -169,6 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    _lastOlderLoadAt = DateTime.now();
     setState(() {
       _isLoadingOlder = true;
     });
@@ -353,7 +381,11 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Text(widget.recipientId == currentUserId ? 'Избранное' : 'Чат'),
+        title: Text(
+          widget.recipientId == currentUserId
+              ? 'Избранное'
+              : (_recipientName ?? 'Чат'),
+        ),
       ),
       body: Column(
         children: [

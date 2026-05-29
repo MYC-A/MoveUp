@@ -1006,8 +1006,11 @@ class _EventScreenState extends State<EventScreen> {
                         urlTemplate:
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         tileProvider: CachedTileProvider(),
-                        keepBuffer: 0,
-                        panBuffer: 0,
+                        // Предзагружаем соседние тайлы и выгружаем ошибочные,
+                        // чтобы не оставались серые пятна.
+                        keepBuffer: 3,
+                        panBuffer: 1,
+                        evictErrorTileStrategy: EvictErrorTileStrategy.notVisible,
                         userAgentPackageName: 'com.moveup.app',
                         tileDisplay: const TileDisplay.fadeIn(
                           duration: Duration(milliseconds: 180),

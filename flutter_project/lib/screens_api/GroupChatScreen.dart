@@ -40,6 +40,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _isLoadingOlder = false;
   bool _hasMoreMessages = true;
   int? currentUserId;
+  // Минимальный интервал между подгрузками старых сообщений (защита от того,
+  // что инерционный скролл вверх вызывает цепочку догрузок до начала чата).
+  DateTime? _lastOlderLoadAt;
 
   @override
   void initState() {
@@ -113,6 +116,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         !_hasMoreMessages) {
       return;
     }
+    if (_lastOlderLoadAt != null &&
+        DateTime.now().difference(_lastOlderLoadAt!) <
+            const Duration(milliseconds: 600)) {
+      return;
+    }
 
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 120) {
@@ -137,6 +145,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       return;
     }
 
+    _lastOlderLoadAt = DateTime.now();
     setState(() {
       _isLoadingOlder = true;
     });
@@ -320,17 +329,33 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
-  void _showAddParticipantsModal() {
+  Future<void> _showAddParticipantsModal() async {
     if (currentUserId == null) return;
+
+    // Берём текущих участников, чтобы не предлагать уже добавленных.
+    Set<int> existingIds = {};
+    try {
+      final participants =
+          await _chatService.getGroupChatParticipants(widget.groupChatId);
+      existingIds = participants
+          .map((p) => p['id'])
+          .whereType<int>()
+          .toSet();
+    } catch (e) {
+      debugPrint('Не удалось загрузить участников для фильтра: $e');
+    }
+    if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (context) => UserSelectionModal(
         userId: currentUserId!,
+        excludeUserIds: existingIds,
         onUserSelected: (int userId) async {
           try {
             await _chatService.addParticipantToGroupChat(
                 widget.groupChatId, userId);
+            if (!mounted) return;
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Участник добавлен')),

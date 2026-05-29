@@ -6,7 +6,14 @@ class UserSelectionModal extends StatefulWidget {
   final int userId;
   final Function(int) onUserSelected;
 
-  UserSelectionModal({required this.userId, required this.onUserSelected});
+  /// ID, которых не нужно показывать (например, уже добавленные в чат).
+  final Set<int> excludeUserIds;
+
+  UserSelectionModal({
+    required this.userId,
+    required this.onUserSelected,
+    this.excludeUserIds = const {},
+  });
 
   @override
   _UserSelectionModalState createState() => _UserSelectionModalState();
@@ -43,9 +50,13 @@ class _UserSelectionModalState extends State<UserSelectionModal> {
     try {
       final response =
           await lkService.fetchUserFollowers(widget.userId, skip, limit);
-      final newFollowers = response['followers'];
+      final newFollowers = response['followers'] as List<dynamic>;
+      // Пагинацию считаем по сырому ответу, а из показа исключаем уже добавленных.
+      final filtered = newFollowers
+          .where((f) => !widget.excludeUserIds.contains(f['id']))
+          .toList();
       setState(() {
-        followers.addAll(newFollowers);
+        followers.addAll(filtered);
         skip += limit;
         hasMore = newFollowers.length == limit;
       });
