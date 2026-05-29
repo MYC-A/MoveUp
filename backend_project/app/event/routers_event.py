@@ -3,7 +3,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
-from .models_event import Event, EventParticipant, RoutePoint
+from .models_event import Event, EventParticipant
 from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
 from app.users.dependensies_user import get_current_user
@@ -266,9 +266,9 @@ async def delete_event(
             status_code=403, detail="Только организатор может удалить мероприятие"
         )
 
-    # Удаляем зависимые записи, чтобы не нарушить внешние ключи.
+    # Точки маршрута хранятся в JSON-поле event.route_data, отдельной таблицы нет.
+    # Удаляем зависимых участников, затем само мероприятие.
     await db.execute(delete(EventParticipant).where(EventParticipant.event_id == event_id))
-    await db.execute(delete(RoutePoint).where(RoutePoint.event_id == event_id))
     await db.delete(event)
     await db.commit()
     return {"status": "ok", "deleted_event_id": event_id}
