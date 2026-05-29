@@ -7,6 +7,7 @@ import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
 import '../services_api/post_service.dart';
 import '../models_api/post.dart';
 import '../services_api/web_socket_channel.dart';
+import '../services_api/cached_tile_provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -1152,7 +1153,10 @@ class _PostRouteMap extends StatefulWidget {
 }
 
 class _PostRouteMapState extends State<_PostRouteMap> {
+  static const int _previewRouteMaxPoints = 150;
+
   late List<LatLng> _points;
+  late List<LatLng> _previewPoints;
   late LatLng _initialCenter;
   bool _isZoomed = false;
 
@@ -1176,8 +1180,20 @@ class _PostRouteMapState extends State<_PostRouteMap> {
         .map(_latLngFromRoutePoint)
         .whereType<LatLng>()
         .toList(growable: false);
+    _previewPoints = _downsample(_points);
     _initialCenter = _points.isNotEmpty ? _points.first : LatLng(0, 0);
     _isZoomed = false;
+  }
+
+  // Прореживаем точки для лёгкой отрисовки превью (концы сохраняем).
+  List<LatLng> _downsample(List<LatLng> points) {
+    if (points.length <= _previewRouteMaxPoints) return points;
+    final step = (points.length - 1) / (_previewRouteMaxPoints - 1);
+    return List.generate(_previewRouteMaxPoints, (index) {
+      final sourceIndex =
+          (index * step).round().clamp(0, points.length - 1);
+      return points[sourceIndex];
+    });
   }
 
   LatLng? _latLngFromRoutePoint(dynamic point) {
@@ -1259,6 +1275,14 @@ class _PostRouteMapState extends State<_PostRouteMap> {
                         urlTemplate:
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.moveup.app',
+                        tileProvider: CachedTileProvider(),
+                        keepBuffer: 0,
+                        panBuffer: 0,
+                        tileDisplay: const TileDisplay.fadeIn(
+                          duration: Duration(milliseconds: 180),
+                          startOpacity: 0,
+                          reloadStartOpacity: 0,
+                        ),
                       ),
                       if (_points.length == 1)
                         MarkerLayer(
@@ -1279,7 +1303,7 @@ class _PostRouteMapState extends State<_PostRouteMap> {
                         PolylineLayer(
                           polylines: [
                             Polyline(
-                              points: _points,
+                              points: _previewPoints,
                               strokeWidth: 5.0,
                               color: AppColors.route,
                             ),

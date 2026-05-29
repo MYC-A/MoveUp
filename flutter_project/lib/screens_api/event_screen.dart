@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
+import 'package:flutter_application_1/services_api/cached_tile_provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -1004,6 +1005,7 @@ class _EventScreenState extends State<EventScreen> {
                       TileLayer(
                         urlTemplate:
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        tileProvider: CachedTileProvider(),
                         keepBuffer: 0,
                         panBuffer: 0,
                         userAgentPackageName: 'com.moveup.app',
