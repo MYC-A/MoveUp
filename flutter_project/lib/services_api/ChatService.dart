@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
@@ -10,6 +11,14 @@ class ChatService {
   final String wsBaseUrl = AppConfig.wsBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
   IOWebSocketChannel? _channel;
+  StreamSubscription? _chatSubscription;
+
+  // Управление переподключением чата.
+  int? _chatUserId;
+  Function(Map<String, dynamic>)? _chatCallback;
+  bool _chatManuallyClosed = false;
+  int _chatRetryAttempt = 0;
+  Timer? _chatReconnectTimer;
 
   Future<int?> getCachedCurrentUserId() async {
     final cachedUserId = await storage.read(key: 'user_id');
@@ -285,36 +294,94 @@ class ChatService {
     }
   }
 
+  // Покинуть групповой чат (POST /chat/group_chats/{group_chat_id}/leave)
+  Future<void> leaveGroupChat(int groupChatId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+    final url = Uri.parse('$baseUrl/chat/group_chats/$groupChatId/leave');
+    final response = await http.post(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Ошибка выхода из чата: ${response.body}');
+    }
+  }
+
   // Удалён метод addParticipantsToGroupChat, так как он отсутствует в документации FastAPI
 
   // Подключиться к WebSocket для чата (WebSocket /chat/ws/{user_id})
   void connectToChat(
       int userId, Function(Map<String, dynamic>) onMessageReceived) {
+    _chatUserId = userId;
+    _chatCallback = onMessageReceived;
+    _chatManuallyClosed = false;
+    _openChatChannel();
+  }
+
+  void _openChatChannel() {
+    // Закрываем предыдущее соединение перед открытием нового.
+    _chatReconnectTimer?.cancel();
+    _chatSubscription?.cancel();
+    _channel?.sink.close();
+
+    final userId = _chatUserId;
+    if (userId == null) return;
+
     try {
       _channel = IOWebSocketChannel.connect(
         Uri.parse('$wsBaseUrl/chat/ws/$userId'),
       );
-      _channel!.stream.listen(
+      _chatSubscription = _channel!.stream.listen(
         (message) {
-          final data = json.decode(message);
-          debugPrint(
-              'Получено WebSocket-сообщение чата: ${data['type'] ?? 'unknown'}');
-          onMessageReceived(data);
+          _chatRetryAttempt = 0;
+          try {
+            final data = json.decode(message);
+            if (data is Map<String, dynamic>) {
+              debugPrint(
+                  'Получено WebSocket-сообщение чата: ${data['type'] ?? 'unknown'}');
+              _chatCallback?.call(data);
+            }
+          } catch (e) {
+            debugPrint('WebSocket: ошибка разбора сообщения чата: $e');
+          }
         },
         onError: (error) {
-          debugPrint('WebSocket error: $error');
+          debugPrint('WebSocket error (чат): $error');
+          _scheduleChatReconnect();
         },
         onDone: () {
           debugPrint('WebSocket соединение для чата закрыто');
+          _scheduleChatReconnect();
         },
+        cancelOnError: true,
       );
     } catch (e) {
       debugPrint('Ошибка подключения к WebSocket: $e');
+      _scheduleChatReconnect();
     }
   }
 
-  // Закрыть WebSocket-соединение
+  void _scheduleChatReconnect() {
+    if (_chatManuallyClosed || _chatUserId == null) return;
+    _chatReconnectTimer?.cancel();
+
+    final seconds = (1 << _chatRetryAttempt).clamp(1, 30);
+    _chatRetryAttempt = (_chatRetryAttempt + 1).clamp(0, 5);
+    debugPrint('WebSocket: переподключение к чату через ${seconds}s');
+
+    _chatReconnectTimer = Timer(Duration(seconds: seconds), () {
+      if (!_chatManuallyClosed) _openChatChannel();
+    });
+  }
+
+  // Закрыть WebSocket-соединение (ручное — без переподключения)
   void disconnect() {
+    _chatManuallyClosed = true;
+    _chatReconnectTimer?.cancel();
+    _chatSubscription?.cancel();
     _channel?.sink.close();
     _channel = null;
   }

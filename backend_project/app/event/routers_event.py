@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
+from .models_event import Event, EventParticipant, RoutePoint
 from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
 from app.users.dependensies_user import get_current_user
@@ -38,6 +40,9 @@ async def create_event(
     event_dict = event_data.dict(exclude={"create_group_chat"})
     route_data = [point.dict() for point in event_data.route_data]
     event_dict["route_data"] = route_data
+    # Сохраняем выбор организатора, чтобы чат можно было создать (в т.ч. лениво)
+    # только если он действительно нужен.
+    event_dict["group_chat_enabled"] = event_data.create_group_chat
 
     # Создаем мероприятие
     event = await EventDAO.create_event(
@@ -241,3 +246,29 @@ async def get_event_route(
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     return event.route_data or []
+
+
+@router.delete("/{event_id}")
+async def delete_event(
+    event_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удаление мероприятия его организатором вместе с участниками и точками."""
+    result = await db.execute(
+        select(Event).filter(Event.id == event_id)
+    )
+    event = result.scalars().first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.organizer_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="Только организатор может удалить мероприятие"
+        )
+
+    # Удаляем зависимые записи, чтобы не нарушить внешние ключи.
+    await db.execute(delete(EventParticipant).where(EventParticipant.event_id == event_id))
+    await db.execute(delete(RoutePoint).where(RoutePoint.event_id == event_id))
+    await db.delete(event)
+    await db.commit()
+    return {"status": "ok", "deleted_event_id": event_id}

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Срок жизни основного access-токена (cookie-аутентификация).
+    # Вынесен в настройки, чтобы его можно было ужесточить в проде без правки кода.
+    # TODO: ввести refresh-токены и сократить срок до часов вместо ~года.
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 366
 
     MINIO_ENDPOINT: str
     MINIO_PUBLIC_URL: str
@@ -27,6 +31,14 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ""
     FCM_ANDROID_CHANNEL_ID: str = "moveup_messages"
 
+    # Список разрешённых CORS-источников через запятую. По умолчанию "*"
+    # (сохраняет текущее поведение); в проде стоит указать явные домены,
+    # т.к. "*" вместе с cookie-аутентификацией небезопасен.
+    ALLOWED_ORIGINS: str = "*"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
 
 settings = Settings()

@@ -51,6 +51,42 @@ class PostService {
     }
   }
 
+  // Удалить пост (только свой)
+  Future<void> deletePost(int postId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+
+    final url = Uri.parse('$baseUrl/post/posts/$postId');
+    final response = await http.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Ошибка удаления поста: ${response.body}');
+    }
+  }
+
+  // Удалить комментарий (автор комментария или владелец поста)
+  Future<void> deleteComment(int postId, int commentId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+
+    final url = Uri.parse('$baseUrl/post/posts/$postId/comments/$commentId');
+    final response = await http.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Ошибка удаления комментария: ${response.body}');
+    }
+  }
+
   // Добавить комментарий
   Future<Comment> addComment(int postId, String content) async {
     final token = await storage.read(key: 'access_token');

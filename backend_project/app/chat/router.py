@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, Query, BackgroundTasks, HTTPException
 from fastapi import Body
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -369,6 +369,8 @@ async def get_group_messages(
     """
     Возвращает страницу сообщений из группового чата.
     """
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
     return await GroupMessagesDAO.get_group_messages(
         group_chat_id,
         current_user.id,
@@ -381,6 +383,8 @@ async def mark_group_messages_as_read(
     group_chat_id: int,
     current_user: User = Depends(get_current_user),
 ):
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
     marked_count = await GroupMessagesDAO.mark_group_messages_as_read(
         group_chat_id, current_user.id
     )
@@ -411,5 +415,25 @@ async def add_participant_to_group_chat(
     """
     Добавляет участника в групповой чат.
     """
+    # Добавлять новых участников может только тот, кто сам состоит в чате.
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+    # Не создаём дубликат, если пользователь уже в чате.
+    if await GroupMessagesDAO.is_participant(group_chat_id, request.user_id):
+        return {"status": "ok", "msg": "Participant already in group chat"}
     await GroupMessagesDAO.add_participant_to_group_chat(group_chat_id, request.user_id)
     return {"status": "ok", "msg": "Participant added to group chat"}
+
+
+@router.post("/group_chats/{group_chat_id}/leave")
+async def leave_group_chat(
+    group_chat_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Текущий пользователь покидает групповой чат."""
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Вы не участник этого чата")
+    await GroupMessagesDAO.remove_participant_from_group_chat(
+        group_chat_id, current_user.id
+    )
+    return {"status": "ok", "msg": "Left group chat"}

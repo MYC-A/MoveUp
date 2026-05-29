@@ -308,7 +308,7 @@ class _EventScreenState extends State<EventScreen> {
     final step = (routePoints.length - 1) / (_previewRouteMaxPoints - 1);
     return List.generate(_previewRouteMaxPoints, (index) {
       final sourceIndex =
-          (index * step).round().clamp(0, routePoints.length - 1) as int;
+          (index * step).round().clamp(0, routePoints.length - 1);
       return routePoints[sourceIndex];
     });
   }

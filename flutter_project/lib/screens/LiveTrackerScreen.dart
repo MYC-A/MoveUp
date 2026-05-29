@@ -869,9 +869,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       ),
       children: [
         TileLayer(
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: ['a', 'b', 'c'],
-          userAgentPackageName: 'com.example.runTracker',
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.moveup.app',
         ),
         if (_route != null && _route!.points.isNotEmpty)
           PolylineLayer(

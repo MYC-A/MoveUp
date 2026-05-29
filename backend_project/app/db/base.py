@@ -42,6 +42,10 @@ async def ensure_schema_compatibility(conn):
 
     if dialect == "postgresql":
         await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR"))
+        await conn.execute(text(
+            "ALTER TABLE events ADD COLUMN IF NOT EXISTS group_chat_enabled "
+            "BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
         return
 
     if dialect == "sqlite":
@@ -49,3 +53,8 @@ async def ensure_schema_compatibility(conn):
         column_names = {row[1] for row in columns.fetchall()}
         if "city" not in column_names:
             await conn.execute(text("ALTER TABLE events ADD COLUMN city VARCHAR"))
+        if "group_chat_enabled" not in column_names:
+            await conn.execute(text(
+                "ALTER TABLE events ADD COLUMN group_chat_enabled "
+                "BOOLEAN NOT NULL DEFAULT 0"
+            ))

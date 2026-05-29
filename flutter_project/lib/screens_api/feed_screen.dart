@@ -189,7 +189,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           newPosts.where((post) => post.id > _latestPostId!).toList();
       if (!mounted) return;
 
-      var hasExistingUpdates = false;
       setState(() {
         if (newPostsToAdd.isNotEmpty) {
           _posts.insertAll(0, newPostsToAdd);
@@ -204,13 +203,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           if (index != -1) {
             _posts[index].commentsCount = newPost.commentsCount;
             _posts[index].likesCount = newPost.likesCount;
-            hasExistingUpdates = true;
           }
         }
 
-        if (newPostsToAdd.isNotEmpty || hasExistingUpdates) {
-          _posts = List.from(_posts);
-        }
         _isRefreshing = false;
       });
 
@@ -247,7 +242,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               if (update['user_id'] == _currentUserId) {
                 post.likedByCurrentUser = update['liked'];
               }
-              _posts = List.from(_posts); // Принудительное обновление списка
               debugPrint(
                   'Обновлён лайк для поста $postId: likesCount=${post.likesCount}, likedByCurrentUser=${post.likedByCurrentUser}');
               break;
@@ -256,7 +250,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               post.commentsCount = commentsCount is num
                   ? commentsCount.toInt()
                   : post.commentsCount + 1;
-              _posts = List.from(_posts); // Принудительное обновление списка
               debugPrint(
                   'Обновлён комментарий для поста $postId: commentsCount=${post.commentsCount}');
               break;
@@ -281,23 +274,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   bool _isValidRoute(List<dynamic> routeData) {
     return routeData.isNotEmpty;
-  }
-
-  void _zoomToRoute(List<dynamic> routeData, MapController mapController) {
-    if (!_isValidRoute(routeData)) return;
-    if (routeData.length == 1) {
-      final point = LatLng(routeData[0]['latitude'], routeData[0]['longitude']);
-      mapController.move(point, 15.0);
-      return;
-    }
-    final bounds = LatLngBounds.fromPoints(
-      routeData
-          .map((point) => LatLng(point['latitude'], point['longitude']))
-          .toList(),
-    );
-    mapController.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: EdgeInsets.all(50)),
-    );
   }
 
   void _showPostOptions() {
@@ -478,7 +454,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
             );
           },
           isValidRoute: _isValidRoute,
-          zoomToRoute: _zoomToRoute,
           webSocketService: _webSocketService,
           loadPosts: _loadPosts,
           likePost: _likePost,
@@ -507,7 +482,6 @@ class PostItem extends StatefulWidget {
   final MapController mapController;
   final VoidCallback onMapTap;
   final bool Function(List<dynamic>) isValidRoute;
-  final void Function(List<dynamic>, MapController) zoomToRoute;
   final WebSocketService webSocketService;
   final Future<void> Function() loadPosts;
   final Future<void> Function(int) likePost;
@@ -519,7 +493,6 @@ class PostItem extends StatefulWidget {
     required this.mapController,
     required this.onMapTap,
     required this.isValidRoute,
-    required this.zoomToRoute,
     required this.webSocketService,
     required this.loadPosts,
     required this.likePost,
@@ -785,131 +758,10 @@ class _PostItemState extends State<PostItem>
   }
 
   Widget _buildRouteMap(Post post) {
-    return VisibilityDetector(
-      key: Key('map_${post.id}'),
-      onVisibilityChanged: (info) {
-        if (info.visibleFraction > 0) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            widget.zoomToRoute(post.routeData, widget.mapController);
-          });
-        }
-      },
-      child: Container(
-        height: 240,
-        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.routeSoft,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: FlutterMap(
-                  mapController: widget.mapController,
-                  options: MapOptions(
-                    interactionOptions:
-                        InteractionOptions(flags: InteractiveFlag.none),
-                    initialCenter: LatLng(
-                      post.routeData[0]['latitude'],
-                      post.routeData[0]['longitude'],
-                    ),
-                    initialZoom: 13.0,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      subdomains: ['a', 'b', 'c'],
-                      userAgentPackageName: 'com.example.runTracker',
-                    ),
-                    if (post.routeData.length == 1)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            width: 40.0,
-                            height: 40.0,
-                            point: LatLng(
-                              post.routeData[0]['latitude'],
-                              post.routeData[0]['longitude'],
-                            ),
-                            child: const Icon(
-                              Icons.location_pin,
-                              color: AppColors.route,
-                              size: 40,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: post.routeData
-                                .map((point) => LatLng(
-                                    point['latitude'], point['longitude']))
-                                .toList(),
-                            strokeWidth: 5.0,
-                            color: AppColors.route,
-                          ),
-                        ],
-                      ),
-                    if (post.routeData.length > 1)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            width: 34.0,
-                            height: 34.0,
-                            point: LatLng(
-                              post.routeData.first['latitude'],
-                              post.routeData.first['longitude'],
-                            ),
-                            child: _RouteMarker(
-                              icon: Icons.directions_run,
-                              color: AppColors.success,
-                            ),
-                          ),
-                          Marker(
-                            width: 40.0,
-                            height: 40.0,
-                            point: LatLng(
-                              post.routeData.last['latitude'],
-                              post.routeData.last['longitude'],
-                            ),
-                            child: _RouteMarker(
-                              icon: Icons.flag,
-                              color: AppColors.route,
-                              size: 32,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-              Positioned(
-                top: AppSpacing.md,
-                left: AppSpacing.md,
-                child: _MapBadge(
-                  icon: Icons.directions_run,
-                  label: 'Маршрут',
-                ),
-              ),
-              Positioned(
-                top: AppSpacing.md,
-                right: AppSpacing.md,
-                child: _MapOverlayButton(
-                  icon: Icons.fullscreen,
-                  tooltip: 'Открыть карту',
-                  onTap: widget.onMapTap,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return _PostRouteMap(
+      post: post,
+      mapController: widget.mapController,
+      onMapTap: widget.onMapTap,
     );
   }
 
@@ -1284,6 +1136,208 @@ class _PostChip extends StatelessWidget {
   }
 }
 
+class _PostRouteMap extends StatefulWidget {
+  final Post post;
+  final MapController mapController;
+  final VoidCallback onMapTap;
+
+  const _PostRouteMap({
+    required this.post,
+    required this.mapController,
+    required this.onMapTap,
+  });
+
+  @override
+  State<_PostRouteMap> createState() => _PostRouteMapState();
+}
+
+class _PostRouteMapState extends State<_PostRouteMap> {
+  late List<LatLng> _points;
+  late LatLng _initialCenter;
+  bool _isZoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheRoutePoints();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PostRouteMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.id != widget.post.id ||
+        !identical(oldWidget.post.routeData, widget.post.routeData)) {
+      _cacheRoutePoints();
+    }
+  }
+
+  void _cacheRoutePoints() {
+    _points = widget.post.routeData
+        .map(_latLngFromRoutePoint)
+        .whereType<LatLng>()
+        .toList(growable: false);
+    _initialCenter = _points.isNotEmpty ? _points.first : LatLng(0, 0);
+    _isZoomed = false;
+  }
+
+  LatLng? _latLngFromRoutePoint(dynamic point) {
+    if (point is! Map) return null;
+
+    final latitude = _toDouble(point['latitude']);
+    final longitude = _toDouble(point['longitude']);
+    if (latitude == null || longitude == null) return null;
+    if (!latitude.isFinite || !longitude.isFinite) return null;
+    if (latitude < -90 || latitude > 90) return null;
+    if (longitude < -180 || longitude > 180) return null;
+
+    return LatLng(latitude, longitude);
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value == null) return null;
+    return double.tryParse(value.toString());
+  }
+
+  void _onVisibilityChanged(VisibilityInfo info) {
+    if (_isZoomed || _points.isEmpty || info.visibleFraction < 0.3) return;
+    _isZoomed = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _zoomToRoute();
+    });
+  }
+
+  void _zoomToRoute() {
+    if (_points.length == 1) {
+      widget.mapController.move(_points.first, 15.0);
+      return;
+    }
+
+    final bounds = LatLngBounds.fromPoints(_points);
+    widget.mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.all(50),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_points.isEmpty) return const SizedBox.shrink();
+
+    return VisibilityDetector(
+      key: Key('map_${widget.post.id}'),
+      onVisibilityChanged: _onVisibilityChanged,
+      child: Container(
+        height: 240,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.routeSoft,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: FlutterMap(
+                    mapController: widget.mapController,
+                    options: MapOptions(
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
+                      ),
+                      initialCenter: _initialCenter,
+                      initialZoom: 13.0,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.moveup.app',
+                      ),
+                      if (_points.length == 1)
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              width: 40.0,
+                              height: 40.0,
+                              point: _points.first,
+                              child: const Icon(
+                                Icons.location_pin,
+                                color: AppColors.route,
+                                size: 40,
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: _points,
+                              strokeWidth: 5.0,
+                              color: AppColors.route,
+                            ),
+                          ],
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              width: 34.0,
+                              height: 34.0,
+                              point: _points.first,
+                              child: const _RouteMarker(
+                                icon: Icons.directions_run,
+                                color: AppColors.success,
+                              ),
+                            ),
+                            Marker(
+                              width: 40.0,
+                              height: 40.0,
+                              point: _points.last,
+                              child: const _RouteMarker(
+                                icon: Icons.flag,
+                                color: AppColors.route,
+                                size: 32,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const Positioned(
+                top: AppSpacing.md,
+                left: AppSpacing.md,
+                child: _MapBadge(
+                  icon: Icons.directions_run,
+                  label: 'Маршрут',
+                ),
+              ),
+              Positioned(
+                top: AppSpacing.md,
+                right: AppSpacing.md,
+                child: _MapOverlayButton(
+                  icon: Icons.fullscreen,
+                  tooltip: 'Открыть карту',
+                  onTap: widget.onMapTap,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MapBadge extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1531,8 +1585,8 @@ class _FullScreenMapState extends State<FullScreenMap> {
         ),
         children: [
           TileLayer(
-            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: ['a', 'b', 'c'],
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.moveup.app',
           ),
           if (widget.routeData.length == 1) ...[
             MarkerLayer(

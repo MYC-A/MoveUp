@@ -93,14 +93,15 @@ class MessagesDAO(BaseDAO):
 
     # Пример mark_messages_as_read
     @classmethod
-    async def mark_messages_as_read(cls, user_id: int, recipient_id: int):
-        print("Сообщение прочитано")
+    async def mark_messages_as_read(cls, user_id: int, recipient_id: int) -> int:
         """
         Помечает сообщения как прочитанные.
 
         Аргументы:
             user_id: ID текущего пользователя.
             recipient_id: ID отправителя сообщений.
+
+        Возвращает количество помеченных сообщений.
         """
         async with async_session_maker() as session:
             query = update(cls.model).where(
@@ -108,8 +109,9 @@ class MessagesDAO(BaseDAO):
                 (cls.model.recipient_id == user_id) &
                 (cls.model.is_read == False)  # Только непрочитанные
             ).values(is_read=True)
-            await session.execute(query)
+            result = await session.execute(query)
             await session.commit()
+            return result.rowcount or 0
 
     # В MessagesDAO
     @classmethod
@@ -304,6 +306,18 @@ class GroupMessagesDAO(BaseDAO):
             return result.scalars().all()
 
     @classmethod
+    async def is_participant(cls, group_chat_id: int, user_id: int) -> bool:
+        """Проверяет, состоит ли пользователь в групповом чате."""
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(group_chat_participants).where(
+                    (group_chat_participants.c.group_chat_id == group_chat_id) &
+                    (group_chat_participants.c.user_id == user_id)
+                )
+            )
+            return result.first() is not None
+
+    @classmethod
     async def get_group_chat_name(cls, group_chat_id: int) -> str | None:
         async with async_session_maker() as session:
             query = select(GroupChat.name).where(GroupChat.id == group_chat_id)
@@ -344,6 +358,18 @@ class GroupMessagesDAO(BaseDAO):
                 group_chat_participants.insert().values(
                     group_chat_id=group_chat_id,
                     user_id=user_id
+                )
+            )
+            await session.commit()
+
+    @classmethod
+    async def remove_participant_from_group_chat(cls, group_chat_id: int, user_id: int):
+        """Удаляет пользователя из участников группового чата."""
+        async with async_session_maker() as session:
+            await session.execute(
+                group_chat_participants.delete().where(
+                    (group_chat_participants.c.group_chat_id == group_chat_id) &
+                    (group_chat_participants.c.user_id == user_id)
                 )
             )
             await session.commit()

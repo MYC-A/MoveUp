@@ -1,4 +1,3 @@
-import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
 class GpsFilter {
@@ -78,9 +77,9 @@ class GpsFilter {
         timestamp: points[i].timestamp,
         accuracy: points[i].accuracy,
         altitude: points[i].altitude,
-        altitudeAccuracy: points[i].altitudeAccuracy ?? 0.0, // Добавлено
+        altitudeAccuracy: points[i].altitudeAccuracy,
         heading: points[i].heading,
-        headingAccuracy: points[i].headingAccuracy ?? 0.0, // Добавлено
+        headingAccuracy: points[i].headingAccuracy,
         speed: points[i].speed,
         speedAccuracy: points[i].speedAccuracy,
       ));

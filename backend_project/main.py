@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 
+from app.core.config import settings
 from app.db.base import init_db
 from app.exceptions import TokenExpiredException, TokenNoFoundException
 from app.lk.routes_profile import router as profile_router
@@ -25,7 +26,7 @@ async def on_startup():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешить запросы с любых источников. Можете ограничить список доменов
+    allow_origins=settings.cors_origins,  # Настраивается через ALLOWED_ORIGINS (.env)
     allow_credentials=True,
     allow_methods=["*"],  # Разрешить все методы (GET, POST, PUT, DELETE и т.д.)
     allow_headers=["*"],  # Разрешить все заголовки

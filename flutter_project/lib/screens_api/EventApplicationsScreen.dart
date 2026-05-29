@@ -66,6 +66,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
         hasMore = data['applications'].length == limit;
       });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
@@ -96,6 +97,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
             data['participants'].length == participantsLimit;
       });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
@@ -113,10 +115,12 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       await lkService.approveApplication(widget.eventId, participantId);
       await _reloadApplications();
       await _reloadParticipants();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Заявка одобрена')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
@@ -127,10 +131,12 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
     try {
       await lkService.rejectApplication(widget.eventId, participantId);
       await _reloadApplications();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Заявка отклонена')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
@@ -141,10 +147,12 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
     try {
       await lkService.removeEventParticipant(widget.eventId, participantId);
       await _reloadParticipants();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Участник удален')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );

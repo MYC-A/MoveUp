@@ -485,9 +485,8 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              subdomains: const ['a', 'b', 'c'],
-              userAgentPackageName: 'com.example.runTracker',
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.moveup.app',
             ),
             if (points.length > 1)
               PolylineLayer(

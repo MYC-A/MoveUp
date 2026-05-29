@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
@@ -20,7 +21,7 @@ class StorageService {
     if (await file.exists()) {
       return file.lengthSync();
     } else {
-      print('Файл базы данных не найден: $path');
+      debugPrint('Файл базы данных не найден: $path');
       return 0;
     }
   }
@@ -36,18 +37,9 @@ class StorageService {
     }
   }
 
-  // Вывод размера базы данных
-  void printDatabaseSize() async {
-    try {
-      final sizeInBytes = await getDatabaseSize();
-      final formattedSize = formatSize(sizeInBytes);
-      print('Размер базы данных: $formattedSize');
-    } catch (e) {
-      print('Ошибка при получении размера базы данных: $e');
-    }
-  }
-
-  // Создание резервной копии базы данных
+  // Создание резервной копии базы данных.
+  // Вызывается явно (например, перед рискованной операцией), а не на каждую
+  // запись, иначе копирование файла тормозит частые сохранения.
   Future<void> backupDatabase() async {
     final dbPath = await getApplicationDocumentsDirectory();
     final path = join(dbPath.path, 'running_routes.db');
@@ -55,19 +47,19 @@ class StorageService {
     try {
       if (await File(path).exists()) {
         await File(path).copy(backupPath);
-        print('Создана резервная копия базы данных: $backupPath');
+        debugPrint('Создана резервная копия базы данных: $backupPath');
       } else {
-        print('Файл базы данных не найден для резервного копирования: $path');
+        debugPrint(
+            'Файл базы данных не найден для резервного копирования: $path');
       }
     } catch (e) {
-      print('Ошибка при создании резервной копии: $e');
+      debugPrint('Ошибка при создании резервной копии: $e');
     }
   }
 
   // Получение экземпляра базы данных
   Future<Database> get database async {
     if (_database != null && _database!.isOpen) {
-      print('База данных уже открыта');
       return _database!;
     }
     _database = await _initDatabase();
@@ -78,20 +70,13 @@ class StorageService {
   Future<Database> _initDatabase() async {
     final dbPath = await getApplicationDocumentsDirectory();
     final path = join(dbPath.path, 'running_routes.db');
-    print('Инициализация базы данных по пути: $path');
 
     try {
-      final exists = await databaseExists(path);
-      print('База данных существует: $exists');
-
       final db = await openDatabase(
         path,
         version: _databaseVersion,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
-        onOpen: (db) async {
-          print('База данных открыта, версия: ${await db.getVersion()}');
-        },
       );
 
       // Проверка существования таблицы
@@ -101,9 +86,7 @@ class StorageService {
               ) ??
               0) >
           0;
-      print('Таблица $_tableName существует: $tableExists');
       if (!tableExists) {
-        print('Создаём таблицу $_tableName');
         await _onCreate(db, _databaseVersion);
       } else {
         await _ensureRouteMetadataColumns(db);
@@ -111,7 +94,7 @@ class StorageService {
 
       return db;
     } catch (e) {
-      print('Ошибка инициализации базы данных: $e');
+      debugPrint('Ошибка инициализации базы данных: $e');
       rethrow;
     }
   }
@@ -133,9 +116,8 @@ class StorageService {
           source_post_id TEXT
         )
       ''');
-      print('Таблица создана: $_tableName');
     } catch (e) {
-      print('Ошибка при создании таблицы: $e');
+      debugPrint('Ошибка при создании таблицы: $e');
       rethrow;
     }
   }
@@ -206,16 +188,9 @@ class StorageService {
         );
       });
 
-      print('Маршрут сохранён: ${route.name}');
-      final count = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM $_tableName'));
-      print('Количество маршрутов в базе: $count');
-      final maps = await db.query(_tableName);
-      print('Содержимое таблицы после сохранения: $maps');
-      printDatabaseSize();
-      await backupDatabase();
+      debugPrint('Маршрут сохранён: ${route.name}');
     } catch (e) {
-      print('Ошибка сохранения маршрута: $e');
+      debugPrint('Ошибка сохранения маршрута: $e');
       rethrow;
     }
   }
@@ -247,16 +222,9 @@ class StorageService {
         );
       });
 
-      print('Маршрут скачан: ${route.name}');
-      final count = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM $_tableName'));
-      print('Количество маршрутов в базе: $count');
-      final maps = await db.query(_tableName);
-      print('Содержимое таблицы после скачивания: $maps');
-      printDatabaseSize();
-      await backupDatabase();
+      debugPrint('Маршрут скачан: ${route.name}');
     } catch (e) {
-      print('Ошибка скачивания маршрута: $e');
+      debugPrint('Ошибка скачивания маршрута: $e');
       rethrow;
     }
   }
@@ -264,12 +232,9 @@ class StorageService {
   // Загрузка маршрутов
   Future<List<RunningRoute>> loadRoutes() async {
     final db = await database;
-    print('Загрузка маршрутов из базы данных...');
 
     try {
       final List<Map<String, dynamic>> maps = await db.query(_tableName);
-      print('Загружено записей из таблицы: ${maps.length}');
-      print('Содержимое таблицы: $maps');
 
       return List.generate(maps.length, (i) {
         final pointsJson = maps[i]['points'] as String?;
@@ -280,7 +245,7 @@ class StorageService {
                 .map((point) => RoutePoint.fromJson(point))
                 .toList();
           } catch (e) {
-            print(
+            debugPrint(
                 'Ошибка десериализации точек для маршрута ${maps[i]['name']}: $e');
           }
         }
@@ -293,7 +258,7 @@ class StorageService {
                 .map((item) => item.toString())
                 .toList();
           } catch (e) {
-            print(
+            debugPrint(
                 'Ошибка десериализации фотографий для маршрута ${maps[i]['name']}: $e');
           }
         }
@@ -311,13 +276,12 @@ class StorageService {
         );
       });
     } catch (e, stackTrace) {
-      print('Ошибка при загрузке маршрутов: $e, StackTrace: $stackTrace');
+      debugPrint('Ошибка при загрузке маршрутов: $e, StackTrace: $stackTrace');
       return [];
     }
   }
 
-  // Удаление маршрута
-// Удаление маршрута с обработкой связанных файлов
+  // Удаление маршрута с обработкой связанных файлов
   Future<void> deleteRoute(String id) async {
     final db = await database;
     try {
@@ -341,22 +305,21 @@ class StorageService {
                 final file = File(photoPath);
                 if (await file.exists()) {
                   await file.delete();
-                  print('Удалён файл фотографии: $photoPath');
+                  debugPrint('Удалён файл фотографии: $photoPath');
                 }
               }
             }
           } catch (e) {
-            print('Ошибка при удалении фотографий: $e');
+            debugPrint('Ошибка при удалении фотографий: $e');
           }
         }
 
         // Удаляем запись из базы данных
         await db.delete(_tableName, where: 'id = ?', whereArgs: [id]);
-        print('Маршрут с id $id удалён');
-        printDatabaseSize();
+        debugPrint('Маршрут с id $id удалён');
       }
     } catch (e) {
-      print('Ошибка удаления маршрута: $e');
+      debugPrint('Ошибка удаления маршрута: $e');
       rethrow;
     }
   }
@@ -385,21 +348,13 @@ class StorageService {
           whereArgs: [route.id],
         );
         if (updatedRows == 0) {
-          print('Маршрут с id ${route.id} не найден для обновления');
+          debugPrint('Маршрут с id ${route.id} не найден для обновления');
         } else {
-          print('Маршрут обновлён: ${route.name} (id: ${route.id})');
+          debugPrint('Маршрут обновлён: ${route.name} (id: ${route.id})');
         }
       });
-
-      final count = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM $_tableName'));
-      print('Количество маршрутов в базе: $count');
-      final maps = await db.query(_tableName);
-      print('Содержимое таблицы после обновления: $maps');
-      printDatabaseSize();
-      await backupDatabase();
     } catch (e) {
-      print('Ошибка обновления маршрута: $e');
+      debugPrint('Ошибка обновления маршрута: $e');
       rethrow;
     }
   }
@@ -415,9 +370,9 @@ class StorageService {
         where: 'id = ?',
         whereArgs: [routeId],
       );
-      print('Фотографии маршрута обновлены: $routeId');
+      debugPrint('Фотографии маршрута обновлены: $routeId');
     } catch (e) {
-      print('Ошибка обновления фотографий: $e');
+      debugPrint('Ошибка обновления фотографий: $e');
     }
   }
 
@@ -426,7 +381,7 @@ class StorageService {
     if (_database != null && _database!.isOpen) {
       await _database!.close();
       _database = null;
-      print('База данных закрыта');
+      debugPrint('База данных закрыта');
     }
   }
 }

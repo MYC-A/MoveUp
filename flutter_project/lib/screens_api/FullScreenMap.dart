@@ -101,18 +101,6 @@ class _FullScreenMapState extends State<FullScreenMap> {
 
   @override
   Widget build(BuildContext context) {
-    final startIcon = Icon(
-      Icons.run_circle,
-      color: Colors.green,
-      size: 25,
-    );
-
-    final finishIcon = Icon(
-      Icons.flag_circle,
-      color: Colors.blue,
-      size: 25,
-    );
-
     return Scaffold(
       appBar: AppBar(
         title: Text('Карта маршрута'),
@@ -135,9 +123,8 @@ class _FullScreenMapState extends State<FullScreenMap> {
         ),
         children: [
           TileLayer(
-            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: ['a', 'b', 'c'],
-            userAgentPackageName: 'com.example.runTracker',
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.moveup.app',
           ),
           if (widget.routeData.length == 1) ...[
             MarkerLayer(

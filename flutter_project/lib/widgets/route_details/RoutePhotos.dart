@@ -61,7 +61,7 @@ class _RoutePhotosState extends State<RoutePhotos> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 10,
                   offset: Offset(0, 5),
                 ),
@@ -104,7 +104,7 @@ class _RoutePhotosState extends State<RoutePhotos> {
                     borderRadius: BorderRadius.circular(4),
                     color: _currentPage == index
                         ? Colors.blue
-                        : Colors.grey.withOpacity(0.3),
+                        : Colors.grey.withValues(alpha: 0.3),
                   ),
                 ),
               ),

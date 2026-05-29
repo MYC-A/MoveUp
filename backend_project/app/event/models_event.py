@@ -33,6 +33,9 @@ class Event(Base):
     organizer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     available_seats = Column(Integer, nullable=False)
     group_chat_id = Column(Integer, ForeignKey("group_chats.id"), nullable=True)
+    # Хотел ли организатор групповой чат для мероприятия. Сохраняем выбор,
+    # чтобы чат создавался (в т.ч. лениво при первом одобрении) только когда нужен.
+    group_chat_enabled = Column(Boolean, default=False, nullable=False, server_default="false")
     route_data = Column(JSON, nullable=True)  # JSON-поле для маршрута
 
     organizer = relationship("User", back_populates="organized_events")

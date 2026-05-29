@@ -60,14 +60,25 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
   void initState() {
     super.initState();
     _commentsCount = widget.initialCommentsCount;
+    _focusNode.addListener(_onFocusChange);
     _loadComments();
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    // При появлении клавиатуры форма ввода поднимается и может перекрыть
+    // последние комментарии — прокручиваем список вниз, чтобы они оставались
+    // видимыми над полем ввода.
+    if (_focusNode.hasFocus) {
+      _scrollToBottom();
+    }
   }
 
   Future<void> _loadComments() async {
@@ -141,8 +152,10 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
     final controller = _activeScrollController;
     if (controller == null || !controller.hasClients) return;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!controller.hasClients) return;
+    // Ждём завершения анимации клавиатуры/паддинга, иначе maxScrollExtent ещё
+    // не пересчитан и список не докручивается до конца.
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted || !controller.hasClients) return;
       controller.animateTo(
         controller.position.maxScrollExtent,
         duration: const Duration(milliseconds: 220),

@@ -6,54 +6,66 @@ import 'package:latlong2/latlong.dart';
 import '../../models/RunningRoute.dart';
 import '../../screens/RouteViewScreen.dart';
 
-class RouteMap extends StatelessWidget {
+class RouteMap extends StatefulWidget {
   final RunningRoute route;
+
+  const RouteMap({super.key, required this.route});
+
+  @override
+  State<RouteMap> createState() => _RouteMapState();
+}
+
+class _RouteMapState extends State<RouteMap> {
   final MapController _mapController = MapController();
 
-  RouteMap({super.key, required this.route}) {
-    Future.delayed(Duration(milliseconds: 500), _zoomToRoute);
-  }
+  // Кешируем точки один раз, чтобы не пересчитывать на каждом build.
+  late final List<LatLng> _points =
+      widget.route.points.map((point) => point.coordinates).toList();
 
   void _zoomToRoute() {
-    if (route.points.isEmpty) return;
-    final bounds = LatLngBounds.fromPoints(
-      route.points.map((point) => point.coordinates).toList(),
-    );
+    if (_points.isEmpty) return;
+    final bounds = LatLngBounds.fromPoints(_points);
     _mapController.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: EdgeInsets.all(50)),
+      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    if (_points.isEmpty) {
+      return const SizedBox(
+        height: 250,
+        child: Center(child: Text('Маршрут недоступен')),
+      );
+    }
+
+    return SizedBox(
       height: 250,
       child: GestureDetector(
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => RouteViewScreen(route: route),
+              builder: (context) => RouteViewScreen(route: widget.route),
             ),
           );
         },
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-            initialCenter: route.points.first.coordinates,
+            initialCenter: _points.first,
             initialZoom: 13.0,
+            onMapReady: _zoomToRoute,
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              subdomains: ['a', 'b', 'c'],
-              userAgentPackageName: 'com.example.runTracker',
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.moveup.app',
             ),
             PolylineLayer(
               polylines: [
                 Polyline(
-                  points:
-                      route.points.map((point) => point.coordinates).toList(),
+                  points: _points,
                   strokeWidth: 4.0,
                   color: AppColors.route,
                 ),
@@ -62,13 +74,13 @@ class RouteMap extends StatelessWidget {
             MarkerLayer(
               markers: [
                 _routeMarker(
-                  route.points.first.coordinates,
+                  _points.first,
                   'Старт',
                   AppColors.success,
                 ),
-                if (route.points.length > 1)
+                if (_points.length > 1)
                   _routeMarker(
-                    route.points.last.coordinates,
+                    _points.last,
                     'Финиш',
                     AppColors.danger,
                   ),

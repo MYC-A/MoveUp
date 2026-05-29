@@ -1,5 +1,6 @@
 # app/api/routes/posts.py
 import asyncio
+import io
 import json
 import uuid
 from datetime import timedelta
@@ -7,7 +8,7 @@ from typing import List, Dict
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status, UploadFile,File,Form
@@ -17,6 +18,7 @@ from starlette.websockets import WebSocketState
 from fastapi.responses import JSONResponse
 from app.users.dependensies_user import get_current_user, get_current_user_id
 from app.core.config import settings
+from app.core.uploads import validate_image_upload
 from app.db.base import get_db
 from app.core.security import create_access_token
 from app.posts.models_posts_comments import Comment
@@ -236,18 +238,22 @@ async def check():
         print(f"Bucket '{bucket_name}' already exists.")
 async def upload_photo_to_minio(file: UploadFile, bucket_name: str):
     await check()
+
+    # Читаем и валидируем файл до загрузки (тип/размер/сигнатура).
+    file_content = await file.read()
+    validate_image_upload(file, file_content)
+
     try:
         # Генерируем уникальное имя файла
         file_name = f"{uuid.uuid4()}_{file.filename}"
-        file_size = file.size
 
         # Загружаем файл в MinIO
         minio_client.put_object(
             bucket_name,
             file_name,
-            file.file,
-            length=file_size,
-            content_type=file.content_type
+            io.BytesIO(file_content),
+            length=len(file_content),
+            content_type=file.content_type or "image/jpeg"
         )
 
         # Возвращаем URL файла
@@ -409,6 +415,70 @@ async def add_comment(
     await broadcast_post_update(post_id, comment_data)
 
     return comment_data["comment"]
+
+
+@router.delete("/posts/{post_id}/comments/{comment_id}")
+async def delete_comment(
+    post_id: int,
+    comment_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удаляет комментарий. Может автор комментария или владелец поста."""
+    result = await db.execute(select(Post).filter(Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Пост не найден")
+
+    comment_result = await db.execute(
+        select(Comment).filter(Comment.id == comment_id, Comment.post_id == post_id)
+    )
+    comment = comment_result.scalars().first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+
+    if comment.user_id != current_user.id and post.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление комментария")
+
+    await db.delete(comment)
+    if post.comments_count and post.comments_count > 0:
+        post.comments_count -= 1
+    await db.commit()
+
+    update = {
+        "type": "comment_deleted",
+        "post_id": post_id,
+        "comment_id": comment_id,
+        "comments_count": post.comments_count,
+    }
+    await broadcast_feed_update(update)
+    await broadcast_post_update(post_id, update)
+    return {"status": "ok", "comments_count": post.comments_count}
+
+
+@router.delete("/posts/{post_id}")
+async def delete_post(
+    post_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удаляет пост владельца вместе со связанными лайками/комментариями/фото."""
+    result = await db.execute(select(Post).filter(Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Пост не найден")
+    if post.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление поста")
+
+    # Удаляем зависимые записи, чтобы не нарушить внешние ключи.
+    await db.execute(delete(Comment).where(Comment.post_id == post_id))
+    await db.execute(delete(PostLike).where(PostLike.post_id == post_id))
+    await db.execute(delete(PostPhoto).where(PostPhoto.post_id == post_id))
+    await db.delete(post)
+    await db.commit()
+
+    await broadcast_feed_update({"type": "post_deleted", "post_id": post_id})
+    return {"status": "ok", "deleted_post_id": post_id}
 
 
 @router.get("/posts/{post_id}/comments")

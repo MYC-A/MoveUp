@@ -49,7 +49,7 @@ class _SelectParticipantsModalState extends State<SelectParticipantsModal> {
       final response =
           await lkService.fetchUserFollowers(widget.userId, skip, limit);
 
-      if (response == null || response['followers'] == null) {
+      if (response['followers'] == null) {
         throw Exception("Ошибка загрузки подписчиков: данные отсутствуют");
       }
 
@@ -120,7 +120,7 @@ class _SelectParticipantsModalState extends State<SelectParticipantsModal> {
                 title: Text(follower['full_name'] ?? 'Нет имени'),
                 secondary: CircleAvatar(
                   backgroundImage: isValidUrl
-                      ? NetworkImage(avatarUrl!)
+                      ? NetworkImage(avatarUrl)
                       : AssetImage('assets/images/default_avatar.png')
                           as ImageProvider,
                   onBackgroundImageError: (_, __) {

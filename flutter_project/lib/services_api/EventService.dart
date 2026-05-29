@@ -213,6 +213,31 @@ class EventService {
     }
   }
 
+  // Удаление мероприятия (только организатор)
+  Future<void> deleteEvent(int eventId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('Токен не найден');
+    }
+
+    final url = Uri.parse('$baseUrl/events/$eventId');
+    final response = await http.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    }
+    final String responseBody = utf8.decode(response.bodyBytes);
+    try {
+      final dynamic errorData = jsonDecode(responseBody);
+      throw Exception(errorData['detail'] ?? 'Ошибка удаления мероприятия');
+    } catch (e) {
+      throw Exception('Ошибка: ${response.statusCode} - $responseBody');
+    }
+  }
+
   // Создание мероприятия
   Future<EventCreate> createEvent(EventCreate event) async {
     final token = await storage.read(key: 'access_token');

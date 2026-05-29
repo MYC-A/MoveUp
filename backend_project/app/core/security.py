@@ -28,18 +28,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    print(f"Received token: {token}")  # Логируем полученный токен
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
-            print("user_id is None in payload")  # Логируем ошибку, если user_id отсутствует
-
             raise credentials_exception
 
     except JWTError:
         raise credentials_exception
-    print(f"Successfully authenticated user with id: {user_id}")  # Логируем успешную аутентификацию
 
     return user_id

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, flutter_optimizing]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (compile + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend_project
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Byte-compile app
+        run: python -m compileall app main.py
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+          SECRET_KEY: ci-secret-key
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_PUBLIC_URL: http://localhost:9000
+          MINIO_ACCESS_KEY: test
+          MINIO_SECRET_KEY: test
+          MINIO_BUCKET_NAME: photos
+          MINIO_POSTS_BUCKET_NAME: posts
+          OPEN_ROUTE_API_KEY: ""
+        run: pytest -q
+
+  flutter:
+    name: Flutter (analyze + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_project
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Run tests
+        run: flutter test

@@ -773,10 +773,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               children: [
                                 TileLayer(
                                   urlTemplate:
-                                      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  subdomains: ['a', 'b', 'c'],
-                                  userAgentPackageName:
-                                      'com.example.runTracker',
+                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'com.moveup.app',
                                 ),
                                 PolylineLayer(
                                   polylines: [

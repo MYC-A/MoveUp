@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from app.db.base import get_db
 from app.event.dao_event import EventParticipantDAO
 from app.event.models_event import Event, EventParticipant, ApprovedType
-from app.chat.models import group_chat_participants
+from app.chat.models import GroupChat, group_chat_participants
 from app.lk.schemas_profile import EventsResponseAll
 from app.posts.schemas_posts import PostInDB, PostInProfile
 from app.users.models_user import User
@@ -30,6 +30,7 @@ import io
 from fastapi import Query
 
 from app.core.config import settings
+from app.core.uploads import validate_image_upload
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -127,6 +128,7 @@ async def update_profile(
 
             # Читаем содержимое файла
             file_content = await avatar.read()
+            validate_image_upload(avatar, file_content)
 
             ensure_minio_bucket(settings.MINIO_BUCKET_NAME)
 
@@ -516,6 +518,31 @@ async def approve_application(
             session=db,
         )
 
+        # Чат опционален. Создаём его лениво при первом одобрении ТОЛЬКО если
+        # организатор включил чат при создании мероприятия (group_chat_enabled).
+        # Если чат не нужен — заявка просто одобряется без чата.
+        if event.group_chat_id is None and event.group_chat_enabled:
+            group_chat = GroupChat(
+                name=event.title,
+                creator_id=event.organizer_id,
+            )
+            db.add(group_chat)
+            await db.flush()  # получаем group_chat.id без отдельного commit
+
+            # Организатор сразу состоит в чате события.
+            await db.execute(
+                group_chat_participants.insert().values(
+                    group_chat_id=group_chat.id,
+                    user_id=event.organizer_id,
+                )
+            )
+
+            event.group_chat_id = group_chat.id
+            await db.commit()
+            await db.refresh(event)
+
+        # Добавляем одобренного участника в групповой чат, если чат есть и его
+        # там ещё нет.
         if event.group_chat_id is not None:
             existing_chat_member = await db.execute(
                 select(group_chat_participants).where(
