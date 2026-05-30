@@ -7,6 +7,7 @@ import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
 import '../services_api/post_service.dart';
 import '../models_api/post.dart';
 import '../services_api/web_socket_channel.dart';
+import '../services_api/api_error_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -267,13 +268,34 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _likePost(int postId) async {
+    final index = _posts.indexWhere((p) => p.id == postId);
+    if (index == -1) return;
+    final post = _posts[index];
+    final prevLiked = post.likedByCurrentUser;
+    final prevCount = post.likesCount;
+
+    // Оптимистично обновляем сразу, чтобы счётчик менялся без перезагрузки.
+    setState(() {
+      post.likedByCurrentUser = !prevLiked;
+      post.likesCount = (prevCount + (post.likedByCurrentUser ? 1 : -1))
+          .clamp(0, 1 << 31);
+    });
+
     try {
-      await _postService.likePost(postId);
+      final res = await _postService.likePost(postId);
+      if (!mounted) return;
+      // Сверяемся с авторитетным ответом сервера.
+      setState(() {
+        post.likesCount = res.likesCount;
+        post.likedByCurrentUser = res.liked;
+      });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка лайка: $e')),
-      );
-      debugPrint('Ошибка лайка: $e');
+      if (!mounted) return;
+      setState(() {
+        post.likedByCurrentUser = prevLiked;
+        post.likesCount = prevCount;
+      });
+      showApiError(context, e);
     }
   }
 
@@ -564,7 +586,8 @@ class _PostItemState extends State<PostItem>
   }
 
   void _applyCommentsCount(Post post, int? count) {
-    if (count == null || count <= post.commentsCount || !mounted) return;
+    // Разрешаем и увеличение, и уменьшение (например, при удалении коммента).
+    if (count == null || count == post.commentsCount || !mounted) return;
 
     setState(() {
       post.commentsCount = count;

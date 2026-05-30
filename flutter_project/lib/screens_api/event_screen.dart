@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -52,13 +54,22 @@ class _EventScreenState extends State<EventScreen> {
   int? _latestEventId;
   bool _isRefreshing = false;
   String? _loadError;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  int? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    _loadCurrentUserId();
     _loadCities();
     _loadEvents();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final cached = await _storage.read(key: 'user_id');
+    if (!mounted || cached == null) return;
+    setState(() => _currentUserId = int.tryParse(cached));
   }
 
   @override
@@ -884,34 +895,138 @@ class _EventScreenState extends State<EventScreen> {
             const SizedBox(height: AppSpacing.lg),
             _buildMap(event, index, accent),
             const SizedBox(height: AppSpacing.lg),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: hasSeats ? () => _participateEvent(event.id) : null,
-                icon: Icon(
-                  hasSeats ? Icons.send_rounded : Icons.block_rounded,
-                  size: 20,
-                ),
-                label: Text(hasSeats ? 'Записаться' : 'Нет мест'),
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.surface,
-                  disabledBackgroundColor: AppColors.surfaceMuted,
-                  disabledForegroundColor: AppColors.textMuted,
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadii.pill),
-                  ),
+            _buildParticipationControl(event, hasSeats),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipationControl(Event event, bool hasSeats) {
+    final isOrganizer =
+        _currentUserId != null && event.organizerId == _currentUserId;
+
+    if (isOrganizer) {
+      return _participationInfo(
+        icon: Icons.verified_outlined,
+        text: 'Вы организатор',
+        color: AppColors.primary,
+      );
+    }
+
+    if (event.isExpired) {
+      return _participationInfo(
+        icon: Icons.event_busy_outlined,
+        text: 'Мероприятие завершено',
+        color: AppColors.textMuted,
+      );
+    }
+
+    final status = event.myStatus;
+
+    // Уже записан (или заявка на рассмотрении / отклонена) — показываем статус
+    // и даём отписаться.
+    if (status != null) {
+      final label = status == 'APPROVED'
+          ? 'Вы участвуете'
+          : status == 'AWAITS'
+              ? 'Заявка на рассмотрении'
+              : 'Заявка отклонена';
+      final color = status == 'APPROVED'
+          ? AppColors.success
+          : status == 'AWAITS'
+              ? AppColors.activity
+              : AppColors.danger;
+      return Column(
+        children: [
+          _participationInfo(
+            icon: status == 'APPROVED'
+                ? Icons.check_circle_outline
+                : status == 'AWAITS'
+                    ? Icons.hourglass_top_outlined
+                    : Icons.cancel_outlined,
+            text: label,
+            color: color,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () => _cancelParticipation(event),
+              icon: const Icon(Icons.logout, size: 18),
+              label: const Text('Отписаться'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.danger,
+                side: const BorderSide(color: AppColors.danger),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
                 ),
               ),
             ),
-          ],
+          ),
+        ],
+      );
+    }
+
+    // Ещё не записан.
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: hasSeats ? () => _participateEvent(event) : null,
+        icon: Icon(
+          hasSeats ? Icons.send_rounded : Icons.block_rounded,
+          size: 20,
         ),
+        label: Text(hasSeats ? 'Записаться' : 'Нет мест'),
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.surface,
+          disabledBackgroundColor: AppColors.surfaceMuted,
+          disabledForegroundColor: AppColors.textMuted,
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _participationInfo({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: 14,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1074,25 +1189,54 @@ class _EventScreenState extends State<EventScreen> {
     );
   }
 
-  Future<void> _participateEvent(int eventId) async {
+  Future<void> _participateEvent(Event event) async {
+    final prevStatus = event.myStatus;
+    // Оптимистично: запись создаёт заявку (ожидает одобрения). Место займётся
+    // только после одобрения организатором.
+    setState(() => event.myStatus = 'AWAITS');
+
     try {
-      await _eventService.participateEvent(eventId);
+      await _eventService.participateEvent(event.id);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Вы успешно записаны на мероприятие!')),
+        const SnackBar(content: Text('Заявка отправлена организатору')),
       );
     } catch (e) {
-      String errorMessage = 'Ошибка записи';
-      if (e.toString().contains("Организатор не может")) {
-        errorMessage = "Организатор не может записаться на свое мероприятие";
-      } else if (e.toString().contains("Нет свободных мест")) {
-        errorMessage = "Все места заняты";
-      } else if (e.toString().contains("уже является участником")) {
-        errorMessage = "Вы уже записаны на это мероприятие";
-      }
+      if (!mounted) return;
+      setState(() => event.myStatus = prevStatus);
+      showApiError(context, e);
+    }
+  }
 
+  Future<void> _cancelParticipation(Event event) async {
+    final prevStatus = event.myStatus;
+    final wasApproved = prevStatus == 'APPROVED';
+
+    setState(() {
+      event.myStatus = null;
+      if (wasApproved) {
+        event.availableSeats = event.availableSeats + 1;
+        if (event.participantsCount > 0) event.participantsCount -= 1;
+      }
+    });
+
+    try {
+      await _eventService.cancelParticipation(event.id);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
+        const SnackBar(content: Text('Запись отменена')),
       );
+    } catch (e) {
+      if (!mounted) return;
+      // Откат.
+      setState(() {
+        event.myStatus = prevStatus;
+        if (wasApproved) {
+          event.availableSeats = event.availableSeats - 1;
+          event.participantsCount += 1;
+        }
+      });
+      showApiError(context, e);
     }
   }
 }

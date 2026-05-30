@@ -13,6 +13,24 @@ def get_token(request: Request):
     return token
 
 
+async def get_current_user_optional(request: Request):
+    """Возвращает текущего пользователя или None (без ошибки), если токена нет
+    или он невалиден. Нужен для эндпоинтов, доступных и анонимно (HTML), но
+    желающих знать пользователя (например, статус участия в событии)."""
+    token = request.cookies.get('users_access_token')
+    if not token:
+        return None
+    try:
+        auth_data = get_auth_data()
+        payload = jwt.decode(token, auth_data['secret_key'], algorithms=auth_data['algorithm'])
+        user_id = payload.get('sub')
+        if not user_id:
+            return None
+        return await UsersDAO.find_one_or_none_by_id(int(user_id))
+    except (JWTError, ValueError, TypeError):
+        return None
+
+
 async def get_current_user(token: str = Depends(get_token)):
     try:
         auth_data = get_auth_data()

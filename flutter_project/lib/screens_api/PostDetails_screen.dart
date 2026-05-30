@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../models_api/post.dart';
 import '../services_api/post_service.dart';
+import '../services_api/api_error_ui.dart';
 import '../services_api/web_socket_channel.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -194,12 +195,29 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
   }
 
   Future<void> _likePost() async {
+    final prevLiked = _post.likedByCurrentUser;
+    final prevCount = _post.likesCount;
+
+    setState(() {
+      _post.likedByCurrentUser = !prevLiked;
+      _post.likesCount =
+          (prevCount + (_post.likedByCurrentUser ? 1 : -1)).clamp(0, 1 << 31);
+    });
+
     try {
-      await _postService.likePost(widget.postId);
+      final res = await _postService.likePost(widget.postId);
+      if (!mounted) return;
+      setState(() {
+        _post.likesCount = res.likesCount;
+        _post.likedByCurrentUser = res.liked;
+      });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка лайка: $e')),
-      );
+      if (!mounted) return;
+      setState(() {
+        _post.likedByCurrentUser = prevLiked;
+        _post.likesCount = prevCount;
+      });
+      showApiError(context, e);
     }
   }
 

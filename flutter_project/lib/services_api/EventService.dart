@@ -227,6 +227,23 @@ class EventService {
     }
   }
 
+  // Отмена записи на мероприятие (отписаться)
+  Future<void> cancelParticipation(int eventId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+    final url = Uri.parse('$baseUrl/events/$eventId/participate');
+    final response = await Api.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
   // Удаление мероприятия (только организатор)
   Future<void> deleteEvent(int eventId) async {
     final token = await storage.read(key: 'access_token');

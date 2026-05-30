@@ -100,6 +100,8 @@ class EventRead(BaseModel):
     organizer_name: Optional[str] = None
     participants_count: int = 0
     is_expired: bool = False
+    # Статус участия текущего пользователя: None | "AWAITS" | "APPROVED" | "DENIED".
+    my_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -13,12 +13,15 @@ class Event {
   final int maxParticipants;
   final bool isPublic;
   final int organizerId;
-  final int availableSeats;
+  int availableSeats;
   final List<Map<String, dynamic>> routeData;
   final int? groupChatId;
   final String? organizerName;
-  final int participantsCount;
+  int participantsCount;
   final bool isExpired;
+
+  /// Статус участия текущего пользователя: null | "AWAITS" | "APPROVED" | "DENIED".
+  String? myStatus;
 
   Event({
     required this.id,
@@ -39,6 +42,7 @@ class Event {
     this.organizerName,
     this.participantsCount = 0,
     this.isExpired = false,
+    this.myStatus,
   });
 
   factory Event.fromJson(Map<String, dynamic> json) {
@@ -63,6 +67,7 @@ class Event {
       organizerName: json['organizer_name'],
       participantsCount: json['participants_count'] ?? 0,
       isExpired: json['is_expired'] ?? false,
+      myStatus: json['my_status'],
       routeData: (json['route_data'] as List?)
               ?.map((point) => {
                     'latitude': (point['latitude'] as num).toDouble(),

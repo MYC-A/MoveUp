@@ -36,8 +36,8 @@ class PostService {
     }
   }
 
-  // Лайкнуть пост
-  Future<void> likePost(int postId) async {
+  // Лайкнуть/снять лайк (toggle). Возвращает актуальное состояние с сервера.
+  Future<({int likesCount, bool liked})> likePost(int postId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) throw _noToken();
 
@@ -50,6 +50,11 @@ class PostService {
     if (response.statusCode != 200) {
       throw ApiException.fromResponse(response);
     }
+    final data = json.decode(utf8.decode(response.bodyBytes));
+    return (
+      likesCount: (data['likes_count'] as num?)?.toInt() ?? 0,
+      liked: data['liked'] == true,
+    );
   }
 
   // Удалить пост (только свой)

@@ -273,6 +273,29 @@ class EventParticipantDAO(BaseDAO):
             )
         )
         return result.scalar()
+
+    @classmethod
+    async def get_user_statuses(cls, user_id: int, event_ids: list[int], session: AsyncSession) -> dict[int, str]:
+        """Возвращает {event_id: статус} участия пользователя для списка событий."""
+        if not event_ids:
+            return {}
+        result = await session.execute(
+            select(EventParticipant.event_id, EventParticipant.approved).where(
+                EventParticipant.user_id == user_id,
+                EventParticipant.event_id.in_(event_ids),
+            )
+        )
+        return {row.event_id: row.approved.value for row in result.all()}
+
+    @classmethod
+    async def find_user_participant(cls, event_id: int, user_id: int, session: AsyncSession):
+        result = await session.execute(
+            select(EventParticipant).where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
 """class RoutePointDAO(BaseDAO):
     model = RoutePoint
 

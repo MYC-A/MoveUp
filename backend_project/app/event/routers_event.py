@@ -6,7 +6,7 @@ from .dao_event import EventDAO, EventParticipantDAO
 from .models_event import Event, EventParticipant
 from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
-from app.users.dependensies_user import get_current_user
+from app.users.dependensies_user import get_current_user, get_current_user_optional
 from app.db.base import get_db
 from datetime import datetime
 from typing import List, Optional
@@ -158,6 +158,26 @@ async def participate_event(
             detail="Ошибка сервера: " + str(e)
         )
 
+
+@router.delete("/{event_id}/participate")
+async def cancel_participation(
+    event_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отмена записи на мероприятие (отписаться). Освобождает место, если
+    заявка была одобрена."""
+    participant = await EventParticipantDAO.find_user_participant(
+        event_id, current_user.id, session=db
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Вы не записаны на это мероприятие")
+    await EventParticipantDAO.remove_participant(
+        participant_id=participant.id, event_id=event_id, session=db
+    )
+    return {"status": "ok", "msg": "Запись отменена"}
+
+
 @router.get("/", response_model=List[EventRead])
 async def get_events(
     request: Request,
@@ -170,6 +190,7 @@ async def get_events(
     available_only: bool = Query(False, description="Показывать только события со свободными местами"),
     active_only: bool = Query(True, description="Скрывать завершенные события"),
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
     format: str = Query("html", description="Формат ответа: html или json")
 ):
     """Получение списка мероприятий и отображение HTML-страницы или возврат JSON."""
@@ -201,9 +222,18 @@ async def get_events(
         )
 
         events_read = [EventRead.model_validate(event) for event in events]
+
+        # Статус участия текущего пользователя для всех событий страницы (1 запрос).
+        status_map = {}
+        if current_user is not None:
+            status_map = await EventParticipantDAO.get_user_statuses(
+                current_user.id, [e.id for e in events_read], session=db
+            )
+
         events_dict = []
         for event in events_read:
             event_dict = event.dict()
+            event_dict["my_status"] = status_map.get(event.id)
             if event_dict.get("start_time"):
                 event_dict["start_time"] = event_dict["start_time"].isoformat()
             if event_dict.get("end_time"):
@@ -235,13 +265,20 @@ async def get_server_time():
 @router.get("/{event_id}", response_model=EventRead)
 async def get_event_details(
     event_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
 ):
     """Получение деталей мероприятия."""
     event = await EventDAO.find_one_or_none_by_id(event_id, session=db)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-    return EventRead.model_validate(event)
+    result = EventRead.model_validate(event)
+    if current_user is not None:
+        participant = await EventParticipantDAO.find_user_participant(
+            event_id, current_user.id, session=db
+        )
+        result.my_status = participant.approved.value if participant else None
+    return result
 
 @router.get("/{event_id}/route", response_model=List[dict])
 async def get_event_route(
