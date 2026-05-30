@@ -18,6 +18,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../services_api/lk_service.dart';
+import '../services_api/EventService.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -30,6 +31,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final LkService lkService = LkService();
+  final EventService _eventService = EventService();
   final TextEditingController _bioController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
@@ -41,11 +43,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
   DateTime _lastLoadAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _refreshTimer;
 
+  /// Список городов для выбора в профиле (как в событиях).
+  List<String> _cities = EventService.fallbackCities;
+
+  // Допустимые границы для «обычного» человека — отсекаем явные опечатки.
+  static const double _minWeightKg = 30;
+  static const double _maxWeightKg = 250;
+  static const double _minHeightCm = 100;
+  static const double _maxHeightCm = 250;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadCities();
     _startAutoRefresh();
+  }
+
+  Future<void> _loadCities() async {
+    try {
+      final cities = await _eventService.getEventCities();
+      if (!mounted || cities.isEmpty) return;
+      setState(() => _cities = cities);
+    } catch (e) {
+      debugPrint('Не удалось загрузить список городов: $e');
+    }
+  }
+
+  String _normalizeCityName(String value) {
+    return value.trim().toLowerCase().replaceAll('ё', 'е');
+  }
+
+  bool _isKnownCity(String value) {
+    final normalized = _normalizeCityName(value);
+    return _cities.any((city) => _normalizeCityName(city) == normalized);
   }
 
   @override
@@ -115,6 +146,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleRefresh() => _load(background: true);
 
+  // Проверяет вес/рост/город. Возвращает текст ошибки или null, если всё ок.
+  // Пустые значения допустимы (поля необязательные).
+  String? _validateWeight(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text.replaceAll(',', '.'));
+    if (value == null) return 'Введите число';
+    if (value < _minWeightKg || value > _maxWeightKg) {
+      return 'Вес должен быть от ${_minWeightKg.toInt()} до ${_maxWeightKg.toInt()} кг';
+    }
+    return null;
+  }
+
+  String? _validateHeight(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text.replaceAll(',', '.'));
+    if (value == null) return 'Введите число';
+    if (value < _minHeightCm || value > _maxHeightCm) {
+      return 'Рост должен быть от ${_minHeightCm.toInt()} до ${_maxHeightCm.toInt()} см';
+    }
+    return null;
+  }
+
+  String? _validateCity(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    if (!_isKnownCity(text)) return 'Выберите город из списка';
+    return null;
+  }
+
   void _showEditProfileDialog(Map<String, dynamic> user) {
     final bioCtrl =
         TextEditingController(text: (user['bio'] ?? '').toString());
@@ -125,70 +187,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final heightCtrl = TextEditingController(
         text: user['height'] != null ? '${user['height']}' : '');
 
+    String? cityError;
+    String? weightError;
+    String? heightError;
+
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Редактировать профиль'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: bioCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'О себе'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cityCtrl,
-                decoration: const InputDecoration(labelText: 'Город'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: weightCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Вес, кг'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: heightCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Рост, см'),
-              ),
-            ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Редактировать профиль'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: bioCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'О себе'),
+                ),
+                const SizedBox(height: 12),
+                // Город выбираем из известного списка (как в событиях).
+                Autocomplete<String>(
+                  initialValue: TextEditingValue(text: cityCtrl.text),
+                  optionsBuilder: (value) {
+                    final query = _normalizeCityName(value.text);
+                    if (query.isEmpty) return _cities.take(8);
+                    return _cities
+                        .where((c) => _normalizeCityName(c).contains(query))
+                        .take(12);
+                  },
+                  onSelected: (city) {
+                    cityCtrl.text = city;
+                    setDialogState(() => cityError = _validateCity(city));
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onSubmitted) {
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: InputDecoration(
+                        labelText: 'Город',
+                        helperText: 'Выберите город из списка',
+                        errorText: cityError,
+                      ),
+                      onChanged: (value) {
+                        cityCtrl.text = value;
+                        setDialogState(() => cityError = _validateCity(value));
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: weightCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Вес, кг',
+                    errorText: weightError,
+                  ),
+                  onChanged: (value) =>
+                      setDialogState(() => weightError = _validateWeight(value)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: heightCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Рост, см',
+                    errorText: heightError,
+                  ),
+                  onChanged: (value) =>
+                      setDialogState(() => heightError = _validateHeight(value)),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                // Финальная проверка перед сохранением.
+                final cErr = _validateCity(cityCtrl.text);
+                final wErr = _validateWeight(weightCtrl.text);
+                final hErr = _validateHeight(heightCtrl.text);
+                if (cErr != null || wErr != null || hErr != null) {
+                  setDialogState(() {
+                    cityError = cErr;
+                    weightError = wErr;
+                    heightError = hErr;
+                  });
+                  return;
+                }
+
+                try {
+                  await lkService.updateProfile(
+                    bio: bioCtrl.text,
+                    city: cityCtrl.text.trim(),
+                    weight: double.tryParse(
+                        weightCtrl.text.trim().replaceAll(',', '.')),
+                    height: double.tryParse(
+                        heightCtrl.text.trim().replaceAll(',', '.')),
+                  );
+                  if (!mounted) return;
+                  Navigator.pop(dialogContext);
+                  _load(background: true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Профиль обновлён')),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  showApiError(context, e);
+                }
+              },
+              child: const Text('Сохранить'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await lkService.updateProfile(
-                  bio: bioCtrl.text,
-                  city: cityCtrl.text,
-                  weight: double.tryParse(weightCtrl.text.replaceAll(',', '.')),
-                  height: double.tryParse(heightCtrl.text.replaceAll(',', '.')),
-                );
-                if (!mounted) return;
-                Navigator.pop(dialogContext);
-                _load(background: true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Профиль обновлён')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                showApiError(context, e);
-              }
-            },
-            child: const Text('Сохранить'),
-          ),
-        ],
       ),
     );
   }

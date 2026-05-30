@@ -241,6 +241,19 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       setState(() {
         final postId = update['post_id'];
         final postIndex = _posts.indexWhere((post) => post.id == postId);
+        // Удаление обрабатываем отдельно — пост мог быть удалён с другого устройства.
+        if (update['type'] == 'post_deleted') {
+          if (postIndex != -1) {
+            _posts.removeAt(postIndex);
+            if (postIndex < _mapControllers.length) {
+              final removed = _mapControllers.removeAt(postIndex);
+              WidgetsBinding.instance
+                  .addPostFrameCallback((_) => removed.dispose());
+            }
+            if (_skip > 0) _skip -= 1;
+          }
+          return;
+        }
         if (postIndex != -1) {
           final post = _posts[postIndex];
           switch (update['type']) {
@@ -302,6 +315,36 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   bool _isValidRoute(List<dynamic> routeData) {
     return routeData.isNotEmpty;
+  }
+
+  // Удаляет пост из локального списка вместе с его MapController.
+  void _removePostById(int postId) {
+    final index = _posts.indexWhere((p) => p.id == postId);
+    if (index == -1) return;
+    setState(() {
+      _posts.removeAt(index);
+      if (index < _mapControllers.length) {
+        final removed = _mapControllers.removeAt(index);
+        // Диспозим после кадра — карта успеет демонтироваться.
+        WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
+      }
+      // Держим offset пагинации в соответствии с реальным размером списка.
+      if (_skip > 0) _skip -= 1;
+    });
+  }
+
+  Future<void> _deletePost(Post post) async {
+    try {
+      await _postService.deletePost(post.id);
+      if (!mounted) return;
+      _removePostById(post.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Пост удалён')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
+    }
   }
 
   void _showPostOptions() {
@@ -488,6 +531,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           loadPosts: _loadPosts,
           likePost: _likePost,
           currentUserId: _currentUserId,
+          onDeleted: _deletePost,
         );
       },
     );
@@ -516,6 +560,8 @@ class PostItem extends StatefulWidget {
   final Future<void> Function() loadPosts;
   final Future<void> Function(int) likePost;
   final int? currentUserId; // Новый параметр
+  /// Колбэк удаления поста (доступен только владельцу). Если null — пункт скрыт.
+  final Future<void> Function(Post)? onDeleted;
 
   const PostItem({
     Key? key,
@@ -527,6 +573,7 @@ class PostItem extends StatefulWidget {
     required this.loadPosts,
     required this.likePost,
     this.currentUserId, // Добавляем currentUserId
+    this.onDeleted,
   }) : super(key: key);
 
   @override
@@ -631,12 +678,61 @@ class _PostItemState extends State<PostItem>
                     },
                   ),
                 ],
+                if (_canDelete(post)) ...[
+                  const Divider(height: 1, color: AppColors.border),
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline,
+                        color: AppColors.danger),
+                    title: const Text('Удалить пост',
+                        style: TextStyle(color: AppColors.danger)),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _confirmDelete(post);
+                    },
+                  ),
+                ],
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  // Удалять можно только свой пост и только если задан колбэк удаления.
+  bool _canDelete(Post post) {
+    return widget.onDeleted != null &&
+        widget.currentUserId != null &&
+        post.userId == widget.currentUserId;
+  }
+
+  Future<void> _confirmDelete(Post post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Удалить пост?'),
+        content: const Text(
+          'Пост и все его комментарии будут удалены без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await widget.onDeleted?.call(post);
+    }
   }
 
   @override

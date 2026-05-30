@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
+import 'package:flutter_application_1/screens_api/UserProfiles.dart';
+import 'package:flutter_application_1/screens_api/profile_screen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
 import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -793,16 +795,12 @@ class _EventScreenState extends State<EventScreen> {
                         maxLines: 2,
                       ),
                       if (event.organizerName?.isNotEmpty == true) ...[
-                        const SizedBox(height: AppSpacing.xxs),
-                        Text(
-                          'Организатор: ${event.organizerName}',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                        const SizedBox(height: AppSpacing.xs),
+                        _OrganizerChip(
+                          name: event.organizerName!,
+                          isMe: _currentUserId != null &&
+                              event.organizerId == _currentUserId,
+                          onTap: () => _openOrganizerProfile(event),
                         ),
                       ],
                     ],
@@ -897,6 +895,20 @@ class _EventScreenState extends State<EventScreen> {
             _buildParticipationControl(event, hasSeats),
           ],
         ),
+      ),
+    );
+  }
+
+  // Переход на профиль организатора (свой ЛК, если это текущий пользователь).
+  void _openOrganizerProfile(Event event) {
+    final isMe =
+        _currentUserId != null && event.organizerId == _currentUserId;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => isMe
+            ? const ProfileScreen()
+            : UserProfiles(userId: event.organizerId),
       ),
     );
   }
@@ -1263,6 +1275,61 @@ class _EventActivityIcon extends StatelessWidget {
         icon,
         color: color,
         size: 28,
+      ),
+    );
+  }
+}
+
+// Кликабельный чип организатора события — ведёт на его профиль.
+class _OrganizerChip extends StatelessWidget {
+  final String name;
+  final bool isMe;
+  final VoidCallback onTap;
+
+  const _OrganizerChip({
+    required this.name,
+    required this.isMe,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.person_pin_circle_outlined,
+                size: 16, color: AppColors.primary),
+            const SizedBox(width: AppSpacing.xxs),
+            Flexible(
+              child: Text(
+                isMe ? 'Организатор: вы' : 'Организатор: $name',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xxs),
+            const Icon(Icons.chevron_right,
+                size: 16, color: AppColors.primary),
+          ],
+        ),
       ),
     );
   }

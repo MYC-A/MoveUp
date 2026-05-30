@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -32,16 +33,50 @@ class _CreatePostWithoutRouteScreenState
   bool _isSaving = false;
   final MapController _mapController = MapController();
 
+  /// Дебаунс «живого» поиска по мере ввода (соблюдаем лимит Nominatim).
+  Timer? _searchDebounce;
+
   /// Список результатов поиска (каждый элемент — Map<String, dynamic> из Nominatim)
   List<Map<String, dynamic>> _searchResults = [];
 
-  /// Заголовок User-Agent для Nominatim (замените на подходящий)
-  static const String _userAgent = 'myFlutterApp/1.0 (contact@myapp.com)';
+  /// User-Agent для Nominatim. Политика сервиса требует идентифицировать
+  /// приложение реальным значением — иначе запросы могут отклоняться (HTTP 403).
+  static const String _userAgent = 'MoveUp/1.0 (com.moveup.app; support@moveup.app)';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _descriptionController.dispose();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  // Живой поиск: запускаем запрос спустя паузу после ввода (>= 3 символов).
+  void _onSearchChanged() {
+    if (!_showMap) return;
+    _searchDebounce?.cancel();
+    final query = _searchController.text.trim();
+    if (query.length < 3) {
+      if (_searchResults.isNotEmpty) {
+        setState(() => _searchResults = []);
+      }
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 600), _searchLocation);
+  }
 
   // Функция для очистки запроса
   String cleanQuery(String query) {
-    // Удаляем все символы, кроме букв, цифр и пробелов
-    String cleaned = query.replaceAll(RegExp(r'[^а-яА-Яa-zA-Z0-9\s]'), '');
+    // Удаляем все символы, кроме букв (включая «ё»), цифр и пробелов.
+    String cleaned = query.replaceAll(RegExp(r'[^а-яА-ЯёЁa-zA-Z0-9\s]'), '');
     // Приводим к нижнему регистру
     cleaned = cleaned.toLowerCase();
     // Заменяем множественные пробелы на один
@@ -134,125 +169,106 @@ class _CreatePostWithoutRouteScreenState
     });
   }
 
-  Future<void> _searchLocation() async {
-    setState(() {
-      _isSearching = true;
-      _searchResults.clear();
-    });
+  /// Один запрос к Nominatim. Возвращает разобранный список (или пустой),
+  /// бросает исключение только при сетевой/серверной ошибке.
+  Future<List<Map<String, dynamic>>> _queryNominatim(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return [];
 
-    String query = _searchController.text.trim();
-    if (query.isEmpty) {
+    final url = Uri.parse(
+      'https://nominatim.openstreetmap.org/search'
+      '?format=json&limit=8&accept-language=ru'
+      '&q=${Uri.encodeQueryComponent(trimmed)}',
+    );
+    final response = await http.get(
+      url,
+      headers: {
+        'Accept-Language': 'ru',
+        'User-Agent': _userAgent,
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Nominatim HTTP ${response.statusCode}');
+    }
+
+    // Важно: декодируем как UTF-8, иначе кириллица в названиях ломается.
+    final decoded = json.decode(utf8.decode(response.bodyBytes));
+    if (decoded is! List) return [];
+    return decoded
+        .whereType<Map>()
+        .map((item) => <String, dynamic>{
+              'display_name': item['display_name'],
+              'lat': item['lat'],
+              'lon': item['lon'],
+            })
+        .where((item) => item['lat'] != null && item['lon'] != null)
+        .toList();
+  }
+
+  Future<void> _searchLocation() async {
+    final raw = _searchController.text.trim();
+    if (raw.isEmpty) {
       setState(() {
+        _searchResults = [];
         _isSearching = false;
       });
       return;
     }
 
+    setState(() {
+      _isSearching = true;
+    });
+
     try {
-      // Очищаем запрос
-      String cleanedQuery = cleanQuery(query);
+      // 1) Сначала ищем по исходному запросу — Nominatim сам разбирает адреса.
+      var results = await _queryNominatim(raw);
 
-      // Основной запрос
-      var url = Uri.parse(
-          'https://nominatim.openstreetmap.org/search?format=json&q=$cleanedQuery&accept-language=ru');
-      var response = await http.get(
-        url,
-        headers: {
-          'Accept-Language': 'ru',
-          'User-Agent': _userAgent,
-        },
-      );
-
-      if (response.statusCode == 200) {
-        var results = json.decode(response.body) as List<dynamic>;
-        if (results.isEmpty && cleanedQuery.contains(' ')) {
-          // Вторичный запрос: убрать последнее слово
-          cleanedQuery = fallbackQuery(cleanedQuery, false);
-          url = Uri.parse(
-              'https://nominatim.openstreetmap.org/search?format=json&q=$cleanedQuery&accept-language=ru');
-          response = await http.get(
-            url,
-            headers: {
-              'Accept-Language': 'ru',
-              'User-Agent': _userAgent,
-            },
-          );
-          results = json.decode(response.body) as List<dynamic>;
-
-          if (results.isEmpty && cleanedQuery.contains(' ')) {
-            // Третичный запрос: только первое слово
-            cleanedQuery = fallbackQuery(cleanedQuery, true);
-            url = Uri.parse(
-                'https://nominatim.openstreetmap.org/search?format=json&q=$cleanedQuery&accept-language=ru');
-            response = await http.get(
-              url,
-              headers: {
-                'Accept-Language': 'ru',
-                'User-Agent': _userAgent,
-              },
-            );
-            results = json.decode(response.body) as List<dynamic>;
-          }
+      // 2) Если пусто — пробуем «очищенный» запрос и постепенные упрощения.
+      if (results.isEmpty) {
+        final cleaned = cleanQuery(raw);
+        if (cleaned.isNotEmpty && cleaned != raw.toLowerCase()) {
+          results = await _queryNominatim(cleaned);
         }
-
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body) as List<dynamic>;
-          if (data.isNotEmpty) {
-            setState(() {
-              _searchResults = data.map((item) {
-                return {
-                  'display_name': item['display_name'],
-                  'lat': item['lat'],
-                  'lon': item['lon'],
-                };
-              }).toList();
-            });
-          } else {
-            setState(() {
-              _searchResults.clear();
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Место не найдено. Попробуйте уточнить запрос или выберите место на карте.',
-                ),
-              ),
-            );
-          }
-        } else if (response.statusCode == 403) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Ошибка 403. Проверьте User-Agent (требуется корректный идентификатор).',
-              ),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка поиска: ${response.statusCode}')),
-          );
+        if (results.isEmpty && cleaned.contains(' ')) {
+          results = await _queryNominatim(fallbackQuery(cleaned, false));
         }
-      } else if (response.statusCode == 403) {
+        if (results.isEmpty && cleaned.contains(' ')) {
+          results = await _queryNominatim(fallbackQuery(cleaned, true));
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+      });
+
+      if (results.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-              'Ошибка 403. Проверьте User-Agent (требуется корректный идентификатор).',
+              'Место не найдено. Уточните запрос или выберите точку на карте.',
             ),
           ),
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка поиска: ${response.statusCode}')),
-        );
       }
     } catch (e) {
+      debugPrint('Ошибка поиска места: $e');
+      if (!mounted) return;
+      setState(() {
+        _searchResults = [];
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        const SnackBar(
+          content: Text('Не удалось выполнить поиск. Попробуйте позже.'),
+        ),
       );
     } finally {
-      setState(() {
-        _isSearching = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
     }
   }
 

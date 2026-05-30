@@ -119,6 +119,13 @@ async def update_profile(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
+    # Серверная проверка диапазонов — отсекаем явные опечатки/мусор,
+    # даже если клиент пропустил валидацию.
+    if weight is not None and not (30 <= weight <= 250):
+        raise HTTPException(status_code=400, detail="Вес должен быть от 30 до 250 кг")
+    if height is not None and not (100 <= height <= 250):
+        raise HTTPException(status_code=400, detail="Рост должен быть от 100 до 250 см")
+
     # Обновляем данные пользователя
     if full_name:
         user.full_name = full_name

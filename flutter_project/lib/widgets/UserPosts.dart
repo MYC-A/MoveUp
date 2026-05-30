@@ -172,6 +172,19 @@ class _UserPostsState extends State<UserPosts> {
       setState(() {
         final postId = update['post_id'];
         final postIndex = posts.indexWhere((post) => post.id == postId);
+        if (update['type'] == 'post_deleted') {
+          if (postIndex != -1) {
+            posts.removeAt(postIndex);
+            if (postIndex < mapControllers.length) {
+              final removed = mapControllers.removeAt(postIndex);
+              WidgetsBinding.instance
+                  .addPostFrameCallback((_) => removed.dispose());
+            }
+            if (skip > 0) skip -= 1;
+            posts = List.from(posts);
+          }
+          return;
+        }
         if (postIndex != -1) {
           final post = posts[postIndex];
           switch (update['type']) {
@@ -199,6 +212,34 @@ class _UserPostsState extends State<UserPosts> {
         }
       });
     });
+  }
+
+  void _removePostById(int postId) {
+    final index = posts.indexWhere((p) => p.id == postId);
+    if (index == -1) return;
+    setState(() {
+      posts.removeAt(index);
+      if (index < mapControllers.length) {
+        final removed = mapControllers.removeAt(index);
+        WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
+      }
+      if (skip > 0) skip -= 1;
+      posts = List.from(posts);
+    });
+  }
+
+  Future<void> _deletePost(Post post) async {
+    try {
+      await postService.deletePost(post.id);
+      if (!mounted) return;
+      _removePostById(post.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Пост удалён')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
+    }
   }
 
   Future<void> _likePost(int postId) async {
@@ -292,6 +333,7 @@ class _UserPostsState extends State<UserPosts> {
               loadPosts: _loadPosts,
               likePost: _likePost,
               currentUserId: currentUserId,
+              onDeleted: _deletePost,
             );
           } else if (hasMore) {
             return Center(

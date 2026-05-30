@@ -15,6 +15,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_application_1/widgets/photo_viewer.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/utils/calories.dart';
 
 class PostDetailsScreen extends StatefulWidget {
   final int postId;
@@ -314,20 +315,6 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
     return '${kilometers.toStringAsFixed(2)} км';
   }
 
-  // Форматирование времени начала маршрута
-  String _formatStartTime(List<dynamic> routeData, String createdAt) {
-    if (routeData.isNotEmpty && routeData[0]['timestamp'] != null) {
-      try {
-        final startTime = DateTime.parse(routeData[0]['timestamp']);
-        return '${startTime.day.toString().padLeft(2, '0')}.${startTime.month.toString().padLeft(2, '0')}.${startTime.year} ${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
-      } catch (e) {
-        debugPrint('Ошибка парсинга timestamp: $e');
-      }
-    }
-    final createdTime = DateTime.parse(createdAt);
-    return '${createdTime.day.toString().padLeft(2, '0')}.${createdTime.month.toString().padLeft(2, '0')}.${createdTime.year} ${createdTime.hour.toString().padLeft(2, '0')}:${createdTime.minute.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -421,16 +408,16 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                           margin:
                               EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            gradient: LinearGradient(
-                              colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            color: AppColors.routeSoft,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.border),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: FlutterMap(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: FlutterMap(
                               mapController: _mapController,
                               options: MapOptions(
                                 initialCenter: LatLng(
@@ -478,7 +465,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                                 point['longitude']))
                                             .toList(),
                                         strokeWidth: 4.0,
-                                        color: Colors.orange,
+                                        color: AppColors.route,
                                       ),
                                     ],
                                   ),
@@ -525,6 +512,38 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                   ),
                               ],
                             ),
+                                ),
+                                Positioned(
+                                  top: 12,
+                                  left: 12,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface
+                                          .withValues(alpha: 0.92),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.directions_run,
+                                            size: 15, color: AppColors.route),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Маршрут',
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.route,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       if (_post.routeData.isNotEmpty &&
@@ -546,10 +565,9 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                 value: _formatDistance(_post.distance),
                               ),
                               _InfoTile(
-                                icon: Icons.calendar_today,
-                                label: 'Начало',
-                                value: _formatStartTime(_post.routeData,
-                                    _post.createdAt.toString()),
+                                icon: Icons.local_fire_department,
+                                label: 'Калории',
+                                value: '${estimateCalories(_post.distance)} ккал',
                               ),
                             ],
                           ),
