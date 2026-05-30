@@ -592,6 +592,9 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       if (_currentPosition != null) {
         _route!.addPoint(_currentPosition!);
       }
+      // Просим фоновую геолокацию, чтобы трек продолжался при свёрнутом
+      // приложении/выключенном экране (не блокируем запись, если откажут).
+      unawaited(_ensureBackgroundLocation());
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -599,6 +602,22 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
                 Text('Разрешение на доступ к местоположению не предоставлено')),
       );
     }
+  }
+
+  // Запрос фоновой геолокации (Android 10+: только после «при использовании»).
+  Future<void> _ensureBackgroundLocation() async {
+    final status = await Permission.locationAlways.status;
+    if (status.isGranted) return;
+    final result = await Permission.locationAlways.request();
+    if (!mounted || result.isGranted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Чтобы трек писался при свёрнутом приложении, разрешите геолокацию '
+          '«Всегда» в настройках приложения.',
+        ),
+      ),
+    );
   }
 
   void _pauseTracking() {

@@ -43,7 +43,6 @@ class _EventScreenState extends State<EventScreen> {
   final List<MapController> _mapControllers = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  final Set<int> _fittedMapEventIds = {};
   final List<int> _activeInlineMapEventIds = [];
   final Map<int, Timer> _mapActivationTimers = {};
   final Map<int, double> _visibleMapFractions = {};
@@ -117,7 +116,6 @@ class _EventScreenState extends State<EventScreen> {
         _events.clear();
         _mapControllers.clear();
         _clearInlineMapState();
-        _fittedMapEventIds.clear();
         _hasMore = true;
         _latestEventId = null;
       }
@@ -275,8 +273,7 @@ class _EventScreenState extends State<EventScreen> {
             _activeInlineMapEventIds.add(eventId);
 
             while (_activeInlineMapEventIds.length > _maxLiveInlineMaps) {
-              final removedEventId = _activeInlineMapEventIds.removeAt(0);
-              _fittedMapEventIds.remove(removedEventId);
+              _activeInlineMapEventIds.removeAt(0);
             }
           });
         },
@@ -304,11 +301,13 @@ class _EventScreenState extends State<EventScreen> {
     List<LatLng> routePoints,
     MapController mapController,
   ) {
-    if (routePoints.isEmpty || _fittedMapEventIds.contains(eventId)) return;
-    _fittedMapEventIds.add(eventId);
+    if (routePoints.isEmpty) return;
 
+    // Подгоняем камеру под весь маршрут при КАЖДОМ монтировании карты
+    // (onMapReady срабатывает один раз на маунт). Раньше из-за разового guard
+    // при повторном появлении карта оставалась на initialZoom по первой точке.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 120), () {
+      Future.delayed(const Duration(milliseconds: 150), () {
         if (!mounted || !_activeInlineMapEventIds.contains(eventId)) return;
         _zoomToRoute(routePoints, mapController);
       });

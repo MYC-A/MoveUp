@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:flutter_application_1/services_api/post_service.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
@@ -55,13 +56,71 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
   bool _hasMore = true;
   String? _error;
   ScrollController? _activeScrollController;
+  int? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _commentsCount = widget.initialCommentsCount;
     _focusNode.addListener(_onFocusChange);
+    _loadCurrentUserId();
     _loadComments();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    try {
+      final id = await _postService.getCurrentUserId();
+      if (mounted) setState(() => _currentUserId = id);
+    } catch (_) {
+      // некритично — просто не покажем кнопку удаления
+    }
+  }
+
+  Future<void> _deleteComment(Comment comment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Удалить комментарий?'),
+        content: const Text('Комментарий будет удалён без возможности отмены.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final idx = _comments.indexWhere((c) => c.id == comment.id);
+    if (idx == -1) return;
+    final removed = _comments[idx];
+
+    // Оптимистично убираем.
+    setState(() {
+      _comments.removeAt(idx);
+      _commentsCount = (_commentsCount - 1).clamp(0, 1 << 31);
+    });
+    widget.onCommentsCountChanged?.call(_commentsCount);
+
+    try {
+      await _postService.deleteComment(widget.postId, comment.id);
+    } catch (e) {
+      // Откат при ошибке.
+      if (!mounted) return;
+      setState(() {
+        _comments.insert(idx, removed);
+        _commentsCount += 1;
+      });
+      widget.onCommentsCountChanged?.call(_commentsCount);
+      showApiError(context, e);
+    }
   }
 
   @override
@@ -271,7 +330,13 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
           );
         }
 
-        return _CommentTile(comment: _comments[index]);
+        final comment = _comments[index];
+        return _CommentTile(
+          comment: comment,
+          canDelete:
+              _currentUserId != null && comment.userId == _currentUserId,
+          onDelete: () => _deleteComment(comment),
+        );
       },
     );
   }
@@ -343,8 +408,14 @@ class _CommentsHeader extends StatelessWidget {
 
 class _CommentTile extends StatelessWidget {
   final Comment comment;
+  final bool canDelete;
+  final VoidCallback onDelete;
 
-  const _CommentTile({required this.comment});
+  const _CommentTile({
+    required this.comment,
+    this.canDelete = false,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +463,19 @@ class _CommentTile extends StatelessWidget {
                       color: AppColors.textMuted,
                     ),
                   ),
+                  if (canDelete)
+                    GestureDetector(
+                      onTap: onDelete,
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: AppSpacing.xs),
+                        child: Icon(
+                          Icons.delete_outline,
+                          size: 18,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: AppSpacing.xxs),

@@ -33,52 +33,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _picker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
 
-  late Future<Map<String, dynamic>> _profileFuture;
+  Map<String, dynamic>? _profile;
+  String? _error;
+  bool _loading = true;
   bool _isBioExpanded = false;
   bool _isProfileVisible = true;
-  DateTime _lastProfileLoadAt = DateTime.now();
+  DateTime _lastLoadAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _profileFuture = lkService.fetchProfile();
-  }
-
-  // ЛК — вкладка в IndexedStack (постоянно в дереве). При возврате на вкладку
-  // освежаем агрегаты (лайки/комменты/посты), но не чаще раза в 5 секунд.
-  void _onVisibilityChanged(double visibleFraction) {
-    final nowVisible = visibleFraction > 0.5;
-    if (nowVisible && !_isProfileVisible) {
-      if (DateTime.now().difference(_lastProfileLoadAt) >
-          const Duration(seconds: 5)) {
-        _reloadProfile();
-      }
-    }
-    _isProfileVisible = nowVisible;
+    _load();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _bioController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _reloadProfile() {
-    _lastProfileLoadAt = DateTime.now();
-    setState(() {
-      _profileFuture = lkService.fetchProfile();
+  // Загрузка профиля. background=true — тихое обновление агрегатов без экрана
+  // загрузки и без пересоздания списка постов (UserPosts остаётся смонтирован).
+  Future<void> _load({bool background = false}) async {
+    if (!background) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    _lastLoadAt = DateTime.now();
+    try {
+      final data = await lkService.fetchProfile();
+      if (!mounted) return;
+      setState(() {
+        _profile = data;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        if (_profile == null) _error = e.toString();
+      });
+    }
+  }
+
+  // ЛК — вкладка в IndexedStack. При возврате тихо освежаем статистику и
+  // запускаем периодическое обновление, пока экран виден.
+  void _onVisibilityChanged(double visibleFraction) {
+    final nowVisible = visibleFraction > 0.5;
+    if (nowVisible && !_isProfileVisible) {
+      if (DateTime.now().difference(_lastLoadAt) >
+          const Duration(seconds: 2)) {
+        _load(background: true);
+      }
+      _startAutoRefresh();
+    } else if (!nowVisible && _isProfileVisible) {
+      _stopAutoRefresh();
+    }
+    _isProfileVisible = nowVisible;
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (_isProfileVisible) _load(background: true);
     });
   }
 
-  Future<void> _handleRefresh() async {
-    _lastProfileLoadAt = DateTime.now();
-    final future = lkService.fetchProfile();
-    setState(() {
-      _profileFuture = future;
-    });
-    await future;
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
   }
+
+  void _reloadProfile() => _load();
+
+  Future<void> _handleRefresh() => _load(background: true);
 
   void _showEditBioDialog(String? currentBio) {
     _bioController.text = currentBio ?? '';
@@ -223,17 +258,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         key: const Key('profile_visibility'),
         onVisibilityChanged: (info) =>
             _onVisibilityChanged(info.visibleFraction),
-        child: FutureBuilder<Map<String, dynamic>>(
-        future: _profileFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const AppLoading(label: 'Загружаем профиль');
-          } else if (snapshot.hasError) {
-            return AppErrorState(
-              message: '${snapshot.error}',
-              onRetry: _reloadProfile,
-            );
-          } else if (!snapshot.hasData) {
+        child: Builder(
+        builder: (context) {
+          if (_profile == null) {
+            if (_loading) {
+              return const AppLoading(label: 'Загружаем профиль');
+            }
+            if (_error != null) {
+              return AppErrorState(message: _error, onRetry: _reloadProfile);
+            }
             return const AppEmptyState(
               icon: Icons.person_outline,
               title: 'Профиль не найден',
@@ -241,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           }
 
-          final profile = snapshot.data!;
+          final profile = _profile!;
           final user = profile['user'];
           final stats = profile['stats'];
           final avatarUrl = (user['avatar_url'] ?? '').toString().replaceAll(
