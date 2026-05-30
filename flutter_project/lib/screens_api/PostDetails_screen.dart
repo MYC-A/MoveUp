@@ -12,6 +12,8 @@ import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_application_1/widgets/photo_viewer.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 
 class PostDetailsScreen extends StatefulWidget {
   final int postId;
@@ -314,7 +316,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
       return Scaffold(
         backgroundColor: Colors.white,
         body: Center(
-          child: CircularProgressIndicator(color: Colors.blueAccent),
+          child: CircularProgressIndicator(color: AppColors.primary),
         ),
       );
     }
@@ -338,7 +340,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
         iconTheme: IconThemeData(color: Colors.black),
         actions: [
           IconButton(
-            icon: Icon(Icons.download, color: Colors.blueAccent),
+            icon: Icon(Icons.download, color: AppColors.primary),
             onPressed: _saveRouteFromPost,
           ),
         ],
@@ -432,11 +434,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                 },
                               ),
                               children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName: 'com.moveup.app',
-                                ),
+                                osmTileLayer(),
                                 if (_post.routeData.length == 1)
                                   MarkerLayer(
                                     markers: [
@@ -567,7 +565,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                                       ? 'Свернуть'
                                       : 'Показать полностью',
                                   style: TextStyle(
-                                    color: Colors.blueAccent,
+                                    color: AppColors.primary,
                                     fontFamily: 'Roboto',
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -759,7 +757,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(
                         child:
-                            CircularProgressIndicator(color: Colors.blueAccent),
+                            CircularProgressIndicator(color: AppColors.primary),
                       ),
                     ),
                   ),
@@ -802,7 +800,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                 ),
                 SizedBox(width: 8),
                 IconButton(
-                  icon: Icon(Icons.send, color: Colors.blueAccent),
+                  icon: Icon(Icons.send, color: AppColors.primary),
                   onPressed: _addComment,
                 ),
               ],
@@ -830,7 +828,7 @@ class _InfoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 24, color: Colors.blueAccent),
+        Icon(icon, size: 24, color: AppColors.primary),
         SizedBox(height: 4),
         Text(
           label,

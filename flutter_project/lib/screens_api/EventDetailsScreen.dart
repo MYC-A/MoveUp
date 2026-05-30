@@ -3,6 +3,8 @@ import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 
 class EventDetailsScreen extends StatelessWidget {
   final int eventId;
@@ -17,7 +19,7 @@ class EventDetailsScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text('Детали мероприятия'),
         centerTitle: true,
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: AppColors.primary,
         elevation: 0,
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -26,7 +28,7 @@ class EventDetailsScreen extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
               child: CircularProgressIndicator(
-                color: Colors.blueAccent,
+                color: AppColors.primary,
               ),
             );
           } else if (snapshot.hasError) {
@@ -134,11 +136,7 @@ class EventDetailsScreen extends StatelessWidget {
                               initialZoom: 13.0,
                             ),
                             children: [
-                              TileLayer(
-                                urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.moveup.app',
-                              ),
+                              osmTileLayer(),
                               MarkerLayer(
                                 markers: [
                                   Marker(

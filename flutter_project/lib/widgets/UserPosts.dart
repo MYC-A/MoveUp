@@ -18,6 +18,8 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/services_api/api_error_ui.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 
 class UserPosts extends StatefulWidget {
   final int userId;
@@ -376,7 +378,7 @@ class _UserPostsState extends State<UserPosts> {
                         ),
                       ),
                       trailing: IconButton(
-                        icon: Icon(Icons.map, color: Colors.blueAccent),
+                        icon: Icon(Icons.map, color: AppColors.primary),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -426,11 +428,7 @@ class _UserPostsState extends State<UserPosts> {
                                     flags: InteractiveFlag.none),
                               ),
                               children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName: 'com.moveup.app',
-                                ),
+                                osmTileLayer(),
                                 if (post.routeData.length == 1)
                                   MarkerLayer(
                                     markers: [
@@ -570,7 +568,7 @@ class _UserPostsState extends State<UserPosts> {
                                     ? 'Свернуть'
                                     : 'Показать полностью',
                                 style: TextStyle(
-                                  color: Colors.blueAccent,
+                                  color: AppColors.primary,
                                   fontFamily: 'Roboto',
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -673,7 +671,7 @@ class _UserPostsState extends State<UserPosts> {
                             children: [
                               IconButton(
                                 icon: Icon(Icons.comment,
-                                    color: Colors.blueAccent, size: 24),
+                                    color: AppColors.primary, size: 24),
                                 onPressed: () => _openComments(post),
                               ),
                               Text(
@@ -704,7 +702,7 @@ class _UserPostsState extends State<UserPosts> {
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(8.0),
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
             );
           } else {
@@ -733,7 +731,7 @@ class _InfoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 24, color: Colors.blueAccent),
+        Icon(icon, size: 24, color: AppColors.primary),
         SizedBox(height: 4),
         Text(
           label,

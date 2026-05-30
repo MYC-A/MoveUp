@@ -13,6 +13,7 @@ import '../services/StorageService.dart';
 import 'CreatePostScreen.dart';
 import 'RouteDetailsScreen.dart';
 import 'RouteViewScreen.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class RouteHistoryScreen extends StatefulWidget {
   /// Режим выбора маршрута для создания поста: тап по маршруту сразу открывает
@@ -164,16 +165,19 @@ class _RouteHistoryScreenState extends State<RouteHistoryScreen>
     );
   }
 
-  // Режим выбора для поста: открываем создание поста сразу и, если пост создан,
-  // закрываем экран выбора, чтобы вернуть пользователя в ленту.
+  // Режим выбора для поста: открываем создание поста. Закрываем экран выбора
+  // (возврат в ленту) ТОЛЬКО если пост реально создан (CreatePostScreen вернул
+  // true). При обычном «назад» остаёмся в истории выбора маршрута.
   Future<void> _selectRouteForPost(RunningRoute route) async {
-    await Navigator.push(
+    final created = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => CreatePostScreen(route: route),
       ),
     );
-    if (mounted) Navigator.of(context).maybePop();
+    if (created == true && mounted) {
+      Navigator.of(context).maybePop();
+    }
   }
 
   @override
@@ -539,10 +543,7 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
             onMapReady: _fitRoute,
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.moveup.app',
-            ),
+            osmTileLayer(),
             if (points.length > 1)
               PolylineLayer(
                 polylines: [

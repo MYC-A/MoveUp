@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/RunningRoute.dart';
 import '../services/StorageService.dart';
 import 'RouteViewScreen.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class RouteDetailsScreen extends StatefulWidget {
   final RunningRoute route;
@@ -400,10 +401,7 @@ class _RouteMapPreview extends StatelessWidget {
             initialZoom: 14,
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.moveup.app',
-            ),
+            osmTileLayer(),
             if (points.length > 1)
               PolylineLayer(
                 polylines: [

@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart'; // Для форматирования дат
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class CreateEventScreen extends StatefulWidget {
   @override
@@ -795,11 +796,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 onTap: _onMapTap,
                               ),
                               children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName: 'com.moveup.app',
-                                ),
+                                osmTileLayer(),
                                 PolylineLayer(
                                   polylines: [
                                     if (_routePoints.isNotEmpty &&

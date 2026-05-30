@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../services_api/post_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class CreatePostWithoutRouteScreen extends StatefulWidget {
   @override
@@ -452,11 +453,7 @@ class _CreatePostWithoutRouteScreenState
                     },
                   ),
                   children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.moveup.app',
-                    ),
+                    osmTileLayer(),
                     if (_selectedLocation != null)
                       MarkerLayer(
                         markers: [

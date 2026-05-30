@@ -7,7 +7,6 @@ import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
 import '../services_api/post_service.dart';
 import '../models_api/post.dart';
 import '../services_api/web_socket_channel.dart';
-import '../services_api/cached_tile_provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -26,6 +25,7 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/photo_viewer.dart';
 import 'package:flutter_application_1/widgets/post_comments_sheet.dart';
 import 'package:flutter_application_1/utils/post_route_downloader.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 // Единый CacheManager для всего приложения
 final customCacheManager = CacheManager(
@@ -1277,25 +1277,7 @@ class _PostRouteMapState extends State<_PostRouteMap> {
                       initialZoom: 13.0,
                     ),
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.moveup.app',
-                        tileProvider: CachedTileProvider(),
-                        // keepBuffer/panBuffer держат тайлы вокруг вьюпорта,
-                        // чтобы при зуме к маршруту не появлялись серые пятна.
-                        keepBuffer: 3,
-                        panBuffer: 1,
-                        // Неудачно загруженные тайлы выгружаем, когда уходят с
-                        // экрана, чтобы они перезапрашивались, а не висели серыми.
-                        evictErrorTileStrategy:
-                            EvictErrorTileStrategy.notVisible,
-                        tileDisplay: const TileDisplay.fadeIn(
-                          duration: Duration(milliseconds: 180),
-                          startOpacity: 0,
-                          reloadStartOpacity: 0,
-                        ),
-                      ),
+                      osmTileLayer(),
                       if (_points.length == 1)
                         MarkerLayer(
                           markers: [
@@ -1620,14 +1602,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
           },
         ),
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.moveup.app',
-            tileProvider: CachedTileProvider(),
-            keepBuffer: 3,
-            panBuffer: 1,
-            evictErrorTileStrategy: EvictErrorTileStrategy.notVisible,
-          ),
+          osmTileLayer(),
           if (widget.routeData.length == 1) ...[
             MarkerLayer(
               markers: [

@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/RunningRoute.dart';
 import 'dart:async'; // Импорт для StreamSubscription
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class RouteViewScreen extends StatefulWidget {
   final RunningRoute route;
@@ -185,11 +186,7 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                 },
               ),
               children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.moveup.app',
-                ),
+                osmTileLayer(),
                 if (!hasSinglePoint)
                   PolylineLayer(
                     polylines: [

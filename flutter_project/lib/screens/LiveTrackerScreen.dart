@@ -15,6 +15,7 @@ import 'RouteHistoryScreen.dart';
 import '../models/RoutePoint.dart';
 import '../theme/app_colors.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 // Класс для фильтрации GPS-данных
 class GpsFilter {
@@ -989,10 +990,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.moveup.app',
-        ),
+        osmTileLayer(),
         if (_route != null && _route!.points.isNotEmpty)
           PolylineLayer(
             polylines: [

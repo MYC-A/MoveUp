@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
-import 'package:flutter_application_1/services_api/cached_tile_provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -18,6 +17,7 @@ import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class EventScreen extends StatefulWidget {
   @override
@@ -1002,22 +1002,7 @@ class _EventScreenState extends State<EventScreen> {
                       },
                     ),
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        tileProvider: CachedTileProvider(),
-                        // Предзагружаем соседние тайлы и выгружаем ошибочные,
-                        // чтобы не оставались серые пятна.
-                        keepBuffer: 3,
-                        panBuffer: 1,
-                        evictErrorTileStrategy: EvictErrorTileStrategy.notVisible,
-                        userAgentPackageName: 'com.moveup.app',
-                        tileDisplay: const TileDisplay.fadeIn(
-                          duration: Duration(milliseconds: 180),
-                          startOpacity: 0,
-                          reloadStartOpacity: 0,
-                        ),
-                      ),
+                      osmTileLayer(),
                       PolylineLayer(
                         polylines: [
                           if (previewRoutePoints.isNotEmpty)
@@ -1728,9 +1713,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
               },
             ),
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              ),
+              osmTileLayer(),
               PolylineLayer(
                 polylines: [
                   Polyline(

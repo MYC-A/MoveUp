@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/post_service.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:flutter_application_1/widgets/route_details/RouteMap.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/RunningRoute.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final RunningRoute route;
@@ -131,15 +133,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         photoPaths: _route.photos,
       );
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Пост успешно создан!')),
       );
 
-      Navigator.pop(context);
+      // Возвращаем true — экран выбора маршрута поймёт, что пост создан, и
+      // закроется в ленту. При обычном «назад» (null) останемся в истории.
+      Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка создания поста: $e')),
-      );
+      if (!mounted) return;
+      showApiError(context, e);
     }
   }
 
@@ -307,7 +311,7 @@ class _StatTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.blueAccent),
+          Icon(icon, size: 20, color: AppColors.primary),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/services_api/api_error_ui.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
 
 class EventApplicationsScreen extends StatefulWidget {
   final int eventId;
@@ -156,11 +157,9 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Участники события'),
+          title: const Text('Участники события'),
           centerTitle: true,
-          backgroundColor: Colors.blueAccent,
-          elevation: 0,
-          bottom: TabBar(
+          bottom: const TabBar(
             tabs: [
               Tab(text: 'Заявки'),
               Tab(text: 'Участники'),
@@ -196,7 +195,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
             );
           }
@@ -251,7 +250,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
             );
           }

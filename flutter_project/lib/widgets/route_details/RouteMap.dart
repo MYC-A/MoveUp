@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/RunningRoute.dart';
 import '../../screens/RouteViewScreen.dart';
+import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class RouteMap extends StatefulWidget {
   final RunningRoute route;
@@ -58,10 +59,7 @@ class _RouteMapState extends State<RouteMap> {
             onMapReady: _zoomToRoute,
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.moveup.app',
-            ),
+            osmTileLayer(),
             PolylineLayer(
               polylines: [
                 Polyline(
