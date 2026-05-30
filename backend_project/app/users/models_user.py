@@ -1,5 +1,5 @@
 # user/models_user.py
-from sqlalchemy import Column, String, DateTime, Boolean, Integer
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, Float
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import uuid
@@ -18,6 +18,9 @@ class User(Base):
     full_name = Column(String)
     bio = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    weight = Column(Float, nullable=True)  # кг — для расчёта калорий
+    height = Column(Float, nullable=True)  # см
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     total_subscribers = Column(Integer,default=0)

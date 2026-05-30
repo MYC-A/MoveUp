@@ -4,7 +4,7 @@ import io
 import json
 import uuid
 from datetime import timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
@@ -265,7 +265,9 @@ async def upload_photo_to_minio(file: UploadFile, bucket_name: str):
 @router.post("/posts_create", response_model=PostInDB)
 async def create_post(
     post: str = Form(...),  # Принимаем PostCreate как JSON-строку
-    photos: List[UploadFile] = File(...),  # Список загруженных файлов
+    # Фото необязательны: пост может быть без фотографий (раньше отсутствие
+    # photos давало 422 Unprocessable Entity).
+    photos: Optional[List[UploadFile]] = File(None),
     current_user: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -293,9 +295,9 @@ async def create_post(
     await db.commit()
     await db.refresh(db_post)
 
-    # Сохраняем загруженные фотографии в MinIO
+    # Сохраняем загруженные фотографии в MinIO (если есть)
     photo_urls = []
-    for photo in photos:
+    for photo in (photos or []):
         photo_url = await upload_photo_to_minio(photo, settings.MINIO_POSTS_BUCKET_NAME)
         db_photo = PostPhoto(post_id=db_post.id, photo_url=photo_url)
         db.add(db_photo)

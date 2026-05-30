@@ -8,6 +8,7 @@ import '../services_api/post_service.dart';
 import '../models_api/post.dart';
 import '../services_api/web_socket_channel.dart';
 import '../services_api/api_error_ui.dart';
+import '../utils/calories.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -553,20 +554,6 @@ class _PostItemState extends State<PostItem>
     return '${kilometers.toStringAsFixed(2)} км';
   }
 
-  String _formatStartTime(List<dynamic> routeData, String createdAt) {
-    DateTime startTime;
-    if (routeData.isNotEmpty && routeData[0]['timestamp'] != null) {
-      try {
-        startTime = DateTime.parse(routeData[0]['timestamp']);
-        return '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
-      } catch (e) {
-        debugPrint('Ошибка парсинга timestamp: $e');
-      }
-    }
-    startTime = DateTime.parse(createdAt);
-    return '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
-  }
-
   void _navigateToUserProfile(int userId) {
     print("currentUserId: ${widget.currentUserId} and userId: $userId");
 
@@ -825,10 +812,9 @@ class _PostItemState extends State<PostItem>
           const _StatsDivider(),
           Expanded(
             child: _InfoTile(
-              icon: Icons.access_time,
-              label: 'Начало',
-              value:
-                  _formatStartTime(post.routeData, post.createdAt.toString()),
+              icon: Icons.local_fire_department_outlined,
+              label: 'Калории',
+              value: '${estimateCalories(post.distance)} ккал',
               color: AppColors.activity,
             ),
           ),

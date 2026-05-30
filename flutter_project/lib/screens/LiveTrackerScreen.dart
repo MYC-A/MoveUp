@@ -9,6 +9,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../services/GpsService.dart';
 import '../services/StorageService.dart';
 import '../models/RunningRoute.dart';
+import '../utils/calories.dart';
+import '../services_api/lk_service.dart';
 import 'CreatePostScreen.dart';
 import 'RouteDetailsScreen.dart';
 import 'RouteHistoryScreen.dart';
@@ -210,10 +212,12 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   List<LatLng> _accumulatedPoints = [];
   bool _isWidgetActive = false; // Флаг для управления состоянием виджета
   bool _hasCenteredOnce = true;
+  double? _userWeightKg; // вес для расчёта калорий (из профиля)
 
   @override
   void initState() {
     super.initState();
+    _loadUserWeight();
     // Инициализация только при первом создании экрана
     if (_isWidgetActive) {
       startBackgroundService();
@@ -321,45 +325,44 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   }
 
   static void onStart(ServiceInstance service) async {
-    // Устанавливаем режим foreground (для Android)
     if (service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
         title: "Трекер маршрута",
-        content: "Запущено",
+        content: "Запись пробежки…",
       );
     }
 
-    // Обработка команд
     service.on('closeNotification').listen((event) {
       if (service is AndroidServiceInstance) {
-        service.stopSelf(); // Закрываем уведомление
+        service.stopSelf();
       }
     });
 
-    // Таймер для обновления данных
-    Timer.periodic(Duration(seconds: 1), (timer) async {
-      // Отправляем данные в уведомление
-      service.invoke(
-        'update',
-        {
-          "title": "Трекер маршрута",
-          "content":
-              "Дистанция: 0 м, Время: 00:00:00", // Заглушка, замените на реальные данные
-        },
-      );
+    // Обновляем текст уведомления (в шторке и на экране блокировки) живыми
+    // данными, которые присылает UI каждую секунду.
+    service.on('update').listen((event) {
+      if (service is AndroidServiceInstance && event != null) {
+        service.setForegroundNotificationInfo(
+          title: event['title']?.toString() ?? 'Трекер маршрута',
+          content: event['content']?.toString() ?? '',
+        );
+      }
     });
   }
 
   void showNotification() {
-    final service = FlutterBackgroundService();
-    service.invoke(
-      'update',
-      {
-        "title": "Трекер маршрута",
-        "content":
-            "Дистанция: ${_route?.distance.toStringAsFixed(2) ?? 0} м, Время: ${_trackingDuration.inHours.toString().padLeft(2, '0')}:${(_trackingDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_trackingDuration.inSeconds % 60).toString().padLeft(2, '0')}",
-      },
-    );
+    final distanceMeters = _route?.distance ?? 0;
+    final distanceText = distanceMeters >= 1000
+        ? '${(distanceMeters / 1000).toStringAsFixed(2)} км'
+        : '${distanceMeters.toStringAsFixed(0)} м';
+    final timeText =
+        '${_trackingDuration.inHours.toString().padLeft(2, '0')}:${(_trackingDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_trackingDuration.inSeconds % 60).toString().padLeft(2, '0')}';
+    final calories = estimateCalories(distanceMeters, weightKg: _userWeightKg);
+
+    FlutterBackgroundService().invoke('update', {
+      "title": "Пробежка · $timeText",
+      "content": "Дистанция: $distanceText · $calories ккал",
+    });
   }
 
   Future<void> _checkLocationPermission() async {
@@ -601,6 +604,18 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
             content:
                 Text('Разрешение на доступ к местоположению не предоставлено')),
       );
+    }
+  }
+
+  Future<void> _loadUserWeight() async {
+    try {
+      final profile = await LkService().fetchProfile();
+      final w = profile['user']?['weight'];
+      if (mounted && w is num && w > 0) {
+        setState(() => _userWeightKg = w.toDouble());
+      }
+    } catch (_) {
+      // некритично — калории посчитаются по среднему весу
     }
   }
 

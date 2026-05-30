@@ -32,7 +32,14 @@ class LkService {
     if (response.statusCode == 200) {
       try {
         final String responseBody = utf8.decode(response.bodyBytes);
-        return json.decode(responseBody);
+        final data = json.decode(responseBody);
+        // Кэшируем вес, чтобы экраны маршрутов/трекер считали калории по
+        // реальному весу пользователя без отдельного запроса.
+        final weight = data['user']?['weight'];
+        if (weight is num) {
+          await storage.write(key: 'user_weight', value: weight.toString());
+        }
+        return data;
       } catch (e) {
         throw FormatException('Ошибка при декодировании JSON: $e');
       }
@@ -245,8 +252,14 @@ class LkService {
     }
   }
 
-  Future<void> updateProfile(
-      {String? fullName, String? bio, String? avatarPath}) async {
+  Future<void> updateProfile({
+    String? fullName,
+    String? bio,
+    String? avatarPath,
+    String? city,
+    double? weight,
+    double? height,
+  }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw ApiException(
@@ -254,10 +267,12 @@ class LkService {
     }
 
     var request = http.MultipartRequest('PUT', Uri.parse('$baseUrl/profile/'));
-    ;
     request.headers['Cookie'] = 'users_access_token=$token';
     if (fullName != null) request.fields['full_name'] = fullName;
     if (bio != null) request.fields['bio'] = bio;
+    if (city != null) request.fields['city'] = city;
+    if (weight != null) request.fields['weight'] = weight.toString();
+    if (height != null) request.fields['height'] = height.toString();
     if (avatarPath != null) {
       request.files
           .add(await http.MultipartFile.fromPath('avatar', avatarPath));

@@ -9,6 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/RunningRoute.dart';
+import '../utils/calories.dart';
 import '../services/StorageService.dart';
 import 'CreatePostScreen.dart';
 import 'RouteDetailsScreen.dart';
@@ -415,8 +416,8 @@ class _RouteCard extends StatelessWidget {
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
                     child: _MetricChip(
-                      icon: Icons.calendar_today_outlined,
-                      label: route.formattedDate,
+                      icon: Icons.local_fire_department_outlined,
+                      label: '${estimateCalories(route.distance)} ккал',
                     ),
                   ),
                 ],

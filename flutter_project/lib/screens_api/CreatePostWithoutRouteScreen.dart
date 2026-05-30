@@ -5,8 +5,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../services_api/post_service.dart';
+import '../services_api/api_error_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
 
 class CreatePostWithoutRouteScreen extends StatefulWidget {
   @override
@@ -25,6 +29,7 @@ class _CreatePostWithoutRouteScreenState
   LatLng? _selectedLocation;
   bool _showMap = false;
   bool _isSearching = false;
+  bool _isSaving = false;
   final MapController _mapController = MapController();
 
   /// Список результатов поиска (каждый элемент — Map<String, dynamic> из Nominatim)
@@ -76,6 +81,8 @@ class _CreatePostWithoutRouteScreenState
   }
 
   Future<void> _savePost() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
     try {
       List<Map<String, dynamic>> routeData = [];
       if (_selectedLocation != null) {
@@ -96,14 +103,16 @@ class _CreatePostWithoutRouteScreenState
         photoPaths: _photos,
       );
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Пост успешно создан!')),
+        const SnackBar(content: Text('Пост успешно создан!')),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка создания поста: $e')),
-      );
+      if (!mounted) return;
+      showApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -263,230 +272,337 @@ class _CreatePostWithoutRouteScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.surfaceMuted,
       appBar: AppBar(
-        title: Text('Создать пост без маршрута'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.save),
-            onPressed: _savePost,
+        title: const Text('Новый пост'),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(AppSpacing.md),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _isSaving ? null : _savePost,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.send_outlined, size: 18),
+            label: Text(_isSaving ? 'Публикуем…' : 'Опубликовать'),
           ),
-        ],
+        ),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Описание
-            TextField(
-              controller: _descriptionController,
-              decoration: InputDecoration(
-                labelText: 'Описание',
-                border: OutlineInputBorder(),
+            _Section(
+              title: 'Описание',
+              child: TextField(
+                controller: _descriptionController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Поделитесь мыслями о пробежке…',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
-              maxLines: 3,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
 
             // Фотографии
-            Text(
-              'Фотографии',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
+            _Section(
+              title: 'Фотографии',
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: AppSpacing.sm,
+                  mainAxisSpacing: AppSpacing.sm,
+                ),
+                itemCount: _photos.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == _photos.length) {
+                    return _AddPhotoTile(onTap: _addPhoto);
+                  }
+                  return _PhotoTile(
+                    path: _photos[index],
+                    onRemove: () => _removePhoto(index),
+                  );
+                },
               ),
-              itemCount: _photos.length + 1,
-              itemBuilder: (context, index) {
-                if (index == _photos.length) {
-                  return GestureDetector(
-                    onTap: _addPhoto,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.add, size: 40),
-                    ),
-                  );
-                } else {
-                  return Stack(
-                    children: [
-                      Image.file(
-                        File(_photos[index]),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                      Positioned(
-                        right: 0,
-                        child: IconButton(
-                          icon: Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _removePhoto(index),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-              },
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
 
-            // Переключатель показа карты и поиска
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Добавить метку на карту',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Switch(
-                  value: _showMap,
-                  onChanged: (value) {
-                    _toggleMapVisibility();
-                  },
-                ),
-              ],
+            // Метка на карте
+            _Section(
+              title: 'Метка на карте',
+              trailing: Switch(
+                value: _showMap,
+                onChanged: (_) => _toggleMapVisibility(),
+              ),
+              child: _showMap ? _buildMapBlock() : null,
             ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            if (_showMap) ...[
-              SizedBox(height: 16),
-
-              // Поле поиска вместе со списком подсказок
-              Stack(
-                children: [
-                  // Этот контейнер задаёт фон и отступы для поля поиска и подсказок
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Само поле ввода
-                        TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Поиск места',
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
-                            border: InputBorder.none,
-                            suffixIcon: _isSearching
-                                ? Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    ),
-                                  )
-                                : IconButton(
-                                    icon: Icon(Icons.search),
-                                    onPressed: _searchLocation,
-                                  ),
+  Widget _buildMapBlock() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Поле поиска вместе со списком подсказок
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            border: Border.all(color: AppColors.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Поиск места',
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
+                  border: InputBorder.none,
+                  prefixIcon: const Icon(Icons.search,
+                      color: AppColors.textMuted, size: 20),
+                  suffixIcon: _isSearching
+                      ? const Padding(
+                          padding: EdgeInsets.all(AppSpacing.sm),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
-                          onSubmitted: (_) => _searchLocation(),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.arrow_forward),
+                          onPressed: _searchLocation,
                         ),
-
-                        // Список подсказок внизу поля
-                        if (_searchResults.isNotEmpty)
-                          Container(
-                            // Максимальная высота контейнера с подсказками
-                            constraints: BoxConstraints(maxHeight: 200),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              border: Border(
-                                top: BorderSide(color: Colors.grey.shade300),
-                              ),
-                            ),
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: _searchResults.length,
-                              itemBuilder: (context, index) {
-                                final item = _searchResults[index];
-                                return ListTile(
-                                  title: Text(
-                                    item['display_name'],
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  dense: true,
-                                  onTap: () => _selectResult(index),
-                                );
-                              },
-                            ),
-                          ),
-                      ],
+                ),
+                onSubmitted: (_) => _searchLocation(),
+              ),
+              if (_searchResults.isNotEmpty)
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: AppColors.border),
                     ),
                   ),
-                ],
-              ),
-
-              SizedBox(height: 16),
-
-              // Карта
-              Container(
-                height: 300,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: LatLng(55.7558, 37.6176),
-                    initialZoom: 13.0,
-                    onTap: (_, LatLng location) {
-                      _setMarker(location);
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final item = _searchResults[index];
+                      return ListTile(
+                        leading: const Icon(Icons.location_on_outlined,
+                            size: 20, color: AppColors.textMuted),
+                        title: Text(
+                          item['display_name'],
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        dense: true,
+                        onTap: () => _selectResult(index),
+                      );
                     },
-                  ),
-                  children: [
-                    osmTileLayer(),
-                    if (_selectedLocation != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            width: 40.0,
-                            height: 40.0,
-                            point: _selectedLocation!,
-                            child: Icon(
-                              Icons.location_pin,
-                              color: Colors.red,
-                              size: 40,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-
-              // Координаты выбранного места
-              if (_selectedLocation != null)
-                Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Выбрано место: '
-                    '${_selectedLocation!.latitude.toStringAsFixed(5)}, '
-                    '${_selectedLocation!.longitude.toStringAsFixed(5)}',
-                    style: TextStyle(fontSize: 14),
                   ),
                 ),
             ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+
+        // Карта
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          child: SizedBox(
+            height: 300,
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: const LatLng(55.7558, 37.6176),
+                initialZoom: 13.0,
+                onTap: (_, LatLng location) {
+                  _setMarker(location);
+                },
+              ),
+              children: [
+                osmTileLayer(),
+                if (_selectedLocation != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        width: 40.0,
+                        height: 40.0,
+                        point: _selectedLocation!,
+                        child: const Icon(
+                          Icons.location_pin,
+                          color: AppColors.danger,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+
+        // Координаты выбранного места
+        if (_selectedLocation != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: Row(
+              children: [
+                const Icon(Icons.place_outlined,
+                    size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    'Выбрано: '
+                    '${_selectedLocation!.latitude.toStringAsFixed(5)}, '
+                    '${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Карточка-секция формы — единый стиль (поверхность, рамка, заголовок).
+class _Section extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+  final Widget? child;
+
+  const _Section({required this.title, this.trailing, this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          if (child != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            child!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AddPhotoTile extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddPhotoTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceMuted,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppRadii.md),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_a_photo_outlined,
+                size: 26, color: AppColors.textMuted),
+            SizedBox(height: AppSpacing.xxs),
+            Text(
+              'Добавить',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhotoTile extends StatelessWidget {
+  final String path;
+  final VoidCallback onRemove;
+
+  const _PhotoTile({required this.path, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(File(path), fit: BoxFit.cover),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: InkWell(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 16),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -264,93 +264,92 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
-  Future<void> _showParticipants() async {
-    try {
-      final participants =
-          await _chatService.getGroupChatParticipants(widget.groupChatId);
-      if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        builder: (context) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Text(
-                    'Участники (${participants.length})',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
+  void _showParticipants() {
+    // Открываем лист мгновенно и грузим участников внутри (со спиннером),
+    // чтобы не ждать сеть до появления окна.
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _chatService.getGroupChatParticipants(widget.groupChatId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snapshot.hasError) {
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text('Не удалось загрузить участников')),
+                );
+              }
+              final participants = snapshot.data ?? const [];
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Text(
+                      'Участники (${participants.length})',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: participants.length,
-                    itemBuilder: (context, index) {
-                      final participant = participants[index];
-                      final rawAvatar =
-                          (participant['avatar_url'] ?? '').toString();
-                      final avatarUrl = rawAvatar.isEmpty
-                          ? ''
-                          : rawAvatar.replaceAll('localhost:9000',
-                              AppConfig.mediaBaseUrlWithoutScheme);
-                      final isMe = participant['id'] == currentUserId;
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: avatarUrl.isNotEmpty
-                              ? NetworkImage(avatarUrl)
-                              : null,
-                          child: avatarUrl.isEmpty
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
-                        title: Text(
-                          '${participant['full_name'] ?? 'Пользователь'}'
-                          '${isMe ? ' (вы)' : ''}',
-                        ),
-                      );
-                    },
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: participants.length,
+                      itemBuilder: (context, index) {
+                        final participant = participants[index];
+                        final rawAvatar =
+                            (participant['avatar_url'] ?? '').toString();
+                        final avatarUrl = rawAvatar.isEmpty
+                            ? ''
+                            : rawAvatar.replaceAll('localhost:9000',
+                                AppConfig.mediaBaseUrlWithoutScheme);
+                        final isMe = participant['id'] == currentUserId;
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: avatarUrl.isNotEmpty
+                                ? NetworkImage(avatarUrl)
+                                : null,
+                            child: avatarUrl.isEmpty
+                                ? const Icon(Icons.person)
+                                : null,
+                          ),
+                          title: Text(
+                            '${participant['full_name'] ?? 'Пользователь'}'
+                            '${isMe ? ' (вы)' : ''}',
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось загрузить участников: $e')),
-      );
-    }
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
-  Future<void> _showAddParticipantsModal() async {
+  void _showAddParticipantsModal() {
     if (currentUserId == null) return;
 
-    // Берём текущих участников, чтобы не предлагать уже добавленных.
-    Set<int> existingIds = {};
-    try {
-      final participants =
-          await _chatService.getGroupChatParticipants(widget.groupChatId);
-      existingIds = participants
-          .map((p) => p['id'])
-          .whereType<int>()
-          .toSet();
-    } catch (e) {
-      debugPrint('Не удалось загрузить участников для фильтра: $e');
-    }
-    if (!mounted) return;
-
+    // Открываем модалку сразу (без блокирующего пред-запроса участников) —
+    // список подписчиков грузится внутри. Дубли всё равно не пройдут: бэкенд
+    // в add_participant проверяет, что человек ещё не в чате.
     showDialog(
       context: context,
       builder: (context) => UserSelectionModal(
         userId: currentUserId!,
-        excludeUserIds: existingIds,
         onUserSelected: (int userId) async {
           try {
             await _chatService.addParticipantToGroupChat(

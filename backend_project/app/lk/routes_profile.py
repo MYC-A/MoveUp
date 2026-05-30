@@ -82,6 +82,9 @@ async def get_profile_page(
                 "full_name": user.full_name,
                 "bio": user.bio,
                 "avatar_url": user.avatar_url,
+                "city": user.city,
+                "weight": user.weight,
+                "height": user.height,
                 "total_subscriptions": user.total_subscriptions,  # Добавляем общее количество подписок
                 "total_subscribers": user.total_subscribers,      # Добавляем общее количество подписчиков
             },
@@ -104,6 +107,9 @@ async def get_profile_page(
 async def update_profile(
         full_name: str = Form(None),
         bio: str = Form(None),
+        city: str = Form(None),
+        weight: float = Form(None),
+        height: float = Form(None),
         avatar: UploadFile = File(None),
         current_user: int = Depends(get_current_user_id),
         db: AsyncSession = Depends(get_db)
@@ -118,6 +124,12 @@ async def update_profile(
         user.full_name = full_name
     if bio:
         user.bio = bio
+    if city is not None:
+        user.city = city
+    if weight is not None:
+        user.weight = weight
+    if height is not None:
+        user.height = height
 
     # Обработка аватарки
     if avatar:
@@ -353,7 +365,8 @@ async def view_user_profile(
                 "id": user.id,
                 "full_name": user.full_name,
                 "bio": user.bio,
-                "avatar_url": user.avatar_url
+                "avatar_url": user.avatar_url,
+                "city": user.city,
             },
             "stats": stats,
             "followers": followers,
@@ -979,7 +992,8 @@ async def get_profile_page(
                 "id": user.id,
                 "full_name": user.full_name,
                 "bio": user.bio,
-                "avatar_url": user.avatar_url
+                "avatar_url": user.avatar_url,
+                "city": user.city,
             },
             "stats": stats,
             "followers": followers,

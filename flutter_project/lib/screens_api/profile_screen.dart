@@ -7,12 +7,13 @@ import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
 import 'package:flutter_application_1/screens_api/followers_modal.dart';
 import 'package:flutter_application_1/screens_api/following_modal.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
-import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/UserPosts.dart';
+import 'package:flutter_application_1/widgets/profile/profile_hero.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -36,7 +37,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _profile;
   String? _error;
   bool _loading = true;
-  bool _isBioExpanded = false;
   bool _isProfileVisible = true;
   DateTime _lastLoadAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _refreshTimer;
@@ -115,41 +115,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleRefresh() => _load(background: true);
 
-  void _showEditBioDialog(String? currentBio) {
-    _bioController.text = currentBio ?? '';
+  void _showEditProfileDialog(Map<String, dynamic> user) {
+    final bioCtrl =
+        TextEditingController(text: (user['bio'] ?? '').toString());
+    final cityCtrl =
+        TextEditingController(text: (user['city'] ?? '').toString());
+    final weightCtrl = TextEditingController(
+        text: user['weight'] != null ? '${user['weight']}' : '');
+    final heightCtrl = TextEditingController(
+        text: user['height'] != null ? '${user['height']}' : '');
+
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text(
-          'Редактировать биографию',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        content: TextField(
-          controller: _bioController,
-          maxLines: 4,
-          decoration: const InputDecoration(hintText: 'Введите биографию'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Редактировать профиль'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: bioCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'О себе'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: cityCtrl,
+                decoration: const InputDecoration(labelText: 'Город'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: weightCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Вес, кг'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: heightCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Рост, см'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Отмена'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () async {
               try {
-                await lkService.updateProfile(bio: _bioController.text);
+                await lkService.updateProfile(
+                  bio: bioCtrl.text,
+                  city: cityCtrl.text,
+                  weight: double.tryParse(weightCtrl.text.replaceAll(',', '.')),
+                  height: double.tryParse(heightCtrl.text.replaceAll(',', '.')),
+                );
                 if (!mounted) return;
                 Navigator.pop(dialogContext);
-                _reloadProfile();
+                _load(background: true);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Биография обновлена')),
+                  const SnackBar(content: Text('Профиль обновлён')),
                 );
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Ошибка при обновлении профиля: $e')),
-                );
+                showApiError(context, e);
               }
             },
             child: const Text('Сохранить'),
@@ -281,7 +315,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'localhost:9000',
                 AppConfig.mediaBaseUrlWithoutScheme,
               );
-          final bio = (user['bio'] ?? 'Нет биографии').toString();
           final userId = (user['id'] as num?)?.toInt();
 
           return RefreshIndicator(
@@ -300,27 +333,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _OwnProfileHeroCard(
-                          user: user,
-                          stats: stats,
-                          avatarUrl: avatarUrl,
-                          bio: bio,
-                          isBioExpanded: _isBioExpanded,
-                          onBioToggle: () {
-                            setState(() {
-                              _isBioExpanded = !_isBioExpanded;
-                            });
-                          },
+                        ProfileHero(
+                          fullName: (user['full_name'] ?? 'Нет имени').toString(),
+                          avatarImage: avatarUrl.isNotEmpty
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                          bio: user['bio']?.toString(),
+                          city: user['city']?.toString(),
+                          weight: user['weight'] is num
+                              ? user['weight'] as num
+                              : null,
+                          height: user['height'] is num
+                              ? user['height'] as num
+                              : null,
+                          postsCount:
+                              ((stats['posts_count'] ?? 0) as num).toInt(),
+                          followersCount:
+                              ((user['total_subscribers'] ?? 0) as num).toInt(),
+                          followingCount:
+                              ((user['total_subscriptions'] ?? 0) as num)
+                                  .toInt(),
                           onFollowersTap: _openFollowers,
                           onFollowingTap: _openFollowing,
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        _ActivitySummaryCard(stats: stats),
-                        const SizedBox(height: AppSpacing.lg),
-                        _ProfileActionCard(
-                          onEventsTap: _openOrganizerEvents,
-                          onEditBioTap: () => _showEditBioDialog(user['bio']),
-                          onAvatarTap: _showImageSourceDialog,
+                          badgeLabel: 'Ваш профиль',
+                          badgeIcon: Icons.verified_user_outlined,
+                          actions: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      onPressed: () =>
+                                          _showEditProfileDialog(user),
+                                      icon: const Icon(Icons.edit_outlined,
+                                          size: 18),
+                                      label: const Text('Редактировать'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  OutlinedButton(
+                                    onPressed: _showImageSourceDialog,
+                                    child: const Icon(
+                                        Icons.photo_camera_outlined,
+                                        size: 18),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _openOrganizerEvents,
+                                  icon: const Icon(Icons.event_outlined,
+                                      size: 18),
+                                  label: const Text('Мои мероприятия'),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: AppSpacing.lg),
                         Text(
@@ -344,565 +414,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
         ),
       ),
-    );
-  }
-}
-
-class _OwnProfileHeroCard extends StatelessWidget {
-  final Map<String, dynamic> user;
-  final Map<String, dynamic> stats;
-  final String avatarUrl;
-  final String bio;
-  final bool isBioExpanded;
-  final VoidCallback onBioToggle;
-  final VoidCallback onFollowersTap;
-  final VoidCallback onFollowingTap;
-
-  const _OwnProfileHeroCard({
-    required this.user,
-    required this.stats,
-    required this.avatarUrl,
-    required this.bio,
-    required this.isBioExpanded,
-    required this.onBioToggle,
-    required this.onFollowersTap,
-    required this.onFollowingTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final fullName = (user['full_name'] ?? 'Нет имени').toString();
-    final hasLongBio = bio.length > 150;
-    final shownBio =
-        !isBioExpanded && hasLongBio ? '${bio.substring(0, 150)}...' : bio;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.textPrimary.withValues(alpha: 0.08),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            height: 92,
-            decoration: const BoxDecoration(
-              color: AppColors.primarySoft,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: _ProfileChip(
-                  icon: Icons.verified_user_outlined,
-                  label: 'Ваш профиль',
-                  foreground: AppColors.primary,
-                  background: AppColors.surface.withValues(alpha: 0.84),
-                ),
-              ),
-            ),
-          ),
-          Transform.translate(
-            offset: const Offset(0, -44),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                0,
-                AppSpacing.lg,
-                0,
-              ),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 56,
-                    backgroundColor: AppColors.surface,
-                    child: CircleAvatar(
-                      radius: 52,
-                      backgroundColor: AppColors.surfaceMuted,
-                      backgroundImage:
-                          avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                      child: avatarUrl.isEmpty
-                          ? const Icon(
-                              Icons.person,
-                              size: 48,
-                              color: AppColors.textMuted,
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    fullName,
-                    textAlign: TextAlign.center,
-                    style: textTheme.titleLarge?.copyWith(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    shownBio,
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodyLarge?.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 16,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: AppSpacing.xs,
-                    runSpacing: AppSpacing.xs,
-                    children: [
-                      if (hasLongBio)
-                        TextButton(
-                          onPressed: onBioToggle,
-                          child:
-                              Text(isBioExpanded ? 'Свернуть' : 'Развернуть'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: AppSpacing.xs,
-                    runSpacing: AppSpacing.xs,
-                    children: [
-                      _ProfileChip(
-                        icon: Icons.dynamic_feed_outlined,
-                        label: '${stats['posts_count'] ?? 0} постов',
-                        foreground: AppColors.primary,
-                        background: AppColors.primarySoft,
-                      ),
-                      _ProfileChip(
-                        icon: Icons.favorite_border,
-                        label: '${stats['likes_count'] ?? 0} лайков',
-                        foreground: AppColors.danger,
-                        background: const Color(0xFFFFECEA),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ProfileStat(
-                          icon: Icons.groups_outlined,
-                          value: '${user['total_subscribers'] ?? 0}',
-                          label: 'Подписчики',
-                          color: AppColors.primary,
-                          onTap: onFollowersTap,
-                        ),
-                      ),
-                      const _ProfileStatsDivider(),
-                      Expanded(
-                        child: _ProfileStat(
-                          icon: Icons.person_add_alt_1_outlined,
-                          value: '${user['total_subscriptions'] ?? 0}',
-                          label: 'Подписки',
-                          color: AppColors.route,
-                          onTap: onFollowingTap,
-                        ),
-                      ),
-                      const _ProfileStatsDivider(),
-                      Expanded(
-                        child: _ProfileStat(
-                          icon: Icons.article_outlined,
-                          value: '${stats['posts_count'] ?? 0}',
-                          label: 'Посты',
-                          color: AppColors.activity,
-                          onTap: null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivitySummaryCard extends StatelessWidget {
-  final Map<String, dynamic> stats;
-
-  const _ActivitySummaryCard({required this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.textPrimary.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Активность',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _ActivityMetric(
-                  icon: Icons.dynamic_feed_outlined,
-                  value: '${stats['posts_count'] ?? 0}',
-                  label: 'Посты',
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _ActivityMetric(
-                  icon: Icons.mode_comment_outlined,
-                  value: '${stats['comments_count'] ?? 0}',
-                  label: 'Комментарии',
-                  color: AppColors.activity,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _ActivityMetric(
-                  icon: Icons.favorite_border,
-                  value: '${stats['likes_count'] ?? 0}',
-                  label: 'Лайки',
-                  color: AppColors.danger,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileActionCard extends StatelessWidget {
-  final VoidCallback onEventsTap;
-  final VoidCallback onEditBioTap;
-  final VoidCallback onAvatarTap;
-
-  const _ProfileActionCard({
-    required this.onEventsTap,
-    required this.onEditBioTap,
-    required this.onAvatarTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.textPrimary.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Управление',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _ProfileActionTile(
-            icon: Icons.event_available_outlined,
-            title: 'Мои мероприятия',
-            subtitle: 'Заявки, участники и события',
-            color: AppColors.activity,
-            onTap: onEventsTap,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _ProfileActionTile(
-            icon: Icons.edit_note,
-            title: 'Редактировать биографию',
-            subtitle: 'Описание профиля',
-            color: AppColors.primary,
-            onTap: onEditBioTap,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _ProfileActionTile(
-            icon: Icons.add_a_photo_outlined,
-            title: 'Сменить аватарку',
-            subtitle: 'Галерея или камера',
-            color: AppColors.route,
-            onTap: onAvatarTap,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileActionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ProfileActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Row(
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  child: Icon(icon, color: color, size: 22),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityMetric extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-
-  const _ActivityMetric({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.md,
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.xxs),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileStat extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _ProfileStat({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final content = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: AppSpacing.xxs),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-        ),
-      ],
-    );
-
-    if (onTap == null) return content;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadii.md),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-        child: content,
-      ),
-    );
-  }
-}
-
-class _ProfileChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color foreground;
-  final Color background;
-
-  const _ProfileChip({
-    required this.icon,
-    required this.label,
-    required this.foreground,
-    required this.background,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: foreground, size: 17),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: foreground,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileStatsDivider extends StatelessWidget {
-  const _ProfileStatsDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 66,
-      color: AppColors.border,
     );
   }
 }

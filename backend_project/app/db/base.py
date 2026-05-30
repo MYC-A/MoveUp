@@ -46,6 +46,9 @@ async def ensure_schema_compatibility(conn):
             "ALTER TABLE events ADD COLUMN IF NOT EXISTS group_chat_enabled "
             "BOOLEAN NOT NULL DEFAULT FALSE"
         ))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS weight DOUBLE PRECISION"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS height DOUBLE PRECISION"))
         return
 
     if dialect == "sqlite":
@@ -58,3 +61,12 @@ async def ensure_schema_compatibility(conn):
                 "ALTER TABLE events ADD COLUMN group_chat_enabled "
                 "BOOLEAN NOT NULL DEFAULT 0"
             ))
+
+        user_columns = await conn.execute(text("PRAGMA table_info(users)"))
+        user_column_names = {row[1] for row in user_columns.fetchall()}
+        if "city" not in user_column_names:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN city VARCHAR"))
+        if "weight" not in user_column_names:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN weight REAL"))
+        if "height" not in user_column_names:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN height REAL"))
