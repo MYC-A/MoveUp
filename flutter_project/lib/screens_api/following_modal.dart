@@ -3,6 +3,7 @@ import 'package:flutter_application_1/config/app_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../screens_api/UserProfiles.dart';
 import '../services_api/lk_service.dart';
+import '../services_api/api_error_ui.dart';
 
 class FollowingModal extends StatefulWidget {
   const FollowingModal({Key? key}) : super(key: key);
@@ -48,9 +49,7 @@ class _FollowingModalState extends State<FollowingModal> {
         hasMore = newFollowing.length == limit;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при загрузке подписок: $e')),
-      );
+      if (mounted) showApiError(context, e);
     } finally {
       setState(() {
         isLoading = false;
@@ -79,7 +78,17 @@ class _FollowingModalState extends State<FollowingModal> {
       title: const Text('Подписки'),
       content: Container(
         width: double.maxFinite,
-        child: ListView.builder(
+        child: following.isEmpty && isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : following.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Вы пока ни на кого не подписаны'),
+                  )
+                : ListView.builder(
           controller: _scrollController,
           shrinkWrap: true,
           itemCount: following.length + (hasMore ? 1 : 0),
@@ -87,7 +96,6 @@ class _FollowingModalState extends State<FollowingModal> {
             if (index < following.length) {
               final user = following[index];
               final avatarUrl = _getAvatarUrl(user['avatar_url']);
-              print('Avatar URL (FollowingModal): $avatarUrl'); // Для отладки
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: CachedNetworkImageProvider(avatarUrl),

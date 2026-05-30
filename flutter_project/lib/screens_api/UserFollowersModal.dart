@@ -3,6 +3,7 @@ import 'package:flutter_application_1/config/app_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services_api/LkUsersService.dart';
 import '../screens_api/UserProfiles.dart';
+import '../services_api/api_error_ui.dart';
 
 class UserFollowersModal extends StatefulWidget {
   final int userId;
@@ -51,9 +52,7 @@ class _UserFollowersModalState extends State<UserFollowersModal> {
         hasMore = newFollowers.length == limit;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при загрузке подписчиков: $e')),
-      );
+      if (mounted) showApiError(context, e);
     } finally {
       setState(() {
         isLoading = false;
@@ -82,7 +81,17 @@ class _UserFollowersModalState extends State<UserFollowersModal> {
       title: const Text('Подписчики'),
       content: Container(
         width: double.maxFinite,
-        child: ListView.builder(
+        child: followers.isEmpty && isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : followers.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Пока нет подписчиков'),
+                  )
+                : ListView.builder(
           controller: _scrollController,
           shrinkWrap: true,
           itemCount: followers.length + (hasMore ? 1 : 0),
@@ -90,7 +99,6 @@ class _UserFollowersModalState extends State<UserFollowersModal> {
             if (index < followers.length) {
               final follower = followers[index];
               final avatarUrl = _getAvatarUrl(follower['avatar_url']);
-              print('Avatar URL: $avatarUrl'); // Для отладки
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: CachedNetworkImageProvider(avatarUrl),

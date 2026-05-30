@@ -6,6 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'api_client.dart';
+import 'api_exception.dart';
+
 class EventService {
   final String baseUrl = AppConfig.apiBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
@@ -133,7 +136,8 @@ class EventService {
   }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
 
     final queryParameters = <String, String>{
@@ -155,7 +159,7 @@ class EventService {
     final url = Uri.parse('$baseUrl/events/')
         .replace(queryParameters: queryParameters);
 
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -168,13 +172,13 @@ class EventService {
       final List<dynamic> data = jsonDecode(responseBody);
       return data.map((json) => Event.fromJson(json)).toList();
     } else {
-      throw Exception('Ошибка загрузки мероприятий: ${response.statusCode}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   Future<List<String>> getEventCities() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/events/cities'));
+      final response = await Api.get(Uri.parse('$baseUrl/events/cities'));
       if (response.statusCode == 200) {
         final String responseBody = utf8.decode(response.bodyBytes);
         final List<dynamic> data = jsonDecode(responseBody);
@@ -191,7 +195,7 @@ class EventService {
   Future<DateTime?> getServerTime() async {
     try {
       final response =
-          await http.get(Uri.parse('$baseUrl/events/server_time'));
+          await Api.get(Uri.parse('$baseUrl/events/server_time'));
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         final raw = data['now']?.toString();
@@ -208,27 +212,18 @@ class EventService {
   Future<void> participateEvent(int eventId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
 
     final url = Uri.parse('$baseUrl/events/$eventId/participate');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
-    final String responseBody = utf8.decode(response.bodyBytes);
-
-    if (response.statusCode == 200) {
-      return;
-    } else {
-      try {
-        final dynamic errorData = jsonDecode(responseBody);
-        final String errorMessage = errorData['detail'] ?? 'Неизвестная ошибка';
-        throw Exception(errorMessage);
-      } catch (e) {
-        throw Exception('Ошибка: ${response.statusCode} - $responseBody');
-      }
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -236,24 +231,18 @@ class EventService {
   Future<void> deleteEvent(int eventId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
 
     final url = Uri.parse('$baseUrl/events/$eventId');
-    final response = await http.delete(
+    final response = await Api.delete(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
-    if (response.statusCode == 200) {
-      return;
-    }
-    final String responseBody = utf8.decode(response.bodyBytes);
-    try {
-      final dynamic errorData = jsonDecode(responseBody);
-      throw Exception(errorData['detail'] ?? 'Ошибка удаления мероприятия');
-    } catch (e) {
-      throw Exception('Ошибка: ${response.statusCode} - $responseBody');
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -261,14 +250,16 @@ class EventService {
   Future<EventCreate> createEvent(EventCreate event) async {
     final token = await storage.read(key: 'access_token');
     if (event.routeData.isEmpty) {
-      throw Exception('Маршрут обязателен для создания мероприятия');
+      throw ApiException(
+          ApiErrorKind.unknown, 'Маршрут обязателен для создания мероприятия');
     }
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
 
     final url = Uri.parse('$baseUrl/events/create');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -299,7 +290,7 @@ class EventService {
     if (response.statusCode == 200) {
       return EventCreate.fromJson(jsonDecode(response.body));
     } else {
-      throw Exception('Ошибка создания мероприятия: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 }

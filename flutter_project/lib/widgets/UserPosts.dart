@@ -14,6 +14,10 @@ import 'package:flutter_application_1/services_api/Helper.dart';
 import 'dart:async';
 import 'package:flutter_application_1/widgets/post_comments_sheet.dart';
 import 'package:flutter_application_1/widgets/photo_viewer.dart';
+import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
+import 'package:flutter_application_1/widgets/common/app_error_state.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 
 class UserPosts extends StatefulWidget {
   final int userId;
@@ -38,6 +42,7 @@ class _UserPostsState extends State<UserPosts> {
   int? currentUserId;
   Timer? debounceTimer;
   Timer? pollTimer;
+  String? _loadError;
 
   // Единый CacheManager для приложения
   final customCacheManager = CacheManager(
@@ -88,6 +93,7 @@ class _UserPostsState extends State<UserPosts> {
 
     setState(() {
       isLoading = true;
+      _loadError = null;
     });
 
     try {
@@ -119,9 +125,14 @@ class _UserPostsState extends State<UserPosts> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при загрузке постов: $e')),
-      );
+      if (!mounted) return;
+      // Первая загрузка с пустым списком — показываем состояние ошибки;
+      // ошибка при догрузке — ненавязчивый тост.
+      if (posts.isEmpty) {
+        setState(() => _loadError = e.toString());
+      } else {
+        showApiError(context, e);
+      }
     } finally {
       setState(() {
         isLoading = false;
@@ -285,6 +296,38 @@ class _UserPostsState extends State<UserPosts> {
 
   @override
   Widget build(BuildContext context) {
+    if (posts.isEmpty) {
+      if (isLoading) {
+        return const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: AppLoading(label: 'Загружаем публикации'),
+          ),
+        );
+      }
+      if (_loadError != null) {
+        return SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: AppErrorState(
+              message: _loadError,
+              onRetry: _loadPosts,
+            ),
+          ),
+        );
+      }
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 48),
+          child: AppEmptyState(
+            icon: Icons.article_outlined,
+            title: 'Публикаций пока нет',
+            message: 'Здесь появятся посты пользователя.',
+          ),
+        ),
+      );
+    }
+
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {

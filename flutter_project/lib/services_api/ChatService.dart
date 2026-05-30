@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/io.dart';
+
+import 'api_client.dart';
+import 'api_exception.dart';
 
 class ChatService {
   final String baseUrl = AppConfig.apiBaseUrl;
@@ -41,10 +43,11 @@ class ChatService {
   Future<Map<String, dynamic>> getChatData() async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/?format=json');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -52,7 +55,7 @@ class ChatService {
       final String responseBody = utf8.decode(response.bodyBytes);
       return json.decode(responseBody);
     } else {
-      throw Exception('Ошибка загрузки данных чата: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -60,10 +63,11 @@ class ChatService {
   Future<List<int>> getUsersWithMessages() async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/users_with_messages');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -72,8 +76,7 @@ class ChatService {
       final List data = json.decode(responseBody);
       return data.cast<int>();
     } else {
-      throw Exception(
-          'Ошибка загрузки пользователей с перепиской: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -85,7 +88,8 @@ class ChatService {
   }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/messages/$userId').replace(
       queryParameters: {
@@ -93,7 +97,7 @@ class ChatService {
         if (beforeId != null) 'before_id': beforeId.toString(),
       },
     );
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -102,7 +106,7 @@ class ChatService {
       final List data = json.decode(responseBody);
       return data.cast<Map<String, dynamic>>();
     } else {
-      throw Exception('Ошибка загрузки сообщений: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -110,10 +114,11 @@ class ChatService {
   Future<void> sendMessage(int recipientId, String content) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/messages');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +130,7 @@ class ChatService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Ошибка отправки сообщения: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -137,7 +142,8 @@ class ChatService {
   }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/group_chats/$groupChatId/get_messages')
         .replace(
@@ -146,7 +152,7 @@ class ChatService {
         if (beforeId != null) 'before_id': beforeId.toString(),
       },
     );
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -154,17 +160,18 @@ class ChatService {
       final List data = json.decode(utf8.decode(response.bodyBytes));
       return data.cast<Map<String, dynamic>>();
     }
-    throw Exception('Ошибка загрузки групповых сообщений: ${response.body}');
+    throw ApiException.fromResponse(response);
   }
 
   // Отправить сообщение в групповой чат (POST /chat/group_chats/messages)
   Future<void> sendGroupMessage(int groupChatId, String content) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/group_chats/messages');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -176,7 +183,7 @@ class ChatService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Ошибка отправки группового сообщения: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -184,11 +191,12 @@ class ChatService {
   Future<void> markGroupMessagesAsRead(int groupChatId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url =
         Uri.parse('$baseUrl/chat/group_chats/$groupChatId/mark_as_read');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -196,8 +204,7 @@ class ChatService {
       },
     );
     if (response.statusCode != 200) {
-      throw Exception(
-          'Ошибка при отметке групповых сообщений: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -205,10 +212,11 @@ class ChatService {
   Future<Map<String, Map<int, int>>> getUnreadMessagesCount() async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/unread_messages_count');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -222,18 +230,18 @@ class ChatService {
             (data['group'] as Map).map((k, v) => MapEntry(int.parse(k), v)),
       };
     } else {
-      throw Exception(
-          'Ошибка загрузки количества непрочитанных сообщений: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   Future<void> markMessagesAsRead(int recipientId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/mark_as_read');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -243,8 +251,7 @@ class ChatService {
     );
     debugPrint('markMessagesAsRead status: ${response.statusCode}');
     if (response.statusCode != 200) {
-      throw Exception(
-          'Ошибка при отметке сообщений как прочитанных: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -252,10 +259,11 @@ class ChatService {
   Future<void> createGroupChat(String name, List<int> participants) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/group_chats');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -267,7 +275,7 @@ class ChatService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Ошибка создания группового чата: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -275,11 +283,12 @@ class ChatService {
   Future<void> addParticipantToGroupChat(int groupChatId, int userId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url =
         Uri.parse('$baseUrl/chat/group_chats/$groupChatId/add_participant');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -290,7 +299,7 @@ class ChatService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Ошибка добавления участника: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -299,11 +308,12 @@ class ChatService {
       int groupChatId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url =
         Uri.parse('$baseUrl/chat/group_chats/$groupChatId/participants');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -311,22 +321,23 @@ class ChatService {
       final body = utf8.decode(response.bodyBytes);
       return List<Map<String, dynamic>>.from(json.decode(body));
     }
-    throw Exception('Ошибка загрузки участников: ${response.body}');
+    throw ApiException.fromResponse(response);
   }
 
   // Покинуть групповой чат (POST /chat/group_chats/{group_chat_id}/leave)
   Future<void> leaveGroupChat(int groupChatId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
-      throw Exception('Токен не найден');
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
     }
     final url = Uri.parse('$baseUrl/chat/group_chats/$groupChatId/leave');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
     if (response.statusCode != 200) {
-      throw Exception('Ошибка выхода из чата: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_application_1/config/app_config.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services_api/LkUsersService.dart';
 import '../screens_api/UserProfiles.dart';
+import '../services_api/api_error_ui.dart';
 
 class UserFollowingModal extends StatefulWidget {
   final int userId;
@@ -51,9 +52,7 @@ class _UserFollowingModalState extends State<UserFollowingModal> {
         hasMore = newFollowing.length == limit;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при загрузке подписок: $e')),
-      );
+      if (mounted) showApiError(context, e);
     } finally {
       setState(() {
         isLoading = false;

@@ -103,6 +103,10 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         setState(() {
           _posts = _posts.sublist(0, 20);
           _mapControllers.removeRange(20, _mapControllers.length);
+          // Синхронизируем offset пагинации с реальным размером списка,
+          // иначе следующая догрузка возьмёт неверный skip (пропуски/дубли).
+          _skip = _posts.length;
+          _hasMore = true;
         });
         debugPrint("Приложение свернуто, кэш частично очищен.");
       }

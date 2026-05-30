@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_client.dart';
 
 class AuthService {
   final String baseUrl = AppConfig.apiBaseUrl;
@@ -22,7 +22,7 @@ class AuthService {
     required String passwordCheck,
   }) async {
     final url = Uri.parse('$baseUrl/auth/register/');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
@@ -50,7 +50,7 @@ class AuthService {
     required String password,
   }) async {
     final url = Uri.parse('$baseUrl/auth/login/');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
@@ -98,7 +98,7 @@ class AuthService {
     final url = Uri.parse('$baseUrl/auth/logout/');
     final token = await storage.read(key: 'access_token');
     await PushNotificationService.unregisterCurrentDeviceToken();
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -129,7 +129,7 @@ class AuthService {
     final url = Uri.parse('$baseUrl/auth/current_user');
     while (retries < maxRetries) {
       try {
-        final response = await http.get(
+        final response = await Api.get(
           url,
           headers: {'Cookie': 'users_access_token=$token'},
         );

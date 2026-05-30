@@ -4,20 +4,23 @@ import 'package:flutter_application_1/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models_api/post.dart';
+import 'api_client.dart';
+import 'api_exception.dart';
 
 class PostService {
   final String baseUrl = AppConfig.apiBaseUrl;
   final FlutterSecureStorage storage = const FlutterSecureStorage();
 
+  ApiException _noToken() =>
+      ApiException(ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+
   // Получить ленту постов
   Future<List<Post>> getFeed(int skip, int limit) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/feed?skip=$skip&limit=$limit');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -29,73 +32,65 @@ class PostService {
       debugPrint('Лента загружена: ${data.length} постов');
       return data.map((json) => Post.fromJson(json)).toList();
     } else {
-      throw Exception('Ошибка загрузки ленты: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Лайкнуть пост
   Future<void> likePost(int postId) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/posts/$postId/like');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Ошибка лайка: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Удалить пост (только свой)
   Future<void> deletePost(int postId) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/posts/$postId');
-    final response = await http.delete(
+    final response = await Api.delete(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Ошибка удаления поста: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Удалить комментарий (автор комментария или владелец поста)
   Future<void> deleteComment(int postId, int commentId) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/posts/$postId/comments/$commentId');
-    final response = await http.delete(
+    final response = await Api.delete(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Ошибка удаления комментария: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Добавить комментарий
   Future<Comment> addComment(int postId, String content) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/posts/$postId/create_comment');
-    final response = await http.post(
+    final response = await Api.post(
       url,
       headers: {
         'Content-Type': 'application/json',
@@ -120,22 +115,21 @@ class PostService {
         return Comment.fromJson(Map<String, dynamic>.from(commentJson));
       }
 
-      throw Exception('Некорректный ответ сервера при добавлении комментария');
+      throw ApiException(ApiErrorKind.unknown,
+          'Некорректный ответ сервера при добавлении комментария');
     }
 
-    throw Exception('Ошибка добавления комментария: ${response.body}');
+    throw ApiException.fromResponse(response);
   }
 
   // Получить комментарии для поста с пагинацией
   Future<List<Comment>> getComments(int postId, int skip, int limit) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse(
         '$baseUrl/post/posts/$postId/comments?skip=$skip&limit=$limit');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -145,19 +139,17 @@ class PostService {
       final List<dynamic> data = json.decode(responseBody);
       return data.map((json) => Comment.fromJson(json)).toList();
     } else {
-      throw Exception('Ошибка загрузки комментариев: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Загрузить данные поста по его postId
   Future<Post> getPostDetails(int postId) async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/post/posts/$postId/details');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -167,19 +159,17 @@ class PostService {
       final Map<String, dynamic> data = json.decode(responseBody);
       return Post.fromJson(data['post']);
     } else {
-      throw Exception('Ошибка загрузки деталей поста: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
   // Получить ID текущего пользователя
   Future<int> getCurrentUserId() async {
     final token = await storage.read(key: 'access_token');
-    if (token == null) {
-      throw Exception('Токен не найден');
-    }
+    if (token == null) throw _noToken();
 
     final url = Uri.parse('$baseUrl/auth/current_user');
-    final response = await http.get(
+    final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},
     );
@@ -187,8 +177,7 @@ class PostService {
     if (response.statusCode == 200) {
       return json.decode(response.body) as int;
     } else {
-      throw Exception(
-          'Ошибка загрузки текущего пользователя: ${response.body}');
+      throw ApiException.fromResponse(response);
     }
   }
 
@@ -205,9 +194,7 @@ class PostService {
       debugPrint(
           'Создание поста: photos=${photoPaths.length}, routePoints=${routeData.length}');
       final token = await storage.read(key: 'access_token');
-      if (token == null) {
-        throw Exception('Токен не найден');
-      }
+      if (token == null) throw _noToken();
 
       final postData = {
         'content': content,
@@ -232,8 +219,8 @@ class PostService {
       }
 
       var request = await createRequest(url);
-      var response = await request.send();
-      var responseBody = await response.stream.bytesToString();
+      var response = await Api.send(request);
+      await response.stream.bytesToString();
       debugPrint('Создание поста завершено со статусом ${response.statusCode}');
 
       // Обработка перенаправления
@@ -242,19 +229,19 @@ class PostService {
         if (redirectUrl != null) {
           url = Uri.parse(redirectUrl);
           final newRequest = await createRequest(url); // ← новое создание!
-          response = await newRequest.send();
-          responseBody = await response.stream.bytesToString();
+          response = await Api.send(newRequest);
+          await response.stream.bytesToString();
           debugPrint(
               'Создание поста после перенаправления: ${response.statusCode}');
         }
       }
 
       if (response.statusCode != 200) {
-        throw Exception('Ошибка создания поста: $responseBody');
+        throw ApiException.fromStatus(response.statusCode);
       }
     } catch (e) {
       debugPrint('Ошибка в createPost: $e');
-      rethrow;
+      throw ApiException.fromError(e);
     }
   }
 }

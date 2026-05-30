@@ -6,6 +6,7 @@ import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onNotificationsUpdated;
@@ -50,9 +51,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           _errorMessage = e.toString();
         });
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     } finally {
       if (mounted) {
         setState(() {
@@ -70,9 +69,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         widget.onNotificationsUpdated!();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     }
   }
 

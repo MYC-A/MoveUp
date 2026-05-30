@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 
 class EventApplicationsScreen extends StatefulWidget {
   final int eventId;
@@ -67,9 +68,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     } finally {
       if (mounted) {
         setState(() {
@@ -98,9 +97,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     } finally {
       if (mounted) {
         setState(() {
@@ -121,9 +118,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     }
   }
 
@@ -137,9 +132,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     }
   }
 
@@ -153,9 +146,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      showApiError(context, e);
     }
   }
 
