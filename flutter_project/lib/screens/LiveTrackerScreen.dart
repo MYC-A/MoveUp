@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../services/GpsService.dart';
 import '../services/StorageService.dart';
 import '../models/RunningRoute.dart';
@@ -277,20 +278,45 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     }
   }
 
-  void startBackgroundService() {
+  static const String _trackerChannelId = 'moveup_tracker_channel';
+
+  Future<void> startBackgroundService() async {
     final service = FlutterBackgroundService();
-    service.configure(
+
+    // Канал уведомления нужно создать ДО configure() (требование плагина),
+    // иначе foreground-уведомление не успевает показаться и Android убивает
+    // сервис с ForegroundServiceDidNotStartInTimeException.
+    final localNotifications = FlutterLocalNotificationsPlugin();
+    const channel = AndroidNotificationChannel(
+      _trackerChannelId,
+      'Трекер маршрута',
+      description: 'Запись пробежки в фоне',
+      importance: Importance.low,
+    );
+    await localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
+    await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
-        autoStart: true,
+        autoStart: false,
+        autoStartOnBoot: false,
         isForegroundMode: true,
+        notificationChannelId: _trackerChannelId,
+        initialNotificationTitle: 'Трекер маршрута',
+        initialNotificationContent: 'Подготовка…',
+        // Тип FGS должен совпадать с manifest (foregroundServiceType="location")
+        // и требует разрешения FOREGROUND_SERVICE_LOCATION на Android 14+.
+        foregroundServiceTypes: [AndroidForegroundType.location],
       ),
       iosConfiguration: IosConfiguration(
-        autoStart: true,
+        autoStart: false,
         onForeground: onStart,
       ),
     );
-    service.startService();
+    await service.startService();
   }
 
   static void onStart(ServiceInstance service) async {
