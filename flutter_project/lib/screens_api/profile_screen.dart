@@ -19,6 +19,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../services_api/lk_service.dart';
 import '../services_api/EventService.dart';
+import '../services_api/auth_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -32,6 +33,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final LkService lkService = LkService();
   final EventService _eventService = EventService();
+  final AuthService _authService = AuthService();
   final TextEditingController _bioController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
@@ -177,7 +179,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
+  static const int _bioMaxLength = 500;
+
   void _showEditProfileDialog(Map<String, dynamic> user) {
+    final nameCtrl =
+        TextEditingController(text: (user['full_name'] ?? '').toString());
     final bioCtrl =
         TextEditingController(text: (user['bio'] ?? '').toString());
     final cityCtrl =
@@ -187,6 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final heightCtrl = TextEditingController(
         text: user['height'] != null ? '${user['height']}' : '');
 
+    String? nameError;
     String? cityError;
     String? weightError;
     String? heightError;
@@ -201,13 +208,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TextField(
-                  controller: bioCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'О себе'),
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Имя',
+                    prefixIcon: const Icon(Icons.person_outline),
+                    errorText: nameError,
+                  ),
+                  onChanged: (value) => setDialogState(() {
+                    nameError = value.trim().length < 3
+                        ? 'Имя должно быть не короче 3 символов'
+                        : null;
+                  }),
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: bioCtrl,
+                  minLines: 4,
+                  maxLines: 7,
+                  maxLength: _bioMaxLength,
+                  decoration: const InputDecoration(
+                    labelText: 'О себе',
+                    alignLabelWithHint: true,
+                    helperText: 'Расскажите о себе, любимых маршрутах и целях',
+                  ),
+                ),
+                const SizedBox(height: 4),
                 // Город выбираем из известного списка (как в событиях).
                 Autocomplete<String>(
                   initialValue: TextEditingValue(text: cityCtrl.text),
@@ -266,7 +295,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+          actionsOverflowButtonSpacing: 8,
           actions: [
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showChangePasswordDialog();
+              },
+              icon: const Icon(Icons.lock_outline, size: 18),
+              label: const Text('Сменить пароль'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Отмена'),
@@ -274,11 +312,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             FilledButton(
               onPressed: () async {
                 // Финальная проверка перед сохранением.
+                final nErr = nameCtrl.text.trim().length < 3
+                    ? 'Имя должно быть не короче 3 символов'
+                    : null;
                 final cErr = _validateCity(cityCtrl.text);
                 final wErr = _validateWeight(weightCtrl.text);
                 final hErr = _validateHeight(heightCtrl.text);
-                if (cErr != null || wErr != null || hErr != null) {
+                if (nErr != null ||
+                    cErr != null ||
+                    wErr != null ||
+                    hErr != null) {
                   setDialogState(() {
+                    nameError = nErr;
                     cityError = cErr;
                     weightError = wErr;
                     heightError = hErr;
@@ -288,6 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 try {
                   await lkService.updateProfile(
+                    fullName: nameCtrl.text.trim(),
                     bio: bioCtrl.text,
                     city: cityCtrl.text.trim(),
                     weight: double.tryParse(
@@ -307,6 +353,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
               },
               child: const Text('Сохранить'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final repeatCtrl = TextEditingController();
+    String? error;
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Смена пароля'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: oldCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Текущий пароль'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Новый пароль'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: repeatCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Повторите новый пароль',
+                    errorText: error,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (newCtrl.text.length < 5) {
+                        setDialogState(() =>
+                            error = 'Пароль должен быть не короче 5 символов');
+                        return;
+                      }
+                      if (newCtrl.text != repeatCtrl.text) {
+                        setDialogState(() => error = 'Пароли не совпадают');
+                        return;
+                      }
+                      setDialogState(() {
+                        saving = true;
+                        error = null;
+                      });
+                      try {
+                        await _authService.changePassword(
+                          oldPassword: oldCtrl.text,
+                          newPassword: newCtrl.text,
+                        );
+                        if (!mounted) return;
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Пароль изменён')),
+                        );
+                      } catch (e) {
+                        setDialogState(() {
+                          saving = false;
+                          error = e.toString().replaceFirst('Exception: ', '');
+                        });
+                      }
+                    },
+              child: Text(saving ? 'Сохраняем…' : 'Сменить'),
             ),
           ],
         ),

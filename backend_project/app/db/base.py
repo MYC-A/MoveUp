@@ -49,6 +49,18 @@ async def ensure_schema_compatibility(conn):
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS weight DOUBLE PRECISION"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS height DOUBLE PRECISION"))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified "
+            "BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        # Существующие аккаунты предшествуют подтверждению email — считаем
+        # их подтверждёнными, чтобы не заблокировать вход.
+        await conn.execute(text(
+            "UPDATE users SET is_verified = TRUE WHERE is_verified = FALSE"
+        ))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires TIMESTAMP"))
+        await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS city VARCHAR"))
         return
 
     if dialect == "sqlite":
@@ -70,3 +82,17 @@ async def ensure_schema_compatibility(conn):
             await conn.execute(text("ALTER TABLE users ADD COLUMN weight REAL"))
         if "height" not in user_column_names:
             await conn.execute(text("ALTER TABLE users ADD COLUMN height REAL"))
+        if "is_verified" not in user_column_names:
+            await conn.execute(text(
+                "ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT 0"
+            ))
+            await conn.execute(text("UPDATE users SET is_verified = 1"))
+        if "verification_code" not in user_column_names:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN verification_code VARCHAR"))
+        if "verification_code_expires" not in user_column_names:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN verification_code_expires DATETIME"))
+
+        post_columns = await conn.execute(text("PRAGMA table_info(posts)"))
+        post_column_names = {row[1] for row in post_columns.fetchall()}
+        if "city" not in post_column_names:
+            await conn.execute(text("ALTER TABLE posts ADD COLUMN city VARCHAR"))

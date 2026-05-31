@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
+import 'verify_email_screen.dart';
 import 'dart:convert';
 import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/auth/auth_scaffold.dart';
 import '../services_api/auth_service.dart';
+import '../services_api/api_exception.dart';
 import '../services_api/push_notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -36,7 +38,23 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(builder: (context) => MainScreen(initialIndex: 0)),
         );
       } catch (e) {
-        String errorMessage = 'Произошла ошибка при входе';
+        // Email не подтверждён — уводим на экран ввода кода.
+        if (e.toString().contains('EMAIL_NOT_VERIFIED')) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  VerifyEmailScreen(email: _emailController.text.trim()),
+            ),
+          );
+          return;
+        }
+        // По умолчанию показываем реальную причину из исключения
+        // (auth_service уже бросает «Неверный email или пароль» на 401,
+        // ApiException — понятный текст про сеть/таймаут), а не общую фразу.
+        String errorMessage = e is ApiException
+            ? e.message
+            : e.toString().replaceFirst('Exception: ', '');
         if (e.toString().contains('Ошибка входа')) {
           try {
             final errorBody = json.decode(

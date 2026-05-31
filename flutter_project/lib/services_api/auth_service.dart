@@ -20,6 +20,9 @@ class AuthService {
     required String fullName,
     required String password,
     required String passwordCheck,
+    String? city,
+    double? weight,
+    double? height,
   }) async {
     final url = Uri.parse('$baseUrl/auth/register/');
     final response = await Api.post(
@@ -30,18 +33,105 @@ class AuthService {
         'full_name': fullName,
         'password': password,
         'password_check': passwordCheck,
+        if (city != null && city.isNotEmpty) 'city': city,
+        if (weight != null) 'weight': weight,
+        if (height != null) 'height': height,
       }),
     );
     final responseBody = utf8.decode(response.bodyBytes);
 
     if (response.statusCode == 200) {
       return json.decode(responseBody);
-    } else if (response.statusCode == 400) {
+    } else if (response.statusCode == 400 ||
+        response.statusCode == 409 ||
+        response.statusCode == 422) {
       final errorBody = json.decode(responseBody);
-      throw Exception('Ошибка регистрации: ${errorBody['detail']}');
+      throw Exception('Ошибка регистрации: ${_extractDetail(errorBody)}');
     } else {
       throw Exception('Ошибка соединения: ${response.statusCode}');
     }
+  }
+
+  // Подтверждение email кодом из письма. На успехе сохраняет токен (авто-вход).
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String code,
+  }) async {
+    final url = Uri.parse('$baseUrl/auth/verify_email/');
+    final response = await Api.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'email': email, 'code': code}),
+    );
+    final responseBody = utf8.decode(response.bodyBytes);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(responseBody);
+      final accessToken = data['access_token'];
+      if (accessToken != null) {
+        await storage.write(key: 'access_token', value: accessToken);
+        final userId = await getCurrentUserId();
+        if (userId != null) {
+          await storage.write(key: 'user_id', value: userId.toString());
+        }
+      }
+      return data;
+    } else {
+      final errorBody = json.decode(responseBody);
+      throw Exception(_extractDetail(errorBody));
+    }
+  }
+
+  // Повторная отправка кода подтверждения.
+  Future<void> resendCode(String email) async {
+    final url = Uri.parse('$baseUrl/auth/resend_code/');
+    final response = await Api.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'email': email}),
+    );
+    if (response.statusCode != 200) {
+      final errorBody = json.decode(utf8.decode(response.bodyBytes));
+      throw Exception(_extractDetail(errorBody));
+    }
+  }
+
+  // Смена пароля авторизованным пользователем.
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final token = await storage.read(key: 'access_token');
+    final url = Uri.parse('$baseUrl/auth/change_password/');
+    final response = await Api.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': 'users_access_token=$token',
+      },
+      body: json.encode({
+        'old_password': oldPassword,
+        'new_password': newPassword,
+      }),
+    );
+    if (response.statusCode != 200) {
+      final errorBody = json.decode(utf8.decode(response.bodyBytes));
+      throw Exception(_extractDetail(errorBody));
+    }
+  }
+
+  // Достаёт человекочитаемый текст ошибки из тела ответа FastAPI.
+  String _extractDetail(dynamic body) {
+    if (body is Map && body['detail'] != null) {
+      final detail = body['detail'];
+      if (detail is String) return detail;
+      if (detail is List && detail.isNotEmpty) {
+        final first = detail.first;
+        if (first is Map && first['msg'] != null) return first['msg'].toString();
+      }
+      return detail.toString();
+    }
+    return 'Неизвестная ошибка';
   }
 
 // Вход пользователя
@@ -82,6 +172,9 @@ class AuthService {
         debugPrint('Login: Failed to fetch user_id');
       }
       return data;
+    } else if (response.statusCode == 403) {
+      // Email не подтверждён — сигнал экрану, чтобы увёл на ввод кода.
+      throw Exception('EMAIL_NOT_VERIFIED');
     } else if (response.statusCode == 400) {
       final errorBody = json.decode(responseBody);
       throw Exception(

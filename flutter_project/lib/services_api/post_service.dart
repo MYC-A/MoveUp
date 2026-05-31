@@ -168,6 +168,35 @@ class PostService {
     }
   }
 
+  // Обратное геокодирование точки в название города через Nominatim.
+  // Возвращает null при любой ошибке — город необязателен.
+  Future<String?> _reverseCity(double lat, double lon) async {
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?format=json&zoom=10&accept-language=ru&lat=$lat&lon=$lon',
+      );
+      final response = await http.get(url, headers: {
+        'Accept-Language': 'ru',
+        'User-Agent': 'MoveUp/1.0 (com.moveup.app; support@moveup.app)',
+      });
+      if (response.statusCode != 200) return null;
+      final decoded = json.decode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return null;
+      final address = decoded['address'];
+      if (address is! Map) return null;
+      // Берём наиболее «городское» из доступных полей.
+      for (final key in ['city', 'town', 'village', 'municipality', 'state']) {
+        final value = address[key];
+        if (value is String && value.trim().isNotEmpty) return value.trim();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Не удалось определить город старта: $e');
+      return null;
+    }
+  }
+
   // Получить ID текущего пользователя
   Future<int> getCurrentUserId() async {
     final token = await storage.read(key: 'access_token');
@@ -201,10 +230,22 @@ class PostService {
       final token = await storage.read(key: 'access_token');
       if (token == null) throw _noToken();
 
+      // Определяем город старта по первой точке маршрута (необязательно).
+      String? city;
+      if (routeData.isNotEmpty) {
+        final first = routeData.first;
+        final lat = (first['latitude'] as num?)?.toDouble();
+        final lon = (first['longitude'] as num?)?.toDouble();
+        if (lat != null && lon != null) {
+          city = await _reverseCity(lat, lon);
+        }
+      }
+
       final postData = {
         'content': content,
         'distance': distance,
         'duration': duration,
+        if (city != null && city.isNotEmpty) 'city': city,
         'route_data': routeData,
       };
 

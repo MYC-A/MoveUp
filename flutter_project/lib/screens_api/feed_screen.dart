@@ -851,14 +851,27 @@ class _PostItemState extends State<PostItem>
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                Text(
-                  Helper.formatDateTime(post.createdAt),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontSize: 15,
-                  ),
+                Row(
+                  children: [
+                    if (post.city != null && post.city!.isNotEmpty) ...[
+                      const Icon(Icons.place_outlined,
+                          size: 15, color: AppColors.textSecondary),
+                      const SizedBox(width: 2),
+                    ],
+                    Flexible(
+                      child: Text(
+                        (post.city != null && post.city!.isNotEmpty)
+                            ? '${post.city} · ${Helper.formatDateTime(post.createdAt)}'
+                            : Helper.formatDateTime(post.createdAt),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

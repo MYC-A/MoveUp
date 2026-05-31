@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ""
     FCM_ANDROID_CHANNEL_ID: str = "moveup_messages"
 
+    # Подтверждение email при регистрации. Если EMAIL_ENABLED=false или SMTP не
+    # настроен — код всё равно генерируется, но не отправляется (пишется в лог),
+    # чтобы фича работала в dev без почтового сервера. В проде задайте SMTP_*.
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "no-reply@moveup.app"
+    SMTP_USE_TLS: bool = True
+
     # Список разрешённых CORS-источников через запятую. По умолчанию "*"
     # (сохраняет текущее поведение); в проде стоит указать явные домены,
     # т.к. "*" вместе с cookie-аутентификацией небезопасен.

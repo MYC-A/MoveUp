@@ -16,6 +16,7 @@ class PostBase(BaseModel):
     content: str
     distance: float
     duration: int
+    city: Optional[str] = None  # Город старта (определяется на клиенте)
     route_data: List[RoutePoint]
 
 class PostCreate(PostBase):

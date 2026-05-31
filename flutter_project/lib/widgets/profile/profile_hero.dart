@@ -135,16 +135,7 @@ class ProfileHero extends StatelessWidget {
                   ],
                   if (trimmedBio.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      trimmedBio,
-                      textAlign: TextAlign.center,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                        height: 1.35,
-                      ),
-                    ),
+                    _ExpandableBio(text: trimmedBio),
                   ],
                   const SizedBox(height: AppSpacing.md),
                   // Единая строка статистики.
@@ -282,5 +273,57 @@ class _HeroStatDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(width: 1, height: 32, color: AppColors.border);
+  }
+}
+
+/// Био с возможностью развернуть/свернуть — как в обычных соцсетях.
+class _ExpandableBio extends StatefulWidget {
+  final String text;
+
+  const _ExpandableBio({required this.text});
+
+  @override
+  State<_ExpandableBio> createState() => _ExpandableBioState();
+}
+
+class _ExpandableBioState extends State<_ExpandableBio> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    // Длинное описание сворачиваем по умолчанию.
+    final isLong = widget.text.length > 160 || '\n'.allMatches(widget.text).length >= 3;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          widget.text,
+          textAlign: TextAlign.center,
+          maxLines: _expanded ? null : 4,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: textTheme.bodyMedium?.copyWith(
+            color: AppColors.textSecondary,
+            height: 1.35,
+          ),
+        ),
+        if (isLong)
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xxs),
+              child: Text(
+                _expanded ? 'Свернуть' : 'Показать полностью',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

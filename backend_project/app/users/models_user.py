@@ -22,6 +22,10 @@ class User(Base):
     weight = Column(Float, nullable=True)  # кг — для расчёта калорий
     height = Column(Float, nullable=True)  # см
     is_active = Column(Boolean, default=True)
+    # Подтверждение email при регистрации.
+    is_verified = Column(Boolean, default=False, nullable=False, server_default="false")
+    verification_code = Column(String, nullable=True)
+    verification_code_expires = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     total_subscribers = Column(Integer,default=0)
     total_subscriptions = Column(Integer,default=0)

@@ -4,6 +4,7 @@ class Post {
   final String content;
   final double distance;
   final int duration;
+  final String? city; // Город старта поста
   final List<Map<String, dynamic>> routeData;
   int likesCount;
   int commentsCount;
@@ -20,6 +21,7 @@ class Post {
     required this.content,
     required this.distance,
     required this.duration,
+    this.city,
     required this.routeData,
     required this.likesCount,
     required this.commentsCount,
@@ -53,6 +55,7 @@ class Post {
       content: json['content'],
       distance: json['distance'],
       duration: json['duration'],
+      city: json['city'] as String?,
       routeData: List<Map<String, dynamic>>.from(json['route_data']),
       likesCount: json['likes_count'],
       commentsCount: json['comments_count'],

@@ -15,6 +15,7 @@ class Post(Base):
     content = Column(String) # Текст поста
     distance = Column(Float)
     duration = Column(Integer)  # in seconds
+    city = Column(String, nullable=True)  # Город старта (по первой точке маршрута)
     route_data = Column(JSON) # Данные маршрута (список точек)
     likes_count = Column(Integer, default=0)
     comments_count = Column(Integer, default=0)

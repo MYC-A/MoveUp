@@ -4,7 +4,8 @@ import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/auth/auth_scaffold.dart';
 import '../services_api/auth_service.dart';
-import '../screens/LiveTrackerScreen.dart';
+import '../services_api/EventService.dart';
+import 'verify_email_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -17,97 +18,104 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullNameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _passwordCheckController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _weightController = TextEditingController();
+  final _heightController = TextEditingController();
   final AuthService _authService = AuthService();
+  final EventService _eventService = EventService();
+
+  List<String> _cities = EventService.fallbackCities;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _fullNameController.dispose();
+    _passwordController.dispose();
+    _passwordCheckController.dispose();
+    _cityController.dispose();
+    _weightController.dispose();
+    _heightController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCities() async {
+    try {
+      final cities = await _eventService.getEventCities();
+      if (!mounted || cities.isEmpty) return;
+      setState(() => _cities = cities);
+    } catch (_) {/* остаётся fallback-список */}
+  }
+
+  String _normalizeCity(String v) =>
+      v.trim().toLowerCase().replaceAll('ё', 'е');
+
+  bool _isKnownCity(String v) =>
+      _cities.any((c) => _normalizeCity(c) == _normalizeCity(v));
 
   Future<void> _register() async {
-    if (_formKey.currentState!.validate()) {
-      if (_passwordController.text != _passwordCheckController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Пароли не совпадают'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-        return;
-      }
-
-      try {
-        await _authService.register(
-          email: _emailController.text,
-          fullName: _fullNameController.text,
-          password: _passwordController.text,
-          passwordCheck: _passwordController.text,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Регистрация выполнена успешно!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => LiveTrackerScreen()),
-        );
-      } catch (e) {
-        String errorMessage = 'Произошла ошибка при регистрации';
-        if (e.toString().contains('Ошибка регистрации')) {
-          try {
-            final errorBody = json.decode(e
-                .toString()
-                .replaceFirst('Exception: Ошибка регистрации: ', ''));
-            if (errorBody is List && errorBody.isNotEmpty) {
-              final firstError = errorBody[0];
-              if (firstError['type'] == 'missing') {
-                if (firstError['loc'].contains('email')) {
-                  errorMessage = 'Поле email обязательно.';
-                } else if (firstError['loc'].contains('full_name')) {
-                  errorMessage = 'Поле имя обязательно.';
-                } else if (firstError['loc'].contains('password')) {
-                  errorMessage = 'Поле пароль обязательно.';
-                } else if (firstError['loc'].contains('password_check')) {
-                  errorMessage = 'Поле повтор пароля обязательно.';
-                } else {
-                  errorMessage =
-                      'Отсутствует обязательное поле: ${firstError['loc'].last}';
-                }
-              } else if (firstError['msg'] != null) {
-                switch (firstError['msg']) {
-                  case 'String should have at least 5 characters':
-                    errorMessage = firstError['loc'][1] == 'password'
-                        ? 'Пароль должен содержать не менее 5 символов.'
-                        : 'Имя должно содержать не менее 5 символов.';
-                    break;
-                  case 'value is not a valid email address':
-                    errorMessage = 'Некорректный формат email.';
-                    break;
-                  case 'Email already registered':
-                    errorMessage = 'Этот email уже зарегистрирован.';
-                    break;
-                  default:
-                    errorMessage = firstError['msg'];
-                }
-              }
-            } else if (errorBody is Map<String, dynamic>) {
-              if (errorBody['detail'] != null) {
-                errorMessage = errorBody['detail'];
-              } else if (errorBody['email'] != null) {
-                errorMessage = 'Email: ${errorBody['email'][0]}';
-              } else if (errorBody['password'] != null) {
-                errorMessage = 'Пароль: ${errorBody['password'][0]}';
-              }
-            }
-          } catch (jsonError) {
-            errorMessage = 'Ошибка соединения или неизвестная ошибка.';
-          }
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
+    if (!_formKey.currentState!.validate()) return;
+    if (_passwordController.text != _passwordCheckController.text) {
+      _snack('Пароли не совпадают', AppColors.danger);
+      return;
     }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await _authService.register(
+        email: _emailController.text,
+        fullName: _fullNameController.text,
+        password: _passwordController.text,
+        passwordCheck: _passwordController.text,
+        city: _cityController.text.trim().isEmpty
+            ? null
+            : _cityController.text.trim(),
+        weight: double.tryParse(_weightController.text.replaceAll(',', '.')),
+        height: double.tryParse(_heightController.text.replaceAll(',', '.')),
+      );
+      if (!mounted) return;
+      // Подтверждение email — уводим на экран ввода кода.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              VerifyEmailScreen(email: _emailController.text.trim()),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _snack(_humanizeRegisterError(e), AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  String _humanizeRegisterError(Object e) {
+    final raw = e.toString();
+    if (!raw.contains('Ошибка регистрации')) {
+      return raw.replaceFirst('Exception: ', '');
+    }
+    try {
+      final body =
+          json.decode(raw.replaceFirst('Exception: Ошибка регистрации: ', ''));
+      if (body is List && body.isNotEmpty && body[0]['msg'] != null) {
+        return body[0]['msg'].toString();
+      }
+      if (body is Map && body['detail'] != null) return body['detail'].toString();
+    } catch (_) {/* ниже вернём как есть */}
+    return raw.replaceFirst('Exception: Ошибка регистрации: ', '');
+  }
+
+  void _snack(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
   }
 
   @override
@@ -129,9 +137,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Введите email';
-                }
+                if (value == null || value.isEmpty) return 'Введите email';
                 if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
                   return 'Введите корректный email';
                 }
@@ -147,14 +153,83 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               textInputAction: TextInputAction.next,
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Введите имя';
-                }
-                if (value.length < 5) {
-                  return 'Имя должно содержать не менее 5 символов';
+                if (value == null || value.isEmpty) return 'Введите имя';
+                if (value.trim().length < 3) {
+                  return 'Имя должно содержать не менее 3 символов';
                 }
                 return null;
               },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            // Город — выбор из списка (как в событиях). Необязательно.
+            Autocomplete<String>(
+              optionsBuilder: (value) {
+                final q = _normalizeCity(value.text);
+                if (q.isEmpty) return _cities.take(8);
+                return _cities
+                    .where((c) => _normalizeCity(c).contains(q))
+                    .take(12);
+              },
+              onSelected: (city) => _cityController.text = city,
+              fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Город (необязательно)',
+                    prefixIcon: Icon(Icons.location_city_outlined),
+                    helperText: 'Выберите из списка',
+                  ),
+                  onChanged: (value) => _cityController.text = value,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    if (!_isKnownCity(value)) return 'Выберите город из списка';
+                    return null;
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _weightController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Вес, кг',
+                      prefixIcon: Icon(Icons.monitor_weight_outlined),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) return null;
+                      final w = double.tryParse(value.replaceAll(',', '.'));
+                      if (w == null) return 'Число';
+                      if (w < 30 || w > 250) return '30–250';
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: TextFormField(
+                    controller: _heightController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Рост, см',
+                      prefixIcon: Icon(Icons.height),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) return null;
+                      final h = double.tryParse(value.replaceAll(',', '.'));
+                      if (h == null) return 'Число';
+                      if (h < 100 || h > 250) return '100–250';
+                      return null;
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: AppSpacing.md),
             TextFormField(
@@ -166,9 +241,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               obscureText: true,
               textInputAction: TextInputAction.next,
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Введите пароль';
-                }
+                if (value == null || value.isEmpty) return 'Введите пароль';
                 if (value.length < 5) {
                   return 'Пароль должен содержать не менее 5 символов';
                 }
@@ -186,9 +259,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _register(),
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Повторите пароль';
-                }
+                if (value == null || value.isEmpty) return 'Повторите пароль';
                 return null;
               },
             ),
@@ -196,16 +267,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _register,
-                icon: const Icon(Icons.person_add_alt_1),
-                label: const Text('Зарегистрироваться'),
+                onPressed: _isSubmitting ? null : _register,
+                icon: _isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.person_add_alt_1),
+                label: Text(_isSubmitting ? 'Регистрируем…' : 'Зарегистрироваться'),
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text('Уже есть аккаунт? Войдите'),
             ),
           ],

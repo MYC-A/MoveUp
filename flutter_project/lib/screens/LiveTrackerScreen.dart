@@ -1024,34 +1024,56 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         },
       ),
       children: [
-        osmTileLayer(),
+        osmTileLayer(retina: MediaQuery.of(context).devicePixelRatio > 1.5),
         if (_route != null && _route!.points.isNotEmpty)
           PolylineLayer(
             polylines: [
               Polyline(
                 points: _route!.points.map((p) => p.coordinates).toList(),
-                strokeWidth: 4.0,
+                strokeWidth: 5.0,
                 color: AppColors.route,
                 borderColor: AppColors.route.withValues(alpha: 0.2),
-                borderStrokeWidth: 6.0,
+                borderStrokeWidth: 7.0,
               ),
             ],
           ),
         MarkerLayer(
           markers: [
-            Marker(
-              width: 40.0,
-              height: 40.0,
-              point: _currentPosition!,
-              child: Icon(
-                Icons.location_pin,
-                color: AppColors.danger,
-                size: 40,
+            // Старт пробежки — как в ленте (круглый значок бега).
+            if (_route != null && _route!.points.isNotEmpty)
+              _circleMarker(
+                _route!.points.first.coordinates,
+                icon: Icons.directions_run,
+                color: AppColors.success,
               ),
+            // Текущее положение.
+            _circleMarker(
+              _currentPosition!,
+              icon: Icons.my_location,
+              color: AppColors.primary,
+              size: 40,
             ),
           ],
         ),
       ],
+    );
+  }
+
+  // Круглый маркер с белой обводкой — единый стиль с лентой.
+  Marker _circleMarker(LatLng point,
+      {required IconData icon, required Color color, double size = 34}) {
+    return Marker(
+      point: point,
+      width: size,
+      height: size,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.surface, width: 2),
+        ),
+        child: Icon(icon, color: AppColors.surface, size: size * 0.45),
+      ),
     );
   }
 

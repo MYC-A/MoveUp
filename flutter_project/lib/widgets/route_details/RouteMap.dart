@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
-import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/RunningRoute.dart';
@@ -59,29 +58,25 @@ class _RouteMapState extends State<RouteMap> {
             onMapReady: _zoomToRoute,
           ),
           children: [
-            osmTileLayer(),
+            osmTileLayer(
+              retina: MediaQuery.of(context).devicePixelRatio > 1.5,
+            ),
             PolylineLayer(
               polylines: [
                 Polyline(
                   points: _points,
-                  strokeWidth: 4.0,
+                  strokeWidth: 5.0,
                   color: AppColors.route,
                 ),
               ],
             ),
             MarkerLayer(
               markers: [
-                _routeMarker(
-                  _points.first,
-                  'Старт',
-                  AppColors.success,
-                ),
+                _routeMarker(_points.first,
+                    icon: Icons.directions_run, color: AppColors.success),
                 if (_points.length > 1)
-                  _routeMarker(
-                    _points.last,
-                    'Финиш',
-                    AppColors.danger,
-                  ),
+                  _routeMarker(_points.last,
+                      icon: Icons.flag, color: AppColors.route, size: 34),
               ],
             ),
           ],
@@ -90,33 +85,20 @@ class _RouteMapState extends State<RouteMap> {
     );
   }
 
-  Marker _routeMarker(LatLng point, String label, Color color) {
+  // Маркер маршрута в стиле ленты: круглый значок с белой обводкой.
+  Marker _routeMarker(LatLng point,
+      {required IconData icon, required Color color, double size = 38}) {
     return Marker(
       point: point,
-      width: 66,
-      height: 50,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.location_pin, color: color, size: 30),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.94),
-              borderRadius: BorderRadius.circular(AppRadii.xs),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-        ],
+      width: size,
+      height: size,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.surface, width: 2),
+        ),
+        child: Icon(icon, color: AppColors.surface, size: size * 0.45),
       ),
     );
   }

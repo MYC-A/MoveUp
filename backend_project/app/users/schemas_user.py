@@ -22,12 +22,31 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=5, max_length=50, description="Пароль, от 5 до 50 знаков")
     password_check: str = Field(..., min_length=5, max_length=50, description="Пароль, от 5 до 50 знаков")
     full_name: str = Field(..., min_length=3, max_length=50, description="Имя, от 3 до 50 символов")
+    city: Optional[str] = Field(None, description="Город")
+    weight: Optional[float] = Field(None, ge=30, le=250, description="Вес, кг")
+    height: Optional[float] = Field(None, ge=100, le=250, description="Рост, см")
 
 
 # Схема для аутентификации пользователя
 class UserAuth(BaseModel):
     email: EmailStr = Field(..., description="Электронная почта")
     password: str = Field(..., min_length=5, max_length=50, description="Пароль, от 5 до 50 знаков")
+
+
+# Подтверждение email кодом из письма
+class EmailVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=8)
+
+
+class EmailResend(BaseModel):
+    email: EmailStr
+
+
+# Смена пароля авторизованным пользователем
+class PasswordChange(BaseModel):
+    old_password: str = Field(..., min_length=5, max_length=50)
+    new_password: str = Field(..., min_length=5, max_length=50)
 
 # Схема для создания пользователя (без подтверждения пароля)
 class UserCreate(UserBase):
