@@ -534,33 +534,47 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         height: 132,
-        child: FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: points.first,
-            initialZoom: 13,
-            interactionOptions:
-                const InteractionOptions(flags: InteractiveFlag.none),
-            onMapReady: _fitRoute,
-          ),
+        child: Stack(
           children: [
-            osmTileLayer(),
-            if (points.length > 1)
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: points,
-                    strokeWidth: 4,
-                    color: AppColors.route,
+            Positioned.fill(
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: points.first,
+                  initialZoom: 13,
+                  interactionOptions:
+                      const InteractionOptions(flags: InteractiveFlag.none),
+                  onMapReady: _fitRoute,
+                ),
+                children: [
+                  osmTileLayer(),
+                  if (points.length > 1)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: points,
+                          strokeWidth: 5,
+                          color: AppColors.route,
+                        ),
+                      ],
+                    ),
+                  MarkerLayer(
+                    markers: [
+                      _routeMarker(points.first,
+                          icon: Icons.directions_run,
+                          color: AppColors.success),
+                      if (points.length > 1)
+                        _routeMarker(points.last,
+                            icon: Icons.flag, color: AppColors.route, size: 30),
+                    ],
                   ),
                 ],
               ),
-            MarkerLayer(
-              markers: [
-                _routeMarker(points.first, 'Старт', AppColors.success),
-                if (points.length > 1)
-                  _routeMarker(points.last, 'Финиш', AppColors.danger),
-              ],
+            ),
+            const Positioned(
+              top: AppSpacing.sm,
+              left: AppSpacing.sm,
+              child: _RouteMapBadge(),
             ),
           ],
         ),
@@ -568,33 +582,53 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
     );
   }
 
-  Marker _routeMarker(LatLng point, String label, Color color) {
+  // Маркер маршрута в стиле ленты: круглый значок с белой обводкой.
+  Marker _routeMarker(LatLng point,
+      {required IconData icon, required Color color, double size = 34}) {
     return Marker(
       point: point,
-      width: 58,
-      height: 44,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.location_pin, color: color, size: 26),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(AppRadii.xs),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                ),
+      width: size,
+      height: size,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.surface, width: 2),
+        ),
+        child: Icon(icon, color: Colors.white, size: size * 0.45),
+      ),
+    );
+  }
+}
+
+// Компактный бейдж «Маршрут» поверх мини-карты — как в ленте.
+class _RouteMapBadge extends StatelessWidget {
+  const _RouteMapBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.textPrimary.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.directions_run, color: Colors.white, size: 14),
+            SizedBox(width: 4),
+            Text(
+              'Маршрут',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -73,20 +73,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _markEventUpdateRead(int notificationId) async {
+    try {
+      await lkService.markEventUpdateRead(notificationId);
+      await _loadNotifications();
+      if (widget.onNotificationsUpdated != null) {
+        widget.onNotificationsUpdated!();
+      }
+    } catch (e) {
+      showApiError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Уведомления'),
           bottom: TabBar(
+            isScrollable: true,
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.primary,
             tabs: const [
               Tab(text: 'Мои мероприятия'),
               Tab(text: 'Мои заявки'),
+              Tab(text: 'Обновления'),
             ],
           ),
         ),
@@ -100,9 +114,62 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               notifications: notifications['user_applications_changes'] ?? [],
               type: 'change',
             ),
+            _buildEventUpdatesSection(
+              notifications: notifications['event_updates'] ?? [],
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  // Раздел персистентных уведомлений (например, отмена мероприятия).
+  // Переход никуда не ведёт — события уже нет; тап помечает прочитанным.
+  Widget _buildEventUpdatesSection({required List<dynamic> notifications}) {
+    if (_isLoading) {
+      return const AppLoading(label: 'Загружаем уведомления');
+    }
+    if (_errorMessage != null) {
+      return AppErrorState(message: _errorMessage, onRetry: _loadNotifications);
+    }
+    if (notifications.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.notifications_none,
+        title: 'Нет обновлений',
+        message: 'Здесь появятся уведомления об отмене и изменениях событий.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: notifications.length,
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        final n = notifications[index];
+        final isNew = n['is_new'] == true;
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          leading: const Icon(Icons.event_busy_outlined,
+              color: AppColors.danger),
+          title: Text(
+            n['title']?.toString() ?? 'Мероприятие',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          subtitle: Text(
+            n['body']?.toString() ?? 'Мероприятие отменено организатором',
+          ),
+          trailing: isNew
+              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
+              : null,
+          onTap: isNew
+              ? () => _markEventUpdateRead(n['notification_id'] as int)
+              : null,
+        );
+      },
     );
   }
 

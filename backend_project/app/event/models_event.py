@@ -82,3 +82,17 @@ class EventParticipant(Base):
     event = relationship("Event", back_populates="participants")
     is_new = Column(Boolean, default=True)  # Флаг для новых заявок
     status_changed = Column(Boolean, default=False)  # Флаг для изменений статуса
+
+
+class UserNotification(Base):
+    """Персистентное уведомление пользователю. В отличие от уведомлений,
+    выводимых из флагов EventParticipant, переживает удаление события —
+    поэтому используется, например, для оповещения об отмене мероприятия."""
+    __tablename__ = "user_notifications"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)          # напр. "event_deleted"
+    title = Column(String, nullable=False)          # снимок названия события
+    body = Column(String, nullable=True)
+    is_new = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

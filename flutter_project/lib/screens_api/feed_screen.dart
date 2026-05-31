@@ -140,14 +140,19 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     });
 
     try {
-      final newPosts = await _postService.getFeed(_skip, _limit);
+      final fetched = await _postService.getFeed(_skip, _limit);
+      // Отсеиваем уже загруженные id — страховка от дублей в ленте.
+      final existingIds = _posts.map((p) => p.id).toSet();
+      final newPosts =
+          fetched.where((p) => !existingIds.contains(p.id)).toList();
       setState(() {
         _posts.addAll(newPosts);
         _skip += _limit;
-        _hasMore = newPosts.length == _limit;
+        // hasMore — по размеру ответа сервера, а не по числу уникальных.
+        _hasMore = fetched.length == _limit;
         _mapControllers
             .addAll(List.generate(newPosts.length, (_) => MapController()));
-        if (newPosts.isNotEmpty) {
+        if (_posts.isNotEmpty) {
           _latestPostId =
               _posts.map((p) => p.id).reduce((a, b) => a > b ? a : b);
         }
@@ -922,6 +927,9 @@ class _PostItemState extends State<PostItem>
   Widget _buildContent(Post post) {
     final textTheme = Theme.of(context).textTheme;
 
+    // Без описания не рисуем блок вообще — иначе остаётся пустой отступ.
+    if (post.content.trim().isEmpty) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -981,16 +989,7 @@ class _PostItemState extends State<PostItem>
         ),
       );
     }
-    if (post.distance > 0) {
-      chips.add(
-        _PostChip(
-          icon: Icons.route_outlined,
-          label: _formatDistance(post.distance),
-          foreground: AppColors.route,
-          background: AppColors.routeSoft,
-        ),
-      );
-    }
+    // Дистанцию намеренно не дублируем чипом — она уже есть в строке статистики.
     if (post.photoUrls != null && post.photoUrls!.isNotEmpty) {
       chips.add(
         _PostChip(

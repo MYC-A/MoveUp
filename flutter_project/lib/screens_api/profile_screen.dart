@@ -575,9 +575,15 @@ class _NotificationIconState extends State<NotificationIcon> {
     try {
       final notifications = await widget.lkService.fetchNotifications();
       if (!mounted) return;
+      bool notEmpty(String key) {
+        final value = notifications[key];
+        return value is List && value.isNotEmpty;
+      }
+
       setState(() {
-        hasNewNotifications = notifications['new_applications'].isNotEmpty ||
-            notifications['user_applications_changes'].isNotEmpty;
+        hasNewNotifications = notEmpty('new_applications') ||
+            notEmpty('user_applications_changes') ||
+            notEmpty('event_updates');
       });
     } catch (e) {
       debugPrint('Ошибка при проверке уведомлений: $e');

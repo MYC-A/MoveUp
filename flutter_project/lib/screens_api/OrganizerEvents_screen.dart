@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/services_api/EventService.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
+import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
@@ -19,6 +21,7 @@ class OrganizerEventsScreen extends StatefulWidget {
 
 class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   final LkService lkService = LkService();
+  final EventService _eventService = EventService();
 
   final List<dynamic> events = [];
   int skipEvents = 0;
@@ -154,6 +157,51 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
       await lkService.markNotificationsAsRead();
     } catch (e) {
       debugPrint('Ошибка при сбросе уведомлений: $e');
+    }
+  }
+
+  Future<void> _confirmDeleteEvent(Map<String, dynamic> event) async {
+    final eventId = event['id'];
+    if (eventId is! int) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Удалить мероприятие?'),
+        content: const Text(
+          'Мероприятие, его групповой чат и список участников будут удалены. '
+          'Все участники получат уведомление об отмене.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _eventService.deleteEvent(eventId);
+      if (!mounted) return;
+      setState(() {
+        events.removeWhere((e) => (e as Map)['id'] == eventId);
+        if (skipEvents > 0) skipEvents -= 1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Мероприятие удалено, участники оповещены')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
     }
   }
 
@@ -352,22 +400,37 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EventApplicationsScreen(
-                      eventId: event['id'],
-                    ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _confirmDeleteEvent(event),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                    side: const BorderSide(color: AppColors.danger),
                   ),
-                );
-              },
-              icon: const Icon(Icons.people_alt_outlined),
-              label: const Text('Заявки'),
-            ),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Удалить'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EventApplicationsScreen(
+                          eventId: event['id'],
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.people_alt_outlined),
+                  label: const Text('Заявки'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

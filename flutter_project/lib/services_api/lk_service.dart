@@ -64,6 +64,23 @@ class LkService {
     }
   }
 
+  // Помечает прочитанным персистентное уведомление (раздел event_updates).
+  Future<void> markEventUpdateRead(int notificationId) async {
+    final token = await storage.read(key: 'access_token');
+    final response = await Api.post(
+      Uri.parse('$baseUrl/profile/profile/notifications/mark_update_read'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': 'users_access_token=$token',
+      },
+      body: json.encode({'notification_id': notificationId}),
+    );
+
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
   // Получить подписчиков
   Future<Map<String, dynamic>> fetchFollowers(int skip, int limit) async {
     final token = await storage.read(key: 'access_token');

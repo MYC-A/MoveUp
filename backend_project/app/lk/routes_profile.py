@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from app.db.base import get_db
 from app.event.dao_event import EventParticipantDAO
-from app.event.models_event import Event, EventParticipant, ApprovedType
+from app.event.models_event import Event, EventParticipant, ApprovedType, UserNotification
 from app.chat.models import GroupChat, group_chat_participants
 from app.lk.schemas_profile import EventsResponseAll
 from app.posts.schemas_posts import PostInDB, PostInProfile
@@ -748,6 +748,18 @@ async def get_user_notifications(
     )
     user_applications_changes = user_applications_changes_result.all()
 
+    # Персистентные уведомления (например, отмена мероприятия) — переживают
+    # удаление события, поэтому хранятся отдельно от EventParticipant.
+    updates_result = await db.execute(
+        select(UserNotification)
+        .where(
+            UserNotification.user_id == current_user,
+            UserNotification.is_new == True
+        )
+        .order_by(UserNotification.created_at.desc())
+    )
+    event_updates = updates_result.scalars().all()
+
     # Формируем ответ
     return {
         "new_applications": [
@@ -767,6 +779,16 @@ async def get_user_notifications(
                 "is_new": True  # Флаг для новых уведомлений
             }
             for event_id, event_title, count in user_applications_changes
+        ],
+        "event_updates": [
+            {
+                "notification_id": n.id,
+                "type": n.type,
+                "title": n.title,
+                "body": n.body,
+                "is_new": n.is_new,
+            }
+            for n in event_updates
         ]
     }
 
@@ -802,8 +824,41 @@ async def mark_notifications_as_read(
         .values(status_changed=False)
     )
 
+    # Сбрасываем персистентные уведомления пользователя.
+    await db.execute(
+        update(UserNotification)
+        .where(
+            UserNotification.user_id == current_user,
+            UserNotification.is_new == True
+        )
+        .values(is_new=False)
+    )
+
     await db.commit()
     return {"message": "Уведомления помечены как прочитанные"}
+
+
+@router.post("/profile/notifications/mark_update_read")
+async def mark_event_update_as_read(
+    data: dict,
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Помечает прочитанным одно персистентное уведомление (event_updates)."""
+    notification_id = data.get('notification_id')
+    if not notification_id:
+        raise HTTPException(status_code=400, detail="Не указан notification_id")
+
+    await db.execute(
+        update(UserNotification)
+        .where(
+            UserNotification.id == notification_id,
+            UserNotification.user_id == current_user,
+        )
+        .values(is_new=False)
+    )
+    await db.commit()
+    return {"message": "Уведомление помечено как прочитанное"}
 
 @router.post("/profile/notifications/mark_as_read_single")
 async def mark_single_notification_as_read(

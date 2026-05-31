@@ -3,7 +3,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
-from .models_event import Event, EventParticipant
+from .models_event import Event, EventParticipant, UserNotification
 from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
 from app.users.dependensies_user import get_current_user, get_current_user_optional
@@ -12,7 +12,12 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi.templating import Jinja2Templates
 
-from ..chat.models import GroupChat, group_chat_participants
+from ..chat.models import (
+    GroupChat,
+    GroupMessage,
+    GroupMessageReadStatus,
+    group_chat_participants,
+)
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(prefix="/events", tags=["Events"])
@@ -298,7 +303,8 @@ async def delete_event(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Удаление мероприятия его организатором вместе с участниками и точками."""
+    """Удаление мероприятия его организатором: оповещает участников,
+    чистит групповой чат и связанные записи."""
     result = await db.execute(
         select(Event).filter(Event.id == event_id)
     )
@@ -310,9 +316,47 @@ async def delete_event(
             status_code=403, detail="Только организатор может удалить мероприятие"
         )
 
-    # Точки маршрута хранятся в JSON-поле event.route_data, отдельной таблицы нет.
-    # Удаляем зависимых участников, затем само мероприятие.
+    # Снимок данных до удаления.
+    chat_id = event.group_chat_id
+    event_title = event.title
+
+    # Кому слать оповещение — все, кто был связан с событием (заявка в любом статусе).
+    participant_ids_result = await db.execute(
+        select(EventParticipant.user_id).where(EventParticipant.event_id == event_id)
+    )
+    participant_ids = {uid for (uid,) in participant_ids_result.all()}
+
+    # Персистентные уведомления — переживут удаление события.
+    for uid in participant_ids:
+        db.add(UserNotification(
+            user_id=uid,
+            type="event_deleted",
+            title=event_title,
+            body="Мероприятие отменено организатором",
+        ))
+
+    # Точки маршрута лежат в JSON-поле event.route_data, отдельной таблицы нет.
+    # Удаляем участников и само событие; flush снимает FK event.group_chat_id.
     await db.execute(delete(EventParticipant).where(EventParticipant.event_id == event_id))
     await db.delete(event)
+    await db.flush()
+
+    # Чистим групповой чат события, если он был (иначе остаётся «осиротевшим»).
+    if chat_id is not None:
+        await db.execute(
+            delete(GroupMessageReadStatus).where(
+                GroupMessageReadStatus.group_chat_id == chat_id
+            )
+        )
+        await db.execute(
+            delete(GroupMessage).where(GroupMessage.group_chat_id == chat_id)
+        )
+        await db.execute(
+            group_chat_participants.delete().where(
+                group_chat_participants.c.group_chat_id == chat_id
+            )
+        )
+        await db.execute(delete(GroupChat).where(GroupChat.id == chat_id))
+
     await db.commit()
     return {"status": "ok", "deleted_event_id": event_id}
