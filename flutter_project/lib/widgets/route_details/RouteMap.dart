@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../../models/RunningRoute.dart';
 import '../../screens/RouteViewScreen.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/widgets/common/route_markers.dart';
 
 class RouteMap extends StatefulWidget {
   final RunningRoute route;
@@ -64,7 +65,7 @@ class _RouteMapState extends State<RouteMap> {
             PolylineLayer(
               polylines: [
                 Polyline(
-                  points: _points,
+                  points: downsampleRoute(_points),
                   strokeWidth: 5.0,
                   color: AppColors.route,
                 ),
@@ -72,33 +73,12 @@ class _RouteMapState extends State<RouteMap> {
             ),
             MarkerLayer(
               markers: [
-                _routeMarker(_points.first,
-                    icon: Icons.directions_run, color: AppColors.success),
-                if (_points.length > 1)
-                  _routeMarker(_points.last,
-                      icon: Icons.flag, color: AppColors.route, size: 34),
+                routeStartMarker(_points.first, size: 38),
+                if (_points.length > 1) routeFinishMarker(_points.last, size: 34),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // Маркер маршрута в стиле ленты: круглый значок с белой обводкой.
-  Marker _routeMarker(LatLng point,
-      {required IconData icon, required Color color, double size = 38}) {
-    return Marker(
-      point: point,
-      width: size,
-      height: size,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.surface, width: 2),
-        ),
-        child: Icon(icon, color: AppColors.surface, size: size * 0.45),
       ),
     );
   }

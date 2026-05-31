@@ -352,7 +352,7 @@ class ChatService {
     _openChatChannel();
   }
 
-  void _openChatChannel() {
+  Future<void> _openChatChannel() async {
     // Закрываем предыдущее соединение перед открытием нового.
     _chatReconnectTimer?.cancel();
     _chatSubscription?.cancel();
@@ -361,9 +361,13 @@ class ChatService {
     final userId = _chatUserId;
     if (userId == null) return;
 
+    // Токен нужен для аутентификации WebSocket на сервере.
+    final token = await storage.read(key: 'access_token');
+    if (token == null) return;
+
     try {
       _channel = IOWebSocketChannel.connect(
-        Uri.parse('$wsBaseUrl/chat/ws/$userId'),
+        Uri.parse('$wsBaseUrl/chat/ws/$userId?token=$token'),
       );
       _chatSubscription = _channel!.stream.listen(
         (message) {

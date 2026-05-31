@@ -11,7 +11,34 @@ class AuthService {
 
   Future<void> _clearAuthData() async {
     await storage.delete(key: 'access_token');
+    await storage.delete(key: 'refresh_token');
     await storage.delete(key: 'user_id');
+  }
+
+  // Пытается обновить access по refresh-токену. true — успех.
+  Future<bool> tryRefreshTokens() async {
+    final refreshToken = await storage.read(key: 'refresh_token');
+    if (refreshToken == null) return false;
+    try {
+      final response = await Api.post(
+        Uri.parse('$baseUrl/auth/refresh/'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'refresh_token': refreshToken}),
+      );
+      if (response.statusCode != 200) return false;
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      final access = data['access_token'];
+      final refresh = data['refresh_token'];
+      if (access == null) return false;
+      await storage.write(key: 'access_token', value: access);
+      if (refresh != null) {
+        await storage.write(key: 'refresh_token', value: refresh);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Не удалось обновить токен: $e');
+      return false;
+    }
   }
 
   // Регистрация пользователя
@@ -70,6 +97,10 @@ class AuthService {
       final accessToken = data['access_token'];
       if (accessToken != null) {
         await storage.write(key: 'access_token', value: accessToken);
+        final refreshToken = data['refresh_token'];
+        if (refreshToken != null) {
+          await storage.write(key: 'refresh_token', value: refreshToken);
+        }
         final userId = await getCurrentUserId();
         if (userId != null) {
           await storage.write(key: 'user_id', value: userId.toString());
@@ -159,6 +190,10 @@ class AuthService {
         throw Exception('Сервер не вернул access_token');
       }
       await storage.write(key: 'access_token', value: accessToken);
+      final refreshToken = data['refresh_token'];
+      if (refreshToken != null) {
+        await storage.write(key: 'refresh_token', value: refreshToken);
+      }
       // Проверяем, сохранен ли токен
       final savedToken = await storage.read(key: 'access_token');
       if (savedToken != accessToken) {
@@ -208,7 +243,7 @@ class AuthService {
 
   // Проверка текущего пользователя
   Future<int?> getCurrentUserId() async {
-    final token = await storage.read(key: 'access_token');
+    var token = await storage.read(key: 'access_token');
 
     if (token == null) {
       await storage.delete(key: 'user_id');
@@ -218,6 +253,7 @@ class AuthService {
     const maxRetries = 3;
     const retryDelay = Duration(seconds: 2);
     int retries = 0;
+    bool triedRefresh = false;
 
     final url = Uri.parse('$baseUrl/auth/current_user');
     while (retries < maxRetries) {
@@ -259,6 +295,14 @@ class AuthService {
           await storage.write(key: 'user_id', value: userId.toString());
           return userId;
         } else if (response.statusCode == 401) {
+          // Access истёк — пробуем один раз обновить по refresh-токену.
+          if (!triedRefresh) {
+            triedRefresh = true;
+            if (await tryRefreshTokens()) {
+              token = await storage.read(key: 'access_token');
+              if (token != null) continue; // повтор с новым токеном
+            }
+          }
           await _clearAuthData();
           return null;
         } else {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart'; // Для форматирования даты
 import 'RoutePoint.dart'; // Импортируем новый класс
@@ -38,11 +39,11 @@ class RunningRoute {
   // Добавление новой точки в маршрут
   void addPoint(LatLng coordinates) {
     if (points.isNotEmpty && points.last.coordinates == coordinates) {
-      print('Точка дублируется, не добавляется.');
+      debugPrint('Точка дублируется, не добавляется.');
       return;
     }
 
-    print('Добавление точки: $coordinates');
+    debugPrint('Добавление точки: $coordinates');
     final newPoint = RoutePoint(
       coordinates: coordinates,
       timestamp: DateTime.now(),
@@ -51,25 +52,25 @@ class RunningRoute {
     if (points.isNotEmpty) {
       final newDistance =
           _calculateDistance(points.last.coordinates, coordinates);
-      print('Расчет расстояния до последней точки: $newDistance м');
+      debugPrint('Расчет расстояния до последней точки: $newDistance м');
       if (newDistance > 1) {
         // Измените порог при необходимости
         points.add(newPoint);
         distance += newDistance;
         _updateDuration();
-        print('Точка добавлена, обновленная дистанция: $distance м');
+        debugPrint('Точка добавлена, обновленная дистанция: $distance м');
       } else {
-        print('Точка слишком близко, не добавляется.');
+        debugPrint('Точка слишком близко, не добавляется.');
       }
     } else {
       points.add(newPoint);
-      print('Первая точка добавлена.');
+      debugPrint('Первая точка добавлена.');
     }
   }
 
   // Очистка маршрута
   void clear() {
-    print('Очистка маршрута.');
+    debugPrint('Очистка маршрута.');
     points.clear();
     distance = 0.0;
     duration = Duration.zero;
@@ -81,7 +82,7 @@ class RunningRoute {
       final startTime = points.first.timestamp;
       final endTime = points.last.timestamp;
       duration = endTime.difference(startTime);
-      print('Обновлена продолжительность маршрута: $duration');
+      debugPrint('Обновлена продолжительность маршрута: $duration');
     }
   }
 
@@ -93,7 +94,7 @@ class RunningRoute {
       point1,
       point2,
     );
-    print('Расчет расстояния: $calculatedDistance м между $point1 и $point2');
+    debugPrint('Расчет расстояния: $calculatedDistance м между $point1 и $point2');
     return calculatedDistance;
   }
 
@@ -108,12 +109,12 @@ class RunningRoute {
         'date': date.toIso8601String(),
         'duration': duration.inSeconds,
         'description': description, // Сохраняем описание
-        'photos': jsonEncode(photos), // Сохраняем фотографии как JSON
+        'photos': photos, // Список путей к фото (без двойного кодирования)
       };
-      print('Сериализация RunningRoute в JSON: $json');
+      debugPrint('Сериализация RunningRoute в JSON: $json');
       return json;
     } catch (e) {
-      print('Ошибка при сериализации RunningRoute: $e');
+      debugPrint('Ошибка при сериализации RunningRoute: $e');
       rethrow;
     }
   }
@@ -121,7 +122,7 @@ class RunningRoute {
   // Создание объекта Route из JSON
   factory RunningRoute.fromJson(Map<String, dynamic> json) {
     try {
-      print('Десериализация RunningRoute из JSON: $json');
+      debugPrint('Десериализация RunningRoute из JSON: $json');
       final route = RunningRoute(
         id: json['id'],
         name: json['name'],
@@ -132,15 +133,19 @@ class RunningRoute {
         date: DateTime.parse(json['date']),
         duration: Duration(seconds: json['duration']),
         description: json['description'] ?? '', // Загружаем описание
-        photos: json['photos'] != null
-            ? List<String>.from(jsonDecode(json['photos']))
-            : [], // Загружаем фотографии
+        // Поддерживаем оба формата: список (новый) и JSON-строку (старый).
+        photos: json['photos'] is List
+            ? List<String>.from(json['photos'])
+            : (json['photos'] is String &&
+                    (json['photos'] as String).isNotEmpty
+                ? List<String>.from(jsonDecode(json['photos']))
+                : []),
       );
-      print('Успешная десериализация RunningRoute: $route');
+      debugPrint('Успешная десериализация RunningRoute: $route');
       return route;
     } catch (e, stackTrace) {
-      print('Ошибка при десериализации RunningRoute: $e');
-      print(stackTrace);
+      debugPrint('Ошибка при десериализации RunningRoute: $e');
+      debugPrint(stackTrace.toString());
       rethrow;
     }
   }

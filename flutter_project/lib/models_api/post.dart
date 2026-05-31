@@ -49,19 +49,24 @@ class Post {
       createdAt = DateTime.now().toLocal();
     }
 
+    final user = (json['user'] as Map?) ?? const {};
     return Post(
-      id: json['id'],
-      userId: json['user_id'],
-      content: json['content'],
-      distance: json['distance'],
-      duration: json['duration'],
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
+      content: (json['content'] ?? '').toString(),
+      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
+      duration: (json['duration'] as num?)?.toInt() ?? 0,
       city: json['city'] as String?,
-      routeData: List<Map<String, dynamic>>.from(json['route_data']),
-      likesCount: json['likes_count'],
-      commentsCount: json['comments_count'],
+      routeData: (json['route_data'] as List?)
+              ?.whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          const [],
+      likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
+      commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
       createdAt: createdAt,
-      userFullName: json['user']['full_name'],
-      userAvatarUrl: json['user']['avatar_url'], // Может быть null
+      userFullName: (user['full_name'] ?? 'Пользователь').toString(),
+      userAvatarUrl: user['avatar_url'] as String?, // Может быть null
       photoUrls: json['photo_urls'] != null
           ? List<String>.from(json['photo_urls'])
           : null, // Может быть null

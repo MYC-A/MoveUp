@@ -8,7 +8,8 @@ from typing import List, Dict, Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
+from app.models.follow import UserFollow
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status, UploadFile,File,Form
@@ -20,7 +21,7 @@ from app.users.dependensies_user import get_current_user, get_current_user_id
 from app.core.config import settings
 from app.core.uploads import validate_image_upload
 from app.db.base import get_db
-from app.core.security import create_access_token
+from app.users.auth_users import create_access_token
 from app.posts.models_posts_comments import Comment
 from app.posts.models_posts_like import PostLike
 from .schemas_comments import CommentCreate
@@ -165,12 +166,23 @@ async def get_feed(
     current_user1=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получить ленту активности с постами от друзей и рекомендациями"""
+    """Лента активности: посты самого пользователя и тех, на кого он подписан."""
     current_user = current_user1.id
+
+    # id всех, на кого подписан текущий пользователь.
+    following_subq = select(UserFollow.following_id).where(
+        UserFollow.follower_id == current_user
+    )
 
     stmt_posts = (
         select(Post)
         .options(selectinload(Post.user), selectinload(Post.photos))  # Загружаем фотографии
+        .where(
+            or_(
+                Post.user_id == current_user,
+                Post.user_id.in_(following_subq),
+            )
+        )
         .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
         .offset(skip)
         .limit(limit)

@@ -8,7 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_application_1/models_api/post.dart';
 import 'package:flutter_application_1/screens_api/FullScreenMap.dart';
-import 'package:flutter_application_1/screens_api/feed_screen.dart';
+import 'package:flutter_application_1/widgets/feed/post_item.dart';
 import 'dart:async';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';

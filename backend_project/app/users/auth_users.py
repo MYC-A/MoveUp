@@ -1,3 +1,4 @@
+from typing import Optional
 from passlib.context import CryptContext
 from pydantic import EmailStr
 from jose import jwt
@@ -6,13 +7,25 @@ from app.core.config import get_auth_data, settings
 from app.users.dao_users import UsersDAO
 
 
-def create_access_token(data: dict) -> str:
+def _encode(data: dict, expire: datetime, token_type: str) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": token_type})
     auth_data = get_auth_data()
-    encode_jwt = jwt.encode(to_encode, auth_data['secret_key'], algorithm=auth_data['algorithm'])
-    return encode_jwt
+    return jwt.encode(to_encode, auth_data['secret_key'], algorithm=auth_data['algorithm'])
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+    )
+    return _encode(data, expire, "access")
+
+
+def create_refresh_token(data: dict) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    return _encode(data, expire, "refresh")
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

@@ -15,6 +15,7 @@ import 'CreatePostScreen.dart';
 import 'RouteDetailsScreen.dart';
 import 'RouteViewScreen.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/widgets/common/route_markers.dart';
 
 class RouteHistoryScreen extends StatefulWidget {
   /// Режим выбора маршрута для создания поста: тап по маршруту сразу открывает
@@ -554,7 +555,7 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
                     PolylineLayer(
                       polylines: [
                         Polyline(
-                          points: points,
+                          points: downsampleRoute(points),
                           strokeWidth: 5,
                           color: AppColors.route,
                         ),
@@ -562,12 +563,9 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
                     ),
                   MarkerLayer(
                     markers: [
-                      _routeMarker(points.first,
-                          icon: Icons.directions_run,
-                          color: AppColors.success),
+                      routeStartMarker(points.first),
                       if (points.length > 1)
-                        _routeMarker(points.last,
-                            icon: Icons.flag, color: AppColors.route, size: 30),
+                        routeFinishMarker(points.last, size: 30),
                     ],
                   ),
                 ],
@@ -580,24 +578,6 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // Маркер маршрута в стиле ленты: круглый значок с белой обводкой.
-  Marker _routeMarker(LatLng point,
-      {required IconData icon, required Color color, double size = 34}) {
-    return Marker(
-      point: point,
-      width: size,
-      height: size,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.surface, width: 2),
-        ),
-        child: Icon(icon, color: Colors.white, size: size * 0.45),
       ),
     );
   }

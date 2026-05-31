@@ -232,12 +232,16 @@ class StorageService {
     }
   }
 
-  // Загрузка маршрутов
-  Future<List<RunningRoute>> loadRoutes() async {
+  // Загрузка маршрутов (новые сверху). Лимит ограничивает память на больших БД.
+  Future<List<RunningRoute>> loadRoutes({int limit = 500}) async {
     final db = await database;
 
     try {
-      final List<Map<String, dynamic>> maps = await db.query(_tableName);
+      final List<Map<String, dynamic>> maps = await db.query(
+        _tableName,
+        orderBy: 'date DESC',
+        limit: limit,
+      );
 
       return List.generate(maps.length, (i) {
         final pointsJson = maps[i]['points'] as String?;
@@ -279,8 +283,10 @@ class StorageService {
         );
       });
     } catch (e, stackTrace) {
+      // Ошибку чтения БД пробрасываем — экран покажет состояние ошибки,
+      // а не пустой список (это разные вещи для пользователя).
       debugPrint('Ошибка при загрузке маршрутов: $e, StackTrace: $stackTrace');
-      return [];
+      rethrow;
     }
   }
 

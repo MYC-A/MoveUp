@@ -8,6 +8,8 @@ from typing import List, Dict, Optional
 
 from sqlalchemy.dialects.postgresql import insert
 
+from jose import jwt, JWTError
+from app.core.config import get_auth_data
 from app.chat.dao import MessagesDAO, GroupMessagesDAO
 from app.chat.models import GroupMessageReadStatus
 from app.chat.schemas import MessageRead, MessageCreate, GroupChatCreate, GroupMessageCreate, GroupMessageRead, \
@@ -205,8 +207,32 @@ async def notify_user(user_id: int, message: dict):
 
 
 # WebSocket эндпоинт для соединений
+def _user_id_from_token(token: Optional[str]) -> Optional[int]:
+    """Достаёт id пользователя из JWT (для аутентификации WebSocket)."""
+    if not token:
+        return None
+    try:
+        auth = get_auth_data()
+        payload = jwt.decode(token, auth['secret_key'], algorithms=[auth['algorithm']])
+        sub = payload.get('sub')
+        return int(sub) if sub else None
+    except (JWTError, ValueError, TypeError):
+        return None
+
+
 @router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: int):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    user_id: int,
+    token: Optional[str] = Query(None),
+):
+    # Аутентификация: user_id берём из токена и сверяем с путём, иначе
+    # любой мог бы подключиться как чужой пользователь и читать его уведомления.
+    auth_user_id = _user_id_from_token(token)
+    if auth_user_id is None or auth_user_id != user_id:
+        await websocket.close(code=4401)
+        return
+
     # Принимаем WebSocket-соединение
     await websocket.accept()
     # Сохраняем активное соединение для пользователя
@@ -299,6 +325,10 @@ async def send_group_message(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
+    # Только участник чата может писать в него (иначе — инъекция в чужой чат).
+    if not await GroupMessagesDAO.is_participant(message.group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+
     # Добавляем сообщение в групповой чат
     group_message = await GroupMessagesDAO.add_group_message(
         message.group_chat_id, current_user.id, message.content

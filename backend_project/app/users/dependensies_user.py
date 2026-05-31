@@ -23,6 +23,8 @@ async def get_current_user_optional(request: Request):
     try:
         auth_data = get_auth_data()
         payload = jwt.decode(token, auth_data['secret_key'], algorithms=auth_data['algorithm'])
+        if payload.get('type') == 'refresh':
+            return None
         user_id = payload.get('sub')
         if not user_id:
             return None
@@ -36,6 +38,9 @@ async def get_current_user(token: str = Depends(get_token)):
         auth_data = get_auth_data()
         payload = jwt.decode(token, auth_data['secret_key'], algorithms=auth_data['algorithm'])
     except JWTError:
+        raise NoJwtException
+
+    if payload.get('type') == 'refresh':
         raise NoJwtException
 
     expire: str = payload.get('exp')
@@ -57,6 +62,9 @@ async def get_current_user_id(token: str = Depends(get_token)):
         auth_data = get_auth_data()
         payload = jwt.decode(token, auth_data['secret_key'], algorithms=auth_data['algorithm'])
     except JWTError:
+        raise NoJwtException
+
+    if payload.get('type') == 'refresh':
         raise NoJwtException
 
     expire: str = payload.get('exp')

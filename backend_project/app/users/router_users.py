@@ -8,15 +8,25 @@ from fastapi.requests import Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import jwt, JWTError
+from app.core.config import get_auth_data
+from app.core.rate_limit import (
+    login_rate_limiter, register_rate_limiter, verify_rate_limiter,
+    resend_rate_limiter,
+)
 from app.db.base import get_db
 from app.email.service import EmailService
 from app.exceptions import UserAlreadyExistsException, IncorrectEmailOrPasswordException, PasswordMismatchException
-from app.users.auth_users import get_password_hash, authenticate_user, create_access_token, verify_password
+from app.users.auth_users import (
+    get_password_hash, authenticate_user, create_access_token,
+    create_refresh_token, verify_password,
+)
 from app.users.dao_users import UsersDAO
 from app.users.models_user import User
 from app.users.dependensies_user import get_current_user_id
 from app.users.schemas_user import (
     UserRegister, UserAuth, UserRead, EmailVerify, EmailResend, PasswordChange,
+    RefreshRequest,
 )
 from fastapi.templating import Jinja2Templates # Для работы с шаблонами HTML
 
@@ -43,8 +53,19 @@ async def get_users():
 async def get_categories(request: Request):
     return templates.TemplateResponse("auth.html", {"request": request})
 
+def _issue_tokens(response: Response, user_id: int) -> dict:
+    """Выдаёт пару access+refresh и кладёт access в httponly-cookie."""
+    access_token = create_access_token({"sub": str(user_id)})
+    refresh_token = create_refresh_token({"sub": str(user_id)})
+    response.set_cookie(key="users_access_token", value=access_token, httponly=True)
+    return {"access_token": access_token, "refresh_token": refresh_token}
+
+
 @router.post("/register/")
-async def register_user(user_data: UserRegister) -> dict:
+async def register_user(
+    user_data: UserRegister,
+    _: None = Depends(register_rate_limiter),
+) -> dict:
     user = await UsersDAO.find_one_or_none(email=user_data.email)
     if user:
         raise UserAlreadyExistsException
@@ -62,7 +83,8 @@ async def register_user(user_data: UserRegister) -> dict:
         weight=user_data.weight,
         height=user_data.height,
         is_verified=False,
-        verification_code=code,
+        # Код подтверждения храним хэшированным (как пароль).
+        verification_code=get_password_hash(code),
         verification_code_expires=datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES),
     )
 
@@ -76,18 +98,23 @@ async def register_user(user_data: UserRegister) -> dict:
 
 
 @router.post("/verify_email/")
-async def verify_email(response: Response, data: EmailVerify, db: AsyncSession = Depends(get_db)):
+async def verify_email(
+    response: Response,
+    data: EmailVerify,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_rate_limiter),
+):
     result = await db.execute(select(User).filter(User.email == data.email))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     if user.is_verified:
-        access_token = create_access_token({"sub": str(user.id)})
-        response.set_cookie(key="users_access_token", value=access_token, httponly=True)
-        return {'ok': True, 'access_token': access_token, 'message': 'Email уже подтверждён'}
+        tokens = _issue_tokens(response, user.id)
+        return {'ok': True, **tokens, 'message': 'Email уже подтверждён'}
 
-    if not user.verification_code or user.verification_code != data.code:
+    if (not user.verification_code
+            or not verify_password(data.code, user.verification_code)):
         raise HTTPException(status_code=400, detail="Неверный код подтверждения")
     if user.verification_code_expires and user.verification_code_expires < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Код подтверждения истёк. Запросите новый.")
@@ -98,13 +125,16 @@ async def verify_email(response: Response, data: EmailVerify, db: AsyncSession =
     await db.commit()
 
     # Автоматически авторизуем — чтобы после подтверждения сразу войти.
-    access_token = create_access_token({"sub": str(user.id)})
-    response.set_cookie(key="users_access_token", value=access_token, httponly=True)
-    return {'ok': True, 'access_token': access_token, 'message': 'Email подтверждён!'}
+    tokens = _issue_tokens(response, user.id)
+    return {'ok': True, **tokens, 'message': 'Email подтверждён!'}
 
 
 @router.post("/resend_code/")
-async def resend_code(data: EmailResend, db: AsyncSession = Depends(get_db)):
+async def resend_code(
+    data: EmailResend,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(resend_rate_limiter),
+):
     result = await db.execute(select(User).filter(User.email == data.email))
     user = result.scalars().first()
     if not user:
@@ -113,7 +143,7 @@ async def resend_code(data: EmailResend, db: AsyncSession = Depends(get_db)):
         return {'message': 'Email уже подтверждён'}
 
     code = _generate_code()
-    user.verification_code = code
+    user.verification_code = get_password_hash(code)
     user.verification_code_expires = datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES)
     await db.commit()
     await EmailService.send_verification_code(data.email, code)
@@ -121,7 +151,11 @@ async def resend_code(data: EmailResend, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login/")
-async def auth_user(response: Response, user_data: UserAuth):
+async def auth_user(
+    response: Response,
+    user_data: UserAuth,
+    _: None = Depends(login_rate_limiter),
+):
     check = await authenticate_user(email=user_data.email, password=user_data.password)
     if check is None:
         raise IncorrectEmailOrPasswordException
@@ -131,9 +165,33 @@ async def auth_user(response: Response, user_data: UserAuth):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="EMAIL_NOT_VERIFIED",
         )
-    access_token = create_access_token({"sub": str(check.id)})
-    response.set_cookie(key="users_access_token", value=access_token, httponly=True)
-    return {'ok': True, 'access_token': access_token, 'refresh_token': None, 'message': 'Авторизация успешна!'}
+    tokens = _issue_tokens(response, check.id)
+    return {'ok': True, **tokens, 'message': 'Авторизация успешна!'}
+
+
+@router.post("/refresh/")
+async def refresh_tokens(response: Response, data: RefreshRequest):
+    """Обновление пары токенов по refresh-токену (с ротацией)."""
+    try:
+        auth = get_auth_data()
+        payload = jwt.decode(
+            data.refresh_token, auth['secret_key'], algorithms=[auth['algorithm']]
+        )
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Невалидный refresh-токен")
+
+    if payload.get('type') != 'refresh':
+        raise HTTPException(status_code=401, detail="Невалидный refresh-токен")
+    user_id = payload.get('sub')
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Невалидный refresh-токен")
+
+    user = await UsersDAO.find_one_or_none_by_id(int(user_id))
+    if not user:
+        raise HTTPException(status_code=401, detail="Пользователь не найден")
+
+    tokens = _issue_tokens(response, user.id)
+    return {'ok': True, **tokens}
 
 
 @router.post("/change_password/")

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -7,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../services_api/post_service.dart';
 import '../services_api/api_error_ui.dart';
-import 'package:http/http.dart' as http;
+import '../services_api/geocoding_service.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
@@ -36,12 +35,10 @@ class _CreatePostWithoutRouteScreenState
   /// Дебаунс «живого» поиска по мере ввода (соблюдаем лимит Nominatim).
   Timer? _searchDebounce;
 
-  /// Список результатов поиска (каждый элемент — Map<String, dynamic> из Nominatim)
+  /// Список результатов поиска (каждый элемент — Map<String, dynamic>)
   List<Map<String, dynamic>> _searchResults = [];
 
-  /// User-Agent для Nominatim. Политика сервиса требует идентифицировать
-  /// приложение реальным значением — иначе запросы могут отклоняться (HTTP 403).
-  static const String _userAgent = 'MoveUp/1.0 (com.moveup.app; support@moveup.app)';
+  final GeocodingService _geocoding = GeocodingService();
 
   @override
   void initState() {
@@ -71,33 +68,6 @@ class _CreatePostWithoutRouteScreenState
       return;
     }
     _searchDebounce = Timer(const Duration(milliseconds: 600), _searchLocation);
-  }
-
-  // Функция для очистки запроса
-  String cleanQuery(String query) {
-    // Удаляем все символы, кроме букв (включая «ё»), цифр и пробелов.
-    String cleaned = query.replaceAll(RegExp(r'[^а-яА-ЯёЁa-zA-Z0-9\s]'), '');
-    // Приводим к нижнему регистру
-    cleaned = cleaned.toLowerCase();
-    // Заменяем множественные пробелы на один
-    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ');
-    // Удаляем слова короче 3 символов
-    List<String> words =
-        cleaned.split(' ').where((word) => word.length >= 3).toList();
-    // Объединяем обратно
-    return words.join(' ').trim();
-  }
-
-  // Функция для вторичного/третичного поиска при пустых результатах
-  String fallbackQuery(String query, bool firstWordOnly) {
-    List<String> words = query.split(' ');
-    if (firstWordOnly && words.isNotEmpty) {
-      return words[0];
-    }
-    if (words.length > 1) {
-      return words.sublist(0, words.length - 1).join(' ');
-    }
-    return query;
   }
 
   Future<void> _addPhoto() async {
@@ -169,43 +139,6 @@ class _CreatePostWithoutRouteScreenState
     });
   }
 
-  /// Один запрос к Nominatim. Возвращает разобранный список (или пустой),
-  /// бросает исключение только при сетевой/серверной ошибке.
-  Future<List<Map<String, dynamic>>> _queryNominatim(String query) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) return [];
-
-    final url = Uri.parse(
-      'https://nominatim.openstreetmap.org/search'
-      '?format=json&limit=8&accept-language=ru'
-      '&q=${Uri.encodeQueryComponent(trimmed)}',
-    );
-    final response = await http.get(
-      url,
-      headers: {
-        'Accept-Language': 'ru',
-        'User-Agent': _userAgent,
-      },
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Nominatim HTTP ${response.statusCode}');
-    }
-
-    // Важно: декодируем как UTF-8, иначе кириллица в названиях ломается.
-    final decoded = json.decode(utf8.decode(response.bodyBytes));
-    if (decoded is! List) return [];
-    return decoded
-        .whereType<Map>()
-        .map((item) => <String, dynamic>{
-              'display_name': item['display_name'],
-              'lat': item['lat'],
-              'lon': item['lon'],
-            })
-        .where((item) => item['lat'] != null && item['lon'] != null)
-        .toList();
-  }
-
   Future<void> _searchLocation() async {
     final raw = _searchController.text.trim();
     if (raw.isEmpty) {
@@ -221,22 +154,7 @@ class _CreatePostWithoutRouteScreenState
     });
 
     try {
-      // 1) Сначала ищем по исходному запросу — Nominatim сам разбирает адреса.
-      var results = await _queryNominatim(raw);
-
-      // 2) Если пусто — пробуем «очищенный» запрос и постепенные упрощения.
-      if (results.isEmpty) {
-        final cleaned = cleanQuery(raw);
-        if (cleaned.isNotEmpty && cleaned != raw.toLowerCase()) {
-          results = await _queryNominatim(cleaned);
-        }
-        if (results.isEmpty && cleaned.contains(' ')) {
-          results = await _queryNominatim(fallbackQuery(cleaned, false));
-        }
-        if (results.isEmpty && cleaned.contains(' ')) {
-          results = await _queryNominatim(fallbackQuery(cleaned, true));
-        }
-      }
+      final results = await _geocoding.search(raw);
 
       if (!mounted) return;
       setState(() {

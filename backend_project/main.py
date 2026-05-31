@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.db.base import init_db
 from app.exceptions import TokenExpiredException, TokenNoFoundException
 from app.lk.routes_profile import router as profile_router
+from app.lk.routes_notifications import router as notifications_router
 from app.users.router_users import router as users_router
 from app.chat.router import router as chat_router
 from app.posts.routes_posts import router as post_router
@@ -24,10 +25,15 @@ async def on_startup():
     await init_db()
 
 
+# С wildcard-origin нельзя включать credentials (это и небезопасно, и
+# запрещено спецификацией CORS). Поэтому разрешаем cookie-креды только когда
+# заданы явные origin'ы.
+_cors_origins = settings.cors_origins
+_allow_credentials = "*" not in _cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,  # Настраивается через ALLOWED_ORIGINS (.env)
-    allow_credentials=True,
+    allow_origins=_cors_origins,  # Настраивается через ALLOWED_ORIGINS (.env)
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],  # Разрешить все методы (GET, POST, PUT, DELETE и т.д.)
     allow_headers=["*"],  # Разрешить все заголовки
 )
@@ -36,6 +42,7 @@ app.include_router(users_router)
 app.include_router(chat_router)
 app.include_router(post_router)
 app.include_router(profile_router)
+app.include_router(notifications_router)
 app.include_router(friends_router)
 app.include_router(event_router)
 app.include_router(push_router)

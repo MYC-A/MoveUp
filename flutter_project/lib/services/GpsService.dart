@@ -8,35 +8,14 @@ class GpsService {
   Stream<Position> getPositionStream() {
     return Geolocator.getPositionStream(
       locationSettings: AndroidSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+        // high достаточно для бега и заметно экономнее, чем bestForNavigation.
+        accuracy: LocationAccuracy.high,
         distanceFilter: 5,
-        intervalDuration: Duration(milliseconds: 3000),
+        intervalDuration: const Duration(milliseconds: 3000),
       ),
     ).where((position) {
-      if (position.accuracy > 10) {
-        _handleInaccuratePosition(position); // Обработка неподходящей точки
-        return false; // Исключаем точку из потока
-      }
-      _handleInaccuratePositionTrue(position);
-      return true; // Включаем точку в поток
+      // Отбрасываем заведомо неточные точки (шум GPS).
+      return position.accuracy <= 20;
     });
-  }
-
-  void _handleInaccuratePosition(Position position) {
-    print(
-        'Неподходящая точка: ${position.latitude}, ${position.longitude} метров; Точность ${position.accuracy}');
-    // Здесь можно добавить дополнительную логику, например:
-    // - Сохранить точку в локальную базу данных
-    // - Отправить точку на сервер для анализа
-    // - Показать уведомление пользователю
-  }
-
-  void _handleInaccuratePositionTrue(Position position) {
-    print(
-        'Подходящая точка: ${position.latitude}, ${position.longitude} метров; Точность ${position.accuracy}');
-    // Здесь можно добавить дополнительную логику, например:
-    // - Сохранить точку в локальную базу данных
-    // - Отправить точку на сервер для анализа
-    // - Показать уведомление пользователю
   }
 }

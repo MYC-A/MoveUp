@@ -18,6 +18,7 @@ import '../models/RoutePoint.dart';
 import '../theme/app_colors.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
+import 'package:flutter_application_1/widgets/common/route_markers.dart';
 
 // Класс для фильтрации GPS-данных
 class GpsFilter {
@@ -206,6 +207,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   LatLng? _currentPosition;
   StreamSubscription<Position>? _positionStreamSubscription;
   Timer? _trackingTimer;
+  Timer? _smoothMoveTimer;
+  bool _isSavingRoute = false; // защита от двойного сохранения маршрута
   Duration _trackingDuration = Duration.zero;
   bool _followUser = true;
   final MapController _mapController = MapController();
@@ -257,6 +260,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       }
       _positionStreamSubscription = _gpsService.getPositionStream().listen(
         (position) {
+          if (!mounted) return;
           final newPosition = LatLng(position.latitude, position.longitude);
           setState(() {
             _currentPosition = newPosition;
@@ -269,14 +273,14 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
           }
         },
         onError: (error) {
-          print('Ошибка в потоке позиций: $error');
+          debugPrint('Ошибка в потоке позиций: $error');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Ошибка получения местоположения')),
           );
         },
       );
     } catch (e) {
-      print('Ошибка получения текущего местоположения: $e');
+      debugPrint('Ошибка получения текущего местоположения: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка получения местоположения')),
       );
@@ -487,8 +491,10 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         (newPosition.longitude - startPosition.longitude) / steps;
 
     int step = 0;
-    Timer.periodic(duration ~/ steps, (timer) {
-      if (step >= steps) {
+    // Храним таймер, чтобы отменить при уходе с экрана (иначе move после dispose).
+    _smoothMoveTimer?.cancel();
+    _smoothMoveTimer = Timer.periodic(duration ~/ steps, (timer) {
+      if (!mounted || step >= steps) {
         timer.cancel();
         return;
       }
@@ -759,10 +765,23 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       return;
     }
 
+    // Длительность берём из таймера трекинга (учитывает паузы), а не из
+    // разницы таймстампов точек, которая включала бы время на паузе.
+    _route!.duration = _trackingDuration;
+
     // Сохраняем и получаем id, чтобы можно было открыть/редактировать маршрут.
     _route!.name = name;
+    // Защита от повторного сохранения (двойной тап) — один маршрут не должен
+    // продублироваться в БД.
+    if (_isSavingRoute) return;
+    _isSavingRoute = true;
     final base = _route!;
-    final savedId = await _storageService.saveRoute(base);
+    final int savedId;
+    try {
+      savedId = await _storageService.saveRoute(base);
+    } finally {
+      _isSavingRoute = false;
+    }
     if (!mounted) {
       _clearRoute();
       return;
@@ -892,6 +911,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   void dispose() {
     _positionStreamSubscription?.cancel();
     _trackingTimer?.cancel();
+    _smoothMoveTimer?.cancel();
     super.dispose();
   }
 
@@ -1029,7 +1049,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
           PolylineLayer(
             polylines: [
               Polyline(
-                points: _route!.points.map((p) => p.coordinates).toList(),
+                points: downsampleRoute(
+                    _route!.points.map((p) => p.coordinates).toList()),
                 strokeWidth: 5.0,
                 color: AppColors.route,
                 borderColor: AppColors.route.withValues(alpha: 0.2),
@@ -1041,40 +1062,12 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
           markers: [
             // Старт пробежки — флажок (отличаем от текущего положения).
             if (_route != null && _route!.points.length > 1)
-              _circleMarker(
-                _route!.points.first.coordinates,
-                icon: Icons.flag,
-                color: AppColors.route,
-                size: 30,
-              ),
+              routeFinishMarker(_route!.points.first.coordinates, size: 30),
             // Текущее положение — зелёный человечек, как в ленте.
-            _circleMarker(
-              _currentPosition!,
-              icon: Icons.directions_run,
-              color: AppColors.success,
-              size: 40,
-            ),
+            routeStartMarker(_currentPosition!, size: 40),
           ],
         ),
       ],
-    );
-  }
-
-  // Круглый маркер с белой обводкой — единый стиль с лентой.
-  Marker _circleMarker(LatLng point,
-      {required IconData icon, required Color color, double size = 34}) {
-    return Marker(
-      point: point,
-      width: size,
-      height: size,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.surface, width: 2),
-        ),
-        child: Icon(icon, color: AppColors.surface, size: size * 0.45),
-      ),
     );
   }
 

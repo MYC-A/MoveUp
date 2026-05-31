@@ -14,10 +14,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    # Срок жизни основного access-токена (cookie-аутентификация).
-    # Вынесен в настройки, чтобы его можно было ужесточить в проде без правки кода.
-    # TODO: ввести refresh-токены и сократить срок до часов вместо ~года.
-    ACCESS_TOKEN_EXPIRE_DAYS: int = 366
+    # Срок жизни access-токена (cookie-аутентификация). Сокращён с ~года до
+    # 2 недель; долгие сессии продлеваются refresh-токеном (/auth/refresh).
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 14
+    # Refresh-токен живёт дольше и позволяет получить новый access без
+    # повторного ввода пароля.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 60
 
     MINIO_ENDPOINT: str
     MINIO_PUBLIC_URL: str

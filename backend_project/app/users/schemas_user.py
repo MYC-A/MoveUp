@@ -48,6 +48,11 @@ class PasswordChange(BaseModel):
     old_password: str = Field(..., min_length=5, max_length=50)
     new_password: str = Field(..., min_length=5, max_length=50)
 
+
+# Обновление access-токена по refresh-токену
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
 # Схема для создания пользователя (без подтверждения пароля)
 class UserCreate(UserBase):
     password: str = Field(..., min_length=5, max_length=50, description="Пароль, от 5 до 50 знаков")

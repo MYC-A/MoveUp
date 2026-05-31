@@ -18,7 +18,12 @@ class RoutePoint {
 
   // Создание объекта RoutePoint из JSON
   factory RoutePoint.fromJson(Map<String, dynamic> json) => RoutePoint(
-        coordinates: LatLng(json['latitude'], json['longitude']),
-        timestamp: DateTime.parse(json['timestamp']),
+        coordinates: LatLng(
+          (json['latitude'] as num).toDouble(),
+          (json['longitude'] as num).toDouble(),
+        ),
+        timestamp: json['timestamp'] != null
+            ? (DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now())
+            : DateTime.now(),
       );
 }

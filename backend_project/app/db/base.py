@@ -61,6 +61,9 @@ async def ensure_schema_compatibility(conn):
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires TIMESTAMP"))
         await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS city VARCHAR"))
+        # Индексы для ленты (сортировка по дате, фильтр по автору/подпискам).
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)"))
         return
 
     if dialect == "sqlite":
@@ -96,3 +99,5 @@ async def ensure_schema_compatibility(conn):
         post_column_names = {row[1] for row in post_columns.fetchall()}
         if "city" not in post_column_names:
             await conn.execute(text("ALTER TABLE posts ADD COLUMN city VARCHAR"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)"))
