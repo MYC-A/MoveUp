@@ -547,7 +547,9 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
                   onMapReady: _fitRoute,
                 ),
                 children: [
-                  osmTileLayer(),
+                  osmTileLayer(
+                    retina: MediaQuery.of(context).devicePixelRatio > 1.5,
+                  ),
                   if (points.length > 1)
                     PolylineLayer(
                       polylines: [

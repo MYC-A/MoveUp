@@ -13,13 +13,11 @@ import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/UserPosts.dart';
 import 'package:flutter_application_1/widgets/profile/profile_hero.dart';
-import 'package:flutter_application_1/services_api/api_error_ui.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../services_api/lk_service.dart';
-import '../services_api/EventService.dart';
-import '../services_api/auth_service.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -32,9 +30,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final LkService lkService = LkService();
-  final EventService _eventService = EventService();
-  final AuthService _authService = AuthService();
-  final TextEditingController _bioController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
 
@@ -45,46 +40,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   DateTime _lastLoadAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _refreshTimer;
 
-  /// Список городов для выбора в профиле (как в событиях).
-  List<String> _cities = EventService.fallbackCities;
-
-  // Допустимые границы для «обычного» человека — отсекаем явные опечатки.
-  static const double _minWeightKg = 30;
-  static const double _maxWeightKg = 250;
-  static const double _minHeightCm = 100;
-  static const double _maxHeightCm = 250;
-
   @override
   void initState() {
     super.initState();
     _load();
-    _loadCities();
     _startAutoRefresh();
-  }
-
-  Future<void> _loadCities() async {
-    try {
-      final cities = await _eventService.getEventCities();
-      if (!mounted || cities.isEmpty) return;
-      setState(() => _cities = cities);
-    } catch (e) {
-      debugPrint('Не удалось загрузить список городов: $e');
-    }
-  }
-
-  String _normalizeCityName(String value) {
-    return value.trim().toLowerCase().replaceAll('ё', 'е');
-  }
-
-  bool _isKnownCity(String value) {
-    final normalized = _normalizeCityName(value);
-    return _cities.any((city) => _normalizeCityName(city) == normalized);
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _bioController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -148,305 +113,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleRefresh() => _load(background: true);
 
-  // Проверяет вес/рост/город. Возвращает текст ошибки или null, если всё ок.
-  // Пустые значения допустимы (поля необязательные).
-  String? _validateWeight(String raw) {
-    final text = raw.trim();
-    if (text.isEmpty) return null;
-    final value = double.tryParse(text.replaceAll(',', '.'));
-    if (value == null) return 'Введите число';
-    if (value < _minWeightKg || value > _maxWeightKg) {
-      return 'Вес должен быть от ${_minWeightKg.toInt()} до ${_maxWeightKg.toInt()} кг';
-    }
-    return null;
-  }
-
-  String? _validateHeight(String raw) {
-    final text = raw.trim();
-    if (text.isEmpty) return null;
-    final value = double.tryParse(text.replaceAll(',', '.'));
-    if (value == null) return 'Введите число';
-    if (value < _minHeightCm || value > _maxHeightCm) {
-      return 'Рост должен быть от ${_minHeightCm.toInt()} до ${_maxHeightCm.toInt()} см';
-    }
-    return null;
-  }
-
-  String? _validateCity(String raw) {
-    final text = raw.trim();
-    if (text.isEmpty) return null;
-    if (!_isKnownCity(text)) return 'Выберите город из списка';
-    return null;
-  }
-
-  static const int _bioMaxLength = 500;
-
-  void _showEditProfileDialog(Map<String, dynamic> user) {
-    final nameCtrl =
-        TextEditingController(text: (user['full_name'] ?? '').toString());
-    final bioCtrl =
-        TextEditingController(text: (user['bio'] ?? '').toString());
-    final cityCtrl =
-        TextEditingController(text: (user['city'] ?? '').toString());
-    final weightCtrl = TextEditingController(
-        text: user['weight'] != null ? '${user['weight']}' : '');
-    final heightCtrl = TextEditingController(
-        text: user['height'] != null ? '${user['height']}' : '');
-
-    String? nameError;
-    String? cityError;
-    String? weightError;
-    String? heightError;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Редактировать профиль'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(
-                    labelText: 'Имя',
-                    prefixIcon: const Icon(Icons.person_outline),
-                    errorText: nameError,
-                  ),
-                  onChanged: (value) => setDialogState(() {
-                    nameError = value.trim().length < 3
-                        ? 'Имя должно быть не короче 3 символов'
-                        : null;
-                  }),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: bioCtrl,
-                  minLines: 4,
-                  maxLines: 7,
-                  maxLength: _bioMaxLength,
-                  decoration: const InputDecoration(
-                    labelText: 'О себе',
-                    alignLabelWithHint: true,
-                    helperText: 'Расскажите о себе, любимых маршрутах и целях',
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Город выбираем из известного списка (как в событиях).
-                Autocomplete<String>(
-                  initialValue: TextEditingValue(text: cityCtrl.text),
-                  optionsBuilder: (value) {
-                    final query = _normalizeCityName(value.text);
-                    if (query.isEmpty) return _cities.take(8);
-                    return _cities
-                        .where((c) => _normalizeCityName(c).contains(query))
-                        .take(12);
-                  },
-                  onSelected: (city) {
-                    cityCtrl.text = city;
-                    setDialogState(() => cityError = _validateCity(city));
-                  },
-                  fieldViewBuilder:
-                      (context, controller, focusNode, onSubmitted) {
-                    return TextField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      decoration: InputDecoration(
-                        labelText: 'Город',
-                        helperText: 'Выберите город из списка',
-                        errorText: cityError,
-                      ),
-                      onChanged: (value) {
-                        cityCtrl.text = value;
-                        setDialogState(() => cityError = _validateCity(value));
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: weightCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: 'Вес, кг',
-                    errorText: weightError,
-                  ),
-                  onChanged: (value) =>
-                      setDialogState(() => weightError = _validateWeight(value)),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: heightCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: 'Рост, см',
-                    errorText: heightError,
-                  ),
-                  onChanged: (value) =>
-                      setDialogState(() => heightError = _validateHeight(value)),
-                ),
-              ],
-            ),
-          ),
-          actionsOverflowButtonSpacing: 8,
-          actions: [
-            TextButton.icon(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _showChangePasswordDialog();
-              },
-              icon: const Icon(Icons.lock_outline, size: 18),
-              label: const Text('Сменить пароль'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                // Финальная проверка перед сохранением.
-                final nErr = nameCtrl.text.trim().length < 3
-                    ? 'Имя должно быть не короче 3 символов'
-                    : null;
-                final cErr = _validateCity(cityCtrl.text);
-                final wErr = _validateWeight(weightCtrl.text);
-                final hErr = _validateHeight(heightCtrl.text);
-                if (nErr != null ||
-                    cErr != null ||
-                    wErr != null ||
-                    hErr != null) {
-                  setDialogState(() {
-                    nameError = nErr;
-                    cityError = cErr;
-                    weightError = wErr;
-                    heightError = hErr;
-                  });
-                  return;
-                }
-
-                try {
-                  await lkService.updateProfile(
-                    fullName: nameCtrl.text.trim(),
-                    bio: bioCtrl.text,
-                    city: cityCtrl.text.trim(),
-                    weight: double.tryParse(
-                        weightCtrl.text.trim().replaceAll(',', '.')),
-                    height: double.tryParse(
-                        heightCtrl.text.trim().replaceAll(',', '.')),
-                  );
-                  if (!mounted) return;
-                  Navigator.pop(dialogContext);
-                  _load(background: true);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Профиль обновлён')),
-                  );
-                } catch (e) {
-                  if (!mounted) return;
-                  showApiError(context, e);
-                }
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
-        ),
+  // Открывает полноэкранную форму редактирования профиля.
+  Future<void> _openEditProfile(Map<String, dynamic> user) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditProfileScreen(user: user),
       ),
     );
+    if (changed == true && mounted) {
+      _load(background: true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Профиль обновлён')),
+      );
+    }
   }
 
-  void _showChangePasswordDialog() {
-    final oldCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-    final repeatCtrl = TextEditingController();
-    String? error;
-    bool saving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Смена пароля'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: oldCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Текущий пароль'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Новый пароль'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: repeatCtrl,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'Повторите новый пароль',
-                    errorText: error,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: saving ? null : () => Navigator.pop(dialogContext),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      if (newCtrl.text.length < 5) {
-                        setDialogState(() =>
-                            error = 'Пароль должен быть не короче 5 символов');
-                        return;
-                      }
-                      if (newCtrl.text != repeatCtrl.text) {
-                        setDialogState(() => error = 'Пароли не совпадают');
-                        return;
-                      }
-                      setDialogState(() {
-                        saving = true;
-                        error = null;
-                      });
-                      try {
-                        await _authService.changePassword(
-                          oldPassword: oldCtrl.text,
-                          newPassword: newCtrl.text,
-                        );
-                        if (!mounted) return;
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Пароль изменён')),
-                        );
-                      } catch (e) {
-                        setDialogState(() {
-                          saving = false;
-                          error = e.toString().replaceFirst('Exception: ', '');
-                        });
-                      }
-                    },
-              child: Text(saving ? 'Сохраняем…' : 'Сменить'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -618,8 +300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 children: [
                                   Expanded(
                                     child: FilledButton.icon(
-                                      onPressed: () =>
-                                          _showEditProfileDialog(user),
+                                      onPressed: () => _openEditProfile(user),
                                       icon: const Icon(Icons.edit_outlined,
                                           size: 18),
                                       label: const Text('Редактировать'),

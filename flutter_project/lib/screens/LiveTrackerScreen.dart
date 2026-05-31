@@ -1039,18 +1039,19 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
           ),
         MarkerLayer(
           markers: [
-            // Старт пробежки — как в ленте (круглый значок бега).
-            if (_route != null && _route!.points.isNotEmpty)
+            // Старт пробежки — флажок (отличаем от текущего положения).
+            if (_route != null && _route!.points.length > 1)
               _circleMarker(
                 _route!.points.first.coordinates,
-                icon: Icons.directions_run,
-                color: AppColors.success,
+                icon: Icons.flag,
+                color: AppColors.route,
+                size: 30,
               ),
-            // Текущее положение.
+            // Текущее положение — зелёный человечек, как в ленте.
             _circleMarker(
               _currentPosition!,
-              icon: Icons.my_location,
-              color: AppColors.primary,
+              icon: Icons.directions_run,
+              color: AppColors.success,
               size: 40,
             ),
           ],
