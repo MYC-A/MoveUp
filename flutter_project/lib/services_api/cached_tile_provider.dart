@@ -13,10 +13,10 @@ class CachedTileProvider extends TileProvider {
   CachedTileProvider({Map<String, String>? headers})
       : super(
           headers: {
-            // OSM блокирует запросы без внятного User-Agent (отдаёт ошибку →
-            // серые незагруженные тайлы). Гарантируем валидный UA, даже если
-            // flutter_map по какой-то причине его не проставил.
-            'User-Agent': 'com.moveup.app',
+            // OSM блокирует запросы без внятного описательного User-Agent
+            // (отдаёт 403/429 → серые незагруженные тайлы). Указываем полноценный
+            // идентификатор приложения с контактом, как требует политика OSM.
+            'User-Agent': 'MoveUp/1.0 (https://moveup.app; support@moveup.app)',
             ...?headers,
           },
         );

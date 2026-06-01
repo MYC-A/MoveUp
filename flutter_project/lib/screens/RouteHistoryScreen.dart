@@ -548,9 +548,9 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
                   onMapReady: _fitRoute,
                 ),
                 children: [
-                  osmTileLayer(
-                    retina: MediaQuery.of(context).devicePixelRatio > 1.5,
-                  ),
+                  // Без retina: в списке много мини-карт, удвоение тайлов
+                  // перегружает OSM и часть превью не прогружается.
+                  osmTileLayer(),
                   if (points.length > 1)
                     PolylineLayer(
                       polylines: [

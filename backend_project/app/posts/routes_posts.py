@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
-from sqlalchemy import select, delete, or_
+from sqlalchemy import select, delete, or_, func
 from app.models.follow import UserFollow
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
@@ -166,27 +166,40 @@ async def get_feed(
     current_user1=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Лента активности: посты самого пользователя и тех, на кого он подписан."""
+    """Лента активности: посты пользователя и его подписок. Если подписок нет
+    (например, только что зарегистрировался) — показываем рекомендации: свежие
+    посты сообщества, чтобы лента не была пустой."""
     current_user = current_user1.id
 
-    # id всех, на кого подписан текущий пользователь.
-    following_subq = select(UserFollow.following_id).where(
-        UserFollow.follower_id == current_user
-    )
+    # Сколько подписок у пользователя — решает, показывать ленту подписок или
+    # рекомендации.
+    following_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(UserFollow)
+            .where(UserFollow.follower_id == current_user)
+        )
+    ).scalar() or 0
 
     stmt_posts = (
         select(Post)
         .options(selectinload(Post.user), selectinload(Post.photos))  # Загружаем фотографии
-        .where(
+        .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
+    )
+
+    if following_count > 0:
+        following_subq = select(UserFollow.following_id).where(
+            UserFollow.follower_id == current_user
+        )
+        stmt_posts = stmt_posts.where(
             or_(
                 Post.user_id == current_user,
                 Post.user_id.in_(following_subq),
             )
         )
-        .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
-        .offset(skip)
-        .limit(limit)
-    )
+    # иначе — без фильтра: рекомендации (все свежие посты сообщества).
+
+    stmt_posts = stmt_posts.offset(skip).limit(limit)
     result_posts = await db.execute(stmt_posts)
     posts = result_posts.scalars().all()
 

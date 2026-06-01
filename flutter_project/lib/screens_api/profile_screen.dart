@@ -14,7 +14,9 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/UserPosts.dart';
 import 'package:flutter_application_1/widgets/profile/profile_hero.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import '../services_api/api_exception.dart';
 
 import '../services_api/lk_service.dart';
 import 'edit_profile_screen.dart';
@@ -248,10 +250,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final profile = _profile!;
           final user = profile['user'];
           final stats = profile['stats'];
-          final avatarUrl = (user['avatar_url'] ?? '').toString().replaceAll(
-                'localhost:9000',
-                AppConfig.mediaBaseUrlWithoutScheme,
-              );
+          final avatarUrl =
+              AppConfig.normalizeMediaUrl((user['avatar_url'] ?? '').toString());
           final userId = (user['id'] as num?)?.toInt();
 
           return RefreshIndicator(
@@ -273,7 +273,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ProfileHero(
                           fullName: (user['full_name'] ?? 'Нет имени').toString(),
                           avatarImage: avatarUrl.isNotEmpty
-                              ? NetworkImage(avatarUrl)
+                              ? CachedNetworkImageProvider(avatarUrl)
                               : null,
                           bio: user['bio']?.toString(),
                           city: user['city']?.toString(),
@@ -365,6 +365,7 @@ class NotificationIcon extends StatefulWidget {
 
 class _NotificationIconState extends State<NotificationIcon> {
   bool hasNewNotifications = false;
+  bool _checking = false; // защита от наложения опросов
   Timer? _timer;
 
   @override
@@ -381,12 +382,18 @@ class _NotificationIconState extends State<NotificationIcon> {
   }
 
   void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    // Реже опрашиваем — фоновая проверка не критична, а частые запросы при
+    // плохой сети только плодят таймауты.
+    _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _checkNotifications();
     });
   }
 
   Future<void> _checkNotifications() async {
+    // Не запускаем новый опрос, пока не завершился предыдущий (иначе при
+    // медленной сети запросы накладываются и сыплют таймаутами).
+    if (_checking) return;
+    _checking = true;
     try {
       final notifications = await widget.lkService.fetchNotifications();
       if (!mounted) return;
@@ -401,7 +408,12 @@ class _NotificationIconState extends State<NotificationIcon> {
             notEmpty('event_updates');
       });
     } catch (e) {
-      debugPrint('Ошибка при проверке уведомлений: $e');
+      // Нет сети/таймаут — это норма для фоновой проверки, не шумим в логах.
+      if (!(e is ApiException && e.isOffline)) {
+        debugPrint('Ошибка при проверке уведомлений: $e');
+      }
+    } finally {
+      _checking = false;
     }
   }
 
