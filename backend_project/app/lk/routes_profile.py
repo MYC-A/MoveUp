@@ -338,8 +338,10 @@ async def search_users(
         (UserFollow.following_id == User.id)
         & (UserFollow.follower_id == current_user)
     )
+    # У UserFollow составной ключ (follower_id, following_id) и НЕТ колонки id.
+    # После LEFT JOIN признак подписки — ненулевой follower_id.
     query = (
-        select(User, UserFollow.id.isnot(None).label("is_following"))
+        select(User, UserFollow.follower_id.isnot(None).label("is_following"))
         .outerjoin(UserFollow, follow_condition)
         .where(User.id != current_user)
     )
@@ -364,9 +366,9 @@ async def search_users(
         query = query.where(or_(User.avatar_url.is_(None), User.avatar_url == ""))
 
     if following is True:
-        query = query.where(UserFollow.id.isnot(None))
+        query = query.where(UserFollow.follower_id.isnot(None))
     elif following is False:
-        query = query.where(UserFollow.id.is_(None))
+        query = query.where(UserFollow.follower_id.is_(None))
 
     query = query.order_by(User.full_name.asc(), User.id.asc()).offset(skip).limit(limit + 1)
     result = await db.execute(query)
