@@ -9,6 +9,42 @@ class LkUsersService {
   final String baseUrl = AppConfig.apiBaseUrl;
   final storage = FlutterSecureStorage();
 
+  Future<Map<String, dynamic>> searchUsers({
+    String? query,
+    String? city,
+    bool? hasAvatar,
+    bool? following,
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+
+    final queryParameters = <String, String>{
+      'skip': skip.toString(),
+      'limit': limit.toString(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (hasAvatar != null) 'has_avatar': hasAvatar.toString(),
+      if (following != null) 'following': following.toString(),
+    };
+
+    final response = await Api.get(
+      Uri.parse('$baseUrl/profile/users/search')
+          .replace(queryParameters: queryParameters),
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode == 200) {
+      final String responseBody = utf8.decode(response.bodyBytes);
+      return json.decode(responseBody);
+    }
+    throw ApiException.fromResponse(response);
+  }
+
   // Получить данные профиля пользователя
   Future<Map<String, dynamic>> fetchUserProfile(int userId) async {
     final token = await storage.read(key: 'access_token');

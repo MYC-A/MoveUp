@@ -1,40 +1,49 @@
-# Последние исправления
+# Последние исправления и доработки
+
+Дата актуализации: 2026-06-01.
 
 ## Backend
 
-- Исправлены уведомления по заявкам: изменения статуса заявки теперь берут название события через join к `Event`, а не ищут его среди событий, которые организовал текущий пользователь.
-- Добавлена server-side проверка маршрута мероприятия:
-  - широта: от -90 до 90;
-  - долгота: от -180 до 180;
-  - общая длина маршрута: не больше 200 км.
+- Добавлен pytest-набор (`27 passed`).
+- Добавлен Alembic scaffold (`backend_project/migrations`), но versions пока пустые.
+- Уведомления вынесены из `routes_profile.py` в `routes_notifications.py`.
+- Уведомления по заявкам берут название события через join к `Event`, а не через список событий организатора.
+- Добавлены persistent `UserNotification`/`event_updates` для системных уведомлений, которые переживают удаление события.
+- В `EventCreate` проверяются:
+  - координаты route point;
+  - максимальная длина маршрута 200 км;
+  - `max_participants >= 1`;
+  - `end_time > start_time`.
+- Добавлены настройки refresh/access token lifetime, optional email и CORS origins в config.
 
-## Flutter: локальные маршруты
+## Flutter: лента
 
-- `StorageService` поднят до версии базы `2`.
-- Добавлена миграция для `is_downloaded`.
-- Добавлен `source_post_id` для скачанных маршрутов.
-- Повторное скачивание одного и того же маршрута из поста больше не должно создавать новые дубли.
-
-## Flutter: экран просмотра маршрута
-
-- В `RouteViewScreen` добавлены `mounted`-проверки после async-геолокации и внутри stream listener.
-- Это защищает от `setState` после закрытия экрана.
-
-## Flutter: мои мероприятия и заявки
-
-- Убрана дополнительная клиентская фильтрация прошедших заявок/мероприятий.
-- Источник правды по активным событиям оставлен на backend, чтобы не ломать пагинацию.
-
-## Flutter: лента и маршрут в посте
-
-- Карта маршрута в ленте вынесена в отдельный `_PostRouteMap`.
-- `LatLng` точки маршрута кешируются в state, а не пересчитываются на каждом `build`.
-- `VisibilityDetector` вызывает zoom только один раз при появлении карты на экране.
+- `PostItem` вынесен в `flutter_project/lib/widgets/feed/post_item.dart`.
+- Карта маршрута в посте живет в `_PostRouteMap`.
+- Точки маршрута кешируются, preview polyline прореживается до 150 точек.
+- `VisibilityDetector` вызывает zoom один раз при появлении карты.
 - `FlutterMap` завернут в `RepaintBoundary`.
-- Убраны OSM subdomains в `TileLayer`.
-- Убрано лишнее `_posts = List.from(_posts)` при refresh/WebSocket обновлениях лайков и комментариев.
+- Используется общий `osmTileLayer()` с кешированием тайлов.
+- В ленте добавлена защита от дублей при пагинации, обработка `post_deleted`, аккуратное удаление MapController.
+- У постов появился action удаления для владельца через `onDeleted`.
 
-## Что не трогалось
+## Flutter: маршруты
 
-- `docs_project/Запуск flutter.md` и `docs_project/Поправить.md` оставлены как были.
-- `RouteMap.dart` в `widgets/route_details/` пока не менялся.
+- `StorageService` версия БД `2`.
+- Добавлены `is_downloaded`, `source_post_id`, unique index по `source_post_id`.
+- `saveRoute` возвращает inserted id.
+- Убраны тяжелые full-table logs/backup из горячего пути.
+- `loadRoutes` сортирует по дате и имеет лимит.
+
+## Flutter: инфраструктура
+
+- Добавлен единый `osmTileLayer()`.
+- Добавлен `ApiErrorUi` / обработка API ошибок в части экранов.
+- Push service сделан optional и не должен падать без Firebase dart-defines.
+
+## Проверки
+
+- `flutter analyze` зеленый.
+- `flutter test` зеленый.
+- `python -m compileall app` зеленый.
+- `python -m pytest` зеленый: 27 passed.

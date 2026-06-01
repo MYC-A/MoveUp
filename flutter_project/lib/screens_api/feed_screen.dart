@@ -27,6 +27,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   final PageStorageBucket _bucket = PageStorageBucket();
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _cityController = TextEditingController();
   final PostService _postService = PostService();
   final WebSocketService _webSocketService = WebSocketService();
   List<Post> _posts = [];
@@ -39,7 +41,11 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final List<MapController> _mapControllers = [];
   int? _currentUserId;
   Timer? _debounceTimer;
+  Timer? _filterDebounceTimer;
   String? _loadError;
+  bool _showFilters = false;
+  String _routeFilter = 'any';
+  String _photoFilter = 'any';
 
   @override
   void initState() {
@@ -67,6 +73,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _filterDebounceTimer?.cancel();
+    _searchController.dispose();
+    _cityController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_handleScroll);
     for (var controller in _mapControllers) {
@@ -94,6 +103,43 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     }
   }
 
+  bool get _hasActiveFilters {
+    return _searchController.text.trim().isNotEmpty ||
+        _cityController.text.trim().isNotEmpty ||
+        _routeFilter != 'any' ||
+        _photoFilter != 'any';
+  }
+
+  bool? get _hasRouteFilter {
+    if (_routeFilter == 'route') return true;
+    if (_routeFilter == 'plain') return false;
+    return null;
+  }
+
+  bool? get _withPhotosFilter {
+    if (_photoFilter == 'with') return true;
+    if (_photoFilter == 'without') return false;
+    return null;
+  }
+
+  void _scheduleFilterRefresh() {
+    _filterDebounceTimer?.cancel();
+    _filterDebounceTimer = Timer(const Duration(milliseconds: 350), () {
+      _loadPosts(refresh: true);
+    });
+  }
+
+  void _clearPostFilters() {
+    _filterDebounceTimer?.cancel();
+    _searchController.clear();
+    _cityController.clear();
+    setState(() {
+      _routeFilter = 'any';
+      _photoFilter = 'any';
+    });
+    _loadPosts(refresh: true);
+  }
+
   void _handleScroll() {
     if (!_scrollController.hasClients || _isLoading || !_hasMore) return;
 
@@ -119,7 +165,14 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     });
 
     try {
-      final fetched = await _postService.getFeed(_skip, _limit);
+      final fetched = await _postService.getFeed(
+        _skip,
+        _limit,
+        query: _searchController.text,
+        city: _cityController.text,
+        hasRoute: _hasRouteFilter,
+        withPhotos: _withPhotosFilter,
+      );
       // Отсеиваем уже загруженные id — страховка от дублей в ленте.
       final existingIds = _posts.map((p) => p.id).toSet();
       final newPosts =
@@ -155,7 +208,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _handleRefresh() {
-    if (_latestPostId == null) {
+    if (_latestPostId == null || _hasActiveFilters) {
       return _loadPosts(refresh: true);
     }
     return _refreshPosts();
@@ -175,7 +228,14 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     );
 
     try {
-      final newPosts = await _postService.getFeed(0, _limit);
+      final newPosts = await _postService.getFeed(
+        0,
+        _limit,
+        query: _searchController.text,
+        city: _cityController.text,
+        hasRoute: _hasRouteFilter,
+        withPhotos: _withPhotosFilter,
+      );
       final newPostsToAdd =
           newPosts.where((post) => post.id > _latestPostId!).toList();
       if (!mounted) return;
@@ -275,8 +335,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     // Оптимистично обновляем сразу, чтобы счётчик менялся без перезагрузки.
     setState(() {
       post.likedByCurrentUser = !prevLiked;
-      post.likesCount = (prevCount + (post.likedByCurrentUser ? 1 : -1))
-          .clamp(0, 1 << 31);
+      post.likesCount =
+          (prevCount + (post.likedByCurrentUser ? 1 : -1)).clamp(0, 1 << 31);
     });
 
     try {
@@ -385,6 +445,15 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Активности'),
         actions: [
+          AppIconButton(
+            icon: _showFilters
+                ? Icons.filter_alt_rounded
+                : Icons.filter_alt_outlined,
+            tooltip: 'Фильтры постов',
+            onPressed: () {
+              setState(() => _showFilters = !_showFilters);
+            },
+          ),
           if (_isRefreshing)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
@@ -411,42 +480,144 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       ),
       body: ColoredBox(
         color: AppColors.background,
-        child: PageStorage(
-          bucket: _bucket,
-          child: RefreshIndicator(
-            color: AppColors.primary,
-            onRefresh: _handleRefresh,
-            child: Stack(
-              children: [
-                _buildFeedContent(),
-                if (_isRefreshing)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        margin: EdgeInsets.all(8),
-                        padding: EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.border),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
+        child: Column(
+          children: [
+            if (_showFilters) _buildFilterPanel(),
+            Expanded(
+              child: PageStorage(
+                bucket: _bucket,
+                child: RefreshIndicator(
+                  color: AppColors.primary,
+                  onRefresh: _handleRefresh,
+                  child: Stack(
+                    children: [
+                      _buildFeedContent(),
+                      if (_isRefreshing)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Container(
+                              margin: EdgeInsets.all(8),
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: CircularProgressIndicator(strokeWidth: 3),
                             ),
-                          ],
+                          ),
                         ),
-                        child: CircularProgressIndicator(strokeWidth: 3),
-                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterPanel() {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.md,
+        ),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              onChanged: (_) => _scheduleFilterRefresh(),
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                hintText: 'Текст, автор или город',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _cityController,
+                    onChanged: (_) => _scheduleFilterRefresh(),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.location_city_outlined),
+                      hintText: 'Город',
                     ),
                   ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _routeFilter,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.route_outlined),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'any', child: Text('Все')),
+                      DropdownMenuItem(value: 'route', child: Text('Маршрут')),
+                      DropdownMenuItem(
+                          value: 'plain', child: Text('Без маршрута')),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _routeFilter = value ?? 'any');
+                      _loadPosts(refresh: true);
+                    },
+                  ),
+                ),
               ],
             ),
-          ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _photoFilter,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.photo_library_outlined),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'any', child: Text('Любые фото')),
+                      DropdownMenuItem(value: 'with', child: Text('С фото')),
+                      DropdownMenuItem(
+                          value: 'without', child: Text('Без фото')),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _photoFilter = value ?? 'any');
+                      _loadPosts(refresh: true);
+                    },
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                TextButton.icon(
+                  onPressed: _hasActiveFilters ? _clearPostFilters : null,
+                  icon: const Icon(Icons.filter_alt_off_outlined),
+                  label: const Text('Сбросить'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -472,8 +643,10 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       return _buildStateList(
         AppEmptyState(
           icon: Icons.dynamic_feed_outlined,
-          title: 'Пока нет публикаций',
-          message: 'Создайте первый пост или обновите ленту.',
+          title: _hasActiveFilters ? 'Посты не найдены' : 'Пока нет публикаций',
+          message: _hasActiveFilters
+              ? 'Попробуйте изменить фильтры.'
+              : 'Создайте первый пост или обновите ленту.',
           action: ElevatedButton.icon(
             onPressed: _showPostOptions,
             icon: const Icon(Icons.add),
@@ -534,4 +707,3 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     );
   }
 }
-

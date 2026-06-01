@@ -12,6 +12,14 @@ import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:intl/intl.dart';
 
+class _GroupChatTimelineItem {
+  final Map<String, dynamic>? message;
+  final String? dateLabel;
+
+  const _GroupChatTimelineItem.message(this.message) : dateLabel = null;
+  const _GroupChatTimelineItem.date(this.dateLabel) : message = null;
+}
+
 class GroupChatScreen extends StatefulWidget {
   final int groupChatId;
   final String groupChatName;
@@ -404,15 +412,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final isRead = message['is_read'] ?? false;
     final isTemp = message['is_temp'] ?? false;
     final senderName = message['sender_name']?.toString() ?? 'Пользователь';
-    final createdAt = message['created_at']?.toString() ?? '';
+    final time = _formatMessageTime(message['created_at']);
 
     final content = message['content']?.toString() ?? '';
     final textColor = isTemp
         ? AppColors.textMuted
         : (isMe ? AppColors.surface : AppColors.textPrimary);
-    final metaColor = isMe
-        ? AppColors.surface.withValues(alpha: 0.75)
-        : AppColors.textMuted;
+    final metaColor =
+        isMe ? AppColors.surface.withValues(alpha: 0.75) : AppColors.textMuted;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.md, 2, AppSpacing.md, 2),
@@ -439,8 +446,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               maxWidth: MediaQuery.of(context).size.width * 0.76,
             ),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: isMe ? AppColors.primary : AppColors.surface,
                 borderRadius: BorderRadius.only(
@@ -465,28 +471,31 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       height: 1.25,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatDateTime(createdAt),
-                        style: TextStyle(
-                          color: metaColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (isMe && !isTemp) ...[
-                        const SizedBox(width: 3),
-                        Icon(
-                          isRead ? Icons.done_all : Icons.done,
-                          color: isRead ? AppColors.routeSoft : metaColor,
-                          size: 14,
-                        ),
+                  if (time != null || (isMe && !isTemp)) ...[
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (time != null)
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: metaColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        if (isMe && !isTemp) ...[
+                          if (time != null) const SizedBox(width: 3),
+                          Icon(
+                            isRead ? Icons.done_all : Icons.done,
+                            color: isRead ? AppColors.routeSoft : metaColor,
+                            size: 14,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -496,32 +505,82 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
   }
 
-  String _formatDateTime(String isoDate) {
-    try {
-      // Парсим время из базы данных
-      final dateFromDb = DateTime.parse(isoDate);
+  DateTime? _parseServerDateTime(dynamic rawDate) {
+    final value = rawDate?.toString().trim();
+    if (value == null || value.isEmpty) return null;
 
-      const timeDifferenceHours = 5;
+    final hasTimezone = RegExp(r'(z|Z|[+-]\d{2}:?\d{2})$').hasMatch(value);
+    final normalized = hasTimezone ? value : '${value}Z';
+    return DateTime.tryParse(normalized)?.toLocal();
+  }
 
-      // Корректируем время, добавляя разницу
-      final dateCorrected =
-          dateFromDb.add(Duration(hours: timeDifferenceHours));
+  String? _formatMessageTime(dynamic rawDate) {
+    final parsed = _parseServerDateTime(rawDate);
+    if (parsed == null) return null;
+    return DateFormat.Hm('ru').format(parsed);
+  }
 
-      final now = DateTime.now();
-      if (dateCorrected.year == now.year &&
-          dateCorrected.month == now.month &&
-          dateCorrected.day == now.day) {
-        return DateFormat.Hm('ru')
-            .format(dateCorrected); // Только время, если сегодня
-      } else {
-        return DateFormat.yMMMd('ru')
-            .add_Hm()
-            .format(dateCorrected); // Дата и время
+  String _formatDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(messageDay).inDays;
+
+    if (diff == 0) return 'Сегодня';
+    if (diff == 1) return 'Вчера';
+    return DateFormat.yMMMMd('ru').format(date);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  List<_GroupChatTimelineItem> _buildTimelineItems(
+    List<Map<String, dynamic>> messages,
+  ) {
+    final items = <_GroupChatTimelineItem>[];
+    DateTime? previousDay;
+
+    for (final message in messages) {
+      final createdAt = _parseServerDateTime(message['created_at']);
+      if (createdAt != null &&
+          (previousDay == null || !_isSameDay(previousDay, createdAt))) {
+        items.add(_GroupChatTimelineItem.date(_formatDateSeparator(createdAt)));
+        previousDay = createdAt;
       }
-    } catch (e) {
-      debugPrint('Ошибка форматирования времени: $e');
-      return isoDate;
+      items.add(_GroupChatTimelineItem.message(message));
     }
+
+    return items;
+  }
+
+  Widget _buildDateSeparator(String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xxs,
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -577,6 +636,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     initialData: _messages,
                     builder: (context, snapshot) {
                       final messages = snapshot.data ?? const [];
+                      final timelineItems = _buildTimelineItems(messages);
                       return ListView.builder(
                         controller: _scrollController,
                         reverse: true,
@@ -585,17 +645,23 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.md,
                         ),
-                        itemCount: messages.length + (_isLoadingOlder ? 1 : 0),
+                        itemCount:
+                            timelineItems.length + (_isLoadingOlder ? 1 : 0),
                         itemBuilder: (context, index) {
-                          if (_isLoadingOlder && index == messages.length) {
+                          if (_isLoadingOlder &&
+                              index == timelineItems.length) {
                             return const Padding(
                               padding: EdgeInsets.all(AppSpacing.md),
                               child: AppLoading(),
                             );
                           }
 
-                          final messageIndex = messages.length - 1 - index;
-                          return _buildMessage(messages[messageIndex]);
+                          final item =
+                              timelineItems[timelineItems.length - 1 - index];
+                          if (item.dateLabel != null) {
+                            return _buildDateSeparator(item.dateLabel!);
+                          }
+                          return _buildMessage(item.message!);
                         },
                       );
                     },

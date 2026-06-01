@@ -1,36 +1,51 @@
 # Статус проверок
 
-Дата последних проверок: 2026-05-29.
+Дата последних проверок: 2026-06-01.
 
-## Что проходит
+## Green checks
 
-- `flutter test` проходит. Сейчас в проекте фактически есть smoke test логина.
-- `dart analyze lib/screens_api/feed_screen.dart` проходит без ошибок после оптимизации карты в ленте.
-- `python -m compileall app` для backend проходит.
-- Ручная проверка `EventCreate` подтверждала: короткий маршрут принимается, маршрут больше 200 км отклоняется.
+Flutter:
 
-## Что пока не проходит
+```text
+flutter analyze
+No issues found! (ran in 5.9s)
 
-`flutter analyze` по всему проекту пока падает на старых файлах внутри `flutter_project/lib/test/`.
+flutter test
+Login screen smoke test
+All tests passed!
+```
 
-Главный блокер:
+Backend:
 
-- `flutter_project/lib/test/feed_screen1.dart:412` - `PhotoViewer` не определен для `_PostItemState`.
+```text
+python -m compileall app
+OK
 
-Еще есть предупреждения:
+python -m pytest
+27 passed, 5 warnings in 2.50s
+```
 
-- duplicate/unused imports в `lib/test/feed_screen1.dart` и `lib/test/feed_screen.dart`.
-- unused/dead code в `GpsFilter.dart`, `FullScreenMap.dart`, `SelectParticipantsModal.dart`, `event_screen.dart`.
-- deprecated `withOpacity` в нескольких UI-файлах.
+Backend test files:
 
-Важно: папка `lib/test/` находится внутри `lib`, поэтому Flutter анализирует ее как часть приложения. Либо эти файлы надо чинить, либо выносить из `lib`.
+- `tests/test_auth_schema.py`.
+- `tests/test_event_schema.py`.
+- `tests/test_security.py`.
+- `tests/test_uploads.py`.
 
-## Текущий git status после последних правок
+CI:
 
-На момент создания этих заметок изменен:
+- `.github/workflows/ci.yml` запускает backend compile/tests и Flutter analyze/tests.
+- Backend CI на Python 3.11.
+- Flutter CI на Flutter 3.27.1 stable.
 
-- `flutter_project/lib/screens_api/feed_screen.dart` - оптимизация карты маршрута в ленте.
+## Warnings
 
-Также в рабочем дереве была untracked папка:
+Pytest предупреждения не ломают сборку, но их стоит помнить:
 
-- `.devcontainer/`.
+- Pydantic V2 deprecation: class-based `config` где-то еще используется.
+- `passlib` использует deprecated `crypt`, который будет удален в Python 3.13.
+- `python-jose` предупреждает про `datetime.utcnow()`.
+
+## Важное изменение относительно старого состояния
+
+Раньше общий `flutter analyze` падал на `flutter_project/lib/test/feed_screen1.dart`. В текущем состоянии анализ зеленый: legacy/test-проблемы либо исправлены, либо убраны из анализируемого пути.

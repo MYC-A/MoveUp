@@ -17,11 +17,27 @@ class PostService {
       ApiException(ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
 
   // Получить ленту постов
-  Future<List<Post>> getFeed(int skip, int limit) async {
+  Future<List<Post>> getFeed(
+    int skip,
+    int limit, {
+    String? query,
+    String? city,
+    bool? hasRoute,
+    bool? withPhotos,
+  }) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) throw _noToken();
 
-    final url = Uri.parse('$baseUrl/post/feed?skip=$skip&limit=$limit');
+    final queryParameters = <String, String>{
+      'skip': skip.toString(),
+      'limit': limit.toString(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (hasRoute != null) 'has_route': hasRoute.toString(),
+      if (withPhotos != null) 'with_photos': withPhotos.toString(),
+    };
+    final url = Uri.parse('$baseUrl/post/feed')
+        .replace(queryParameters: queryParameters);
     final response = await Api.get(
       url,
       headers: {'Cookie': 'users_access_token=$token'},

@@ -8,11 +8,11 @@ from typing import List, Dict, Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
-from sqlalchemy import select, delete, or_, func
+from sqlalchemy import select, delete, or_, and_, func
 from app.models.follow import UserFollow
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status, UploadFile,File,Form
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status, UploadFile, File, Form, Query
 
 from fastapi.templating import Jinja2Templates
 from starlette.websockets import WebSocketState
@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.uploads import validate_image_upload
 from app.db.base import get_db
 from app.users.auth_users import create_access_token
+from app.users.models_user import User
 from app.posts.models_posts_comments import Comment
 from app.posts.models_posts_like import PostLike
 from .schemas_comments import CommentCreate
@@ -161,8 +162,12 @@ async def broadcast_post_update(post_id: int, update: dict):
 
 @router.get("/feed", response_model=List[PostInDB])
 async def get_feed(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Поиск по тексту, городу или автору"),
+    city: Optional[str] = Query(None, description="Фильтр по городу поста"),
+    has_route: Optional[bool] = Query(None, description="Посты с маршрутом / без маршрута"),
+    with_photos: Optional[bool] = Query(None, description="Посты с фото / без фото"),
     current_user1=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -184,6 +189,7 @@ async def get_feed(
     stmt_posts = (
         select(Post)
         .options(selectinload(Post.user), selectinload(Post.photos))  # Загружаем фотографии
+        .outerjoin(User, Post.user_id == User.id)
         .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
     )
 
@@ -198,6 +204,37 @@ async def get_feed(
             )
         )
     # иначе — без фильтра: рекомендации (все свежие посты сообщества).
+
+    if q and q.strip():
+        search = f"%{q.strip()}%"
+        stmt_posts = stmt_posts.where(
+            or_(
+                Post.content.ilike(search),
+                Post.city.ilike(search),
+                User.full_name.ilike(search),
+                User.username.ilike(search),
+            )
+        )
+
+    if city and city.strip():
+        stmt_posts = stmt_posts.where(Post.city.ilike(f"%{city.strip()}%"))
+
+    if has_route is True:
+        stmt_posts = stmt_posts.where(
+            or_(Post.distance > 0, Post.duration > 0)
+        )
+    elif has_route is False:
+        stmt_posts = stmt_posts.where(
+            and_(
+                or_(Post.distance == 0, Post.distance.is_(None)),
+                or_(Post.duration == 0, Post.duration.is_(None)),
+            )
+        )
+
+    if with_photos is True:
+        stmt_posts = stmt_posts.where(Post.photos.any())
+    elif with_photos is False:
+        stmt_posts = stmt_posts.where(~Post.photos.any())
 
     stmt_posts = stmt_posts.offset(skip).limit(limit)
     result_posts = await db.execute(stmt_posts)

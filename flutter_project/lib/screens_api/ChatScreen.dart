@@ -8,6 +8,15 @@ import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:intl/intl.dart';
+
+class _ChatTimelineItem {
+  final Map<String, dynamic>? message;
+  final String? dateLabel;
+
+  const _ChatTimelineItem.message(this.message) : dateLabel = null;
+  const _ChatTimelineItem.date(this.dateLabel) : message = null;
+}
 
 class ChatScreen extends StatefulWidget {
   final int recipientId;
@@ -276,14 +285,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final shouldScroll = _isNearBottom();
-      await _chatService.sendMessage(widget.recipientId, content);
+      final savedMessage =
+          await _chatService.sendMessage(widget.recipientId, content);
       if (!mounted) return;
       _messageController.clear();
 
       final newMessage = {
-        'sender_id': currentUserId,
-        'content': content,
-        'created_at': DateTime.now().toString(),
+        ...savedMessage,
+        'sender_id': savedMessage['sender_id'] ?? currentUserId,
+        'recipient_id': savedMessage['recipient_id'] ?? widget.recipientId,
+        'content': savedMessage['content'] ?? content,
+        'created_at': savedMessage['created_at'] ??
+            DateTime.now().toUtc().toIso8601String(),
       };
 
       setState(() {
@@ -305,9 +318,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = message['content']?.toString() ?? '';
     final time = _formatMessageTime(message['created_at']?.toString());
 
-    final metaColor = isMe
-        ? AppColors.surface.withValues(alpha: 0.75)
-        : AppColors.textMuted;
+    final metaColor =
+        isMe ? AppColors.surface.withValues(alpha: 0.75) : AppColors.textMuted;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.md, 2, AppSpacing.md, 2),
@@ -318,8 +330,7 @@ class _ChatScreenState extends State<ChatScreen> {
             maxWidth: MediaQuery.of(context).size.width * 0.76,
           ),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: isMe ? AppColors.primary : AppColors.surface,
               borderRadius: BorderRadius.only(
@@ -361,14 +372,82 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  String? _formatMessageTime(String? rawDate) {
-    if (rawDate == null || rawDate.isEmpty) return null;
-    final parsed = DateTime.tryParse(rawDate);
-    if (parsed == null) return null;
+  DateTime? _parseServerDateTime(dynamic rawDate) {
+    final value = rawDate?.toString().trim();
+    if (value == null || value.isEmpty) return null;
 
-    final hour = parsed.hour.toString().padLeft(2, '0');
-    final minute = parsed.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
+    final hasTimezone = RegExp(r'(z|Z|[+-]\d{2}:?\d{2})$').hasMatch(value);
+    final normalized = hasTimezone ? value : '${value}Z';
+    return DateTime.tryParse(normalized)?.toLocal();
+  }
+
+  String? _formatMessageTime(dynamic rawDate) {
+    final parsed = _parseServerDateTime(rawDate);
+    if (parsed == null) return null;
+    return DateFormat.Hm('ru').format(parsed);
+  }
+
+  String _formatDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(messageDay).inDays;
+
+    if (diff == 0) return 'Сегодня';
+    if (diff == 1) return 'Вчера';
+    return DateFormat.yMMMMd('ru').format(date);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  List<_ChatTimelineItem> _buildTimelineItems(
+    List<Map<String, dynamic>> messages,
+  ) {
+    final items = <_ChatTimelineItem>[];
+    DateTime? previousDay;
+
+    for (final message in messages) {
+      final createdAt = _parseServerDateTime(message['created_at']);
+      if (createdAt != null &&
+          (previousDay == null || !_isSameDay(previousDay, createdAt))) {
+        items.add(_ChatTimelineItem.date(_formatDateSeparator(createdAt)));
+        previousDay = createdAt;
+      }
+      items.add(_ChatTimelineItem.message(message));
+    }
+
+    return items;
+  }
+
+  Widget _buildDateSeparator(String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xxs,
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -393,6 +472,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     initialData: _messages,
                     builder: (context, snapshot) {
                       final messages = snapshot.data ?? const [];
+                      final timelineItems = _buildTimelineItems(messages);
                       return ListView.builder(
                         controller: _scrollController,
                         reverse: true,
@@ -401,17 +481,23 @@ class _ChatScreenState extends State<ChatScreen> {
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.md,
                         ),
-                        itemCount: messages.length + (_isLoadingOlder ? 1 : 0),
+                        itemCount:
+                            timelineItems.length + (_isLoadingOlder ? 1 : 0),
                         itemBuilder: (context, index) {
-                          if (_isLoadingOlder && index == messages.length) {
+                          if (_isLoadingOlder &&
+                              index == timelineItems.length) {
                             return const Padding(
                               padding: EdgeInsets.all(AppSpacing.md),
                               child: AppLoading(),
                             );
                           }
 
-                          final messageIndex = messages.length - 1 - index;
-                          return _buildMessage(messages[messageIndex]);
+                          final item =
+                              timelineItems[timelineItems.length - 1 - index];
+                          if (item.dateLabel != null) {
+                            return _buildDateSeparator(item.dateLabel!);
+                          }
+                          return _buildMessage(item.message!);
                         },
                       );
                     },

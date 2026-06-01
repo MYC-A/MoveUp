@@ -318,6 +318,81 @@ def _is_event_expired(start_time, end_time) -> bool:
         now = datetime.now(event_finish.tzinfo)
     return event_finish < now
 
+@router.get("/users/search", response_model=dict)
+async def search_users(
+    q: str | None = Query(None, description="Поиск по имени, username, городу или bio"),
+    city: str | None = Query(None, description="Фильтр по городу"),
+    has_avatar: bool | None = Query(None, description="Только с фото профиля / только без фото"),
+    following: bool | None = Query(None, description="Фильтр по подписке текущего пользователя"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Поиск пользователей для Flutter-клиента.
+
+    Возвращаем только публичные поля профиля и is_following; email/вес/рост не
+    отдаем, хотя они есть в модели пользователя.
+    """
+    follow_condition = (
+        (UserFollow.following_id == User.id)
+        & (UserFollow.follower_id == current_user)
+    )
+    query = (
+        select(User, UserFollow.id.isnot(None).label("is_following"))
+        .outerjoin(UserFollow, follow_condition)
+        .where(User.id != current_user)
+    )
+
+    if q and q.strip():
+        search = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                User.full_name.ilike(search),
+                User.username.ilike(search),
+                User.city.ilike(search),
+                User.bio.ilike(search),
+            )
+        )
+
+    if city and city.strip():
+        query = query.where(User.city.ilike(f"%{city.strip()}%"))
+
+    if has_avatar is True:
+        query = query.where(User.avatar_url.isnot(None), User.avatar_url != "")
+    elif has_avatar is False:
+        query = query.where(or_(User.avatar_url.is_(None), User.avatar_url == ""))
+
+    if following is True:
+        query = query.where(UserFollow.id.isnot(None))
+    elif following is False:
+        query = query.where(UserFollow.id.is_(None))
+
+    query = query.order_by(User.full_name.asc(), User.id.asc()).offset(skip).limit(limit + 1)
+    result = await db.execute(query)
+    rows = result.all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    return {
+        "users": [
+            {
+                "id": user.id,
+                "full_name": user.full_name or user.username or "Пользователь",
+                "username": user.username,
+                "bio": user.bio,
+                "avatar_url": user.avatar_url,
+                "city": user.city,
+                "total_subscribers": user.total_subscribers,
+                "total_subscriptions": user.total_subscriptions,
+                "is_following": bool(is_following),
+            }
+            for user, is_following in rows
+        ],
+        "has_more": has_more,
+    }
+
+
 @router.get("/{user_id}", response_model=UserRead)
 async def get_user_profile(
     user_id: int,

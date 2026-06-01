@@ -14,7 +14,8 @@ class Message(Base):
     sender_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     recipient_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     content: Mapped[str] = mapped_column(Text)
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False)  # Добавляем колонку is_read
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 # Модель для групповых чатов
 class GroupChat(Base):

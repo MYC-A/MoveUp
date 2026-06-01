@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, Query, BackgroundTasks, HTTPException
 from fastapi import Body
@@ -115,6 +115,25 @@ def _count_unread_total(unread: Dict[str, Dict[int, int]]) -> int:
     for counters in unread.values():
         total += sum(counters.values())
     return total
+
+
+def _as_utc(value: Optional[datetime]) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _personal_message_response(message) -> dict:
+    return {
+        "id": message.id,
+        "sender_id": message.sender_id,
+        "recipient_id": message.recipient_id,
+        "content": message.content,
+        "is_read": message.is_read,
+        "created_at": _as_utc(message.created_at),
+    }
 
 
 async def _send_personal_message_push(
@@ -266,12 +285,13 @@ async def get_messages(
     current_user: User = Depends(get_current_user),
 ):
     # Возвращаем последнюю страницу сообщений между текущим пользователем и другим пользователем.
-    return await MessagesDAO.get_messages_between_users(
+    messages = await MessagesDAO.get_messages_between_users(
         user_id_1=user_id,
         user_id_2=current_user.id,
         limit=limit,
         before_id=before_id,
     ) or []
+    return [_personal_message_response(message) for message in messages]
 @router.get("/users_with_messages", response_model=List[int])
 async def get_users_with_messages(current_user: User = Depends(get_current_user)):
     """
@@ -288,7 +308,7 @@ async def get_users_with_messages(current_user: User = Depends(get_current_user)
     return [user.id for user in users]  # Возвращаем только список ID пользователей
 
 # Эндпоинт для отправки личного сообщения
-@router.post("/messages", response_model=MessageCreate)
+@router.post("/messages", response_model=MessageRead)
 async def send_message(
     message: MessageCreate,
     background_tasks: BackgroundTasks,
@@ -305,7 +325,8 @@ async def send_message(
         'sender_id': current_user.id,
         'recipient_id': message.recipient_id,
         'content': message.content,
-        'is_read': False
+        'is_read': False,
+        'created_at': _as_utc(saved_message.created_at).isoformat(),
     }
     await notify_user(message.recipient_id, message_data)
     background_tasks.add_task(
@@ -315,7 +336,7 @@ async def send_message(
         message_id=saved_message.id,
         content=message.content,
     )
-    return message
+    return _personal_message_response(saved_message)
 
 # Эндпоинт для отправки сообщения в групповой чат
 
@@ -372,7 +393,7 @@ async def send_group_message(
             'sender_id': group_message.sender_id,
             'content': group_message.content,
             'sender_name': current_user.full_name,
-            'created_at': group_message.created_at.isoformat(),
+            'created_at': _as_utc(group_message.created_at).isoformat(),
             'is_read': is_read
         }
         await notify_user(participant_id, message_data)

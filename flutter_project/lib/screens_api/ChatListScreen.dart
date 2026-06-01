@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 import 'package:flutter_application_1/screens_api/ChatScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
+import 'package:flutter_application_1/screens_api/UserSearchScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
 import 'package:flutter_application_1/screens_api/GroupChatScreen.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
@@ -264,6 +265,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
       appBar: AppBar(
         title: const Text('Чаты'),
         actions: [
+          AppIconButton(
+            icon: Icons.search_rounded,
+            tooltip: 'Поиск людей',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const UserSearchScreen(),
+                ),
+              );
+            },
+          ),
           AppIconButton(
             icon: Icons.add,
             tooltip: 'Создать групповой чат',

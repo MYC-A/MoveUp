@@ -10,7 +10,7 @@ MoveUp - мобильное приложение для бега, маршрут
 MoveUp/
   backend_project/       FastAPI backend, HTML-шаблоны, статика, API-роуты
   flutter_project/       Flutter-приложение
-  docs/agent/            Рабочая память для агентных сессий
+  docs_project/codex/    Tracked рабочая память для агентных сессий
 ```
 
 ## Модули проекта
@@ -150,22 +150,23 @@ flutter run \
 
 ## Работа с агентами
 
-Папка `docs/agent/` используется как постоянная рабочая память между сессиями.
+Tracked рабочая память лежит в `docs_project/codex/`. Папка `docs/agent/` зарезервирована под локальную ephemeral-память и игнорируется `.gitignore`, поэтому не подходит для информации, которую нужно сохранить в репозитории.
 
 В начале новой сессии читать в таком порядке:
 
-1. `docs/agent/README.md`
-2. `docs/agent/CONTEXT.md`
-3. `docs/agent/BACKLOG.md`
-4. `docs/agent/SESSION_LOG.md`
-5. Активный task-файл из `docs/agent/tasks/`
+1. `docs_project/codex/README.md`
+2. `docs_project/codex/project_context.md`
+3. `docs_project/codex/checks.md`
+4. `docs_project/codex/backlog.md`
+5. `docs_project/codex/recent_changes.md`
+6. Последний `docs_project/codex/audit_*.md`
 
-Для каждой существенной задачи:
+Для существенной задачи обновлять:
 
-1. Создать task-файл по шаблону `docs/agent/TASK_TEMPLATE.md`.
-2. Вести в нем план, затронутые файлы, проверки и открытые вопросы.
-3. Перед завершением сессии обновить `docs/agent/SESSION_LOG.md`.
-4. Долгосрочные решения переносить в `docs/agent/DECISIONS.md`.
+1. `checks.md`, если меняются результаты проверок.
+2. `recent_changes.md`, если задача что-то исправила или добавила.
+3. `backlog.md`, если найден новый риск или долгосрочный next step.
+4. Новый `audit_YYYY-MM-DD.md`, если сделан большой обзор проекта.
 
 ## Известные технические долги
 

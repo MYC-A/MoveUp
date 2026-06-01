@@ -110,8 +110,10 @@ class ChatService {
     }
   }
 
-  // Отправить личное сообщение (POST /chat/messages)
-  Future<void> sendMessage(int recipientId, String content) async {
+  // Отправить личное сообщение (POST /chat/messages).
+  // Возвращает сохраненное сообщение с id/created_at от сервера.
+  Future<Map<String, dynamic>> sendMessage(
+      int recipientId, String content) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw ApiException(
@@ -129,9 +131,18 @@ class ChatService {
         'content': content,
       }),
     );
-    if (response.statusCode != 200) {
-      throw ApiException.fromResponse(response);
+    if (response.statusCode == 200) {
+      final decoded = json.decode(utf8.decode(response.bodyBytes));
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+      throw ApiException(ApiErrorKind.unknown,
+          'Некорректный ответ сервера при отправке сообщения');
     }
+    throw ApiException.fromResponse(response);
   }
 
   // Получить сообщения группового чата (GET /chat/group_chats/{group_chat_id}/get_messages)

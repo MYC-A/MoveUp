@@ -61,6 +61,8 @@ async def ensure_schema_compatibility(conn):
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires TIMESTAMP"))
         await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS city VARCHAR"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
+        await conn.execute(text("UPDATE messages SET created_at = NOW() WHERE created_at IS NULL"))
         # Индексы для ленты (сортировка по дате, фильтр по автору/подпискам).
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)"))
@@ -99,5 +101,12 @@ async def ensure_schema_compatibility(conn):
         post_column_names = {row[1] for row in post_columns.fetchall()}
         if "city" not in post_column_names:
             await conn.execute(text("ALTER TABLE posts ADD COLUMN city VARCHAR"))
+
+        message_columns = await conn.execute(text("PRAGMA table_info(messages)"))
+        message_column_names = {row[1] for row in message_columns.fetchall()}
+        if "created_at" not in message_column_names:
+            await conn.execute(text("ALTER TABLE messages ADD COLUMN created_at DATETIME"))
+            await conn.execute(text("UPDATE messages SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
+
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)"))

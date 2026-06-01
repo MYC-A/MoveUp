@@ -1,50 +1,83 @@
 # Backlog и слабые места
 
+Дата актуализации: 2026-06-01.
+
+## Документация и процесс
+
+1. В корневом README ранее упоминалась `docs/agent/`, но `.gitignore` игнорирует эту папку, а tracked заметки находятся в `docs_project/codex/`.
+   - Текущий tracked источник памяти: `docs_project/codex/`.
+   - Если нужна локальная ephemeral-память агента, можно использовать `docs/agent/`, но она не попадет в git.
+
+2. Alembic scaffold есть, но реальных migration versions пока нет.
+   - `backend_project/migrations/versions/.gitkeep` есть.
+   - Для production-эволюции БД нужно завести baseline/первые миграции и договориться, когда использовать `create_all`, а когда Alembic.
+
 ## Высокий приоритет
 
-1. Убрать чувствительные данные из логов.
-   - Backend печатал JWT в `app/core/security.py`.
-   - Flutter auth service логировал access token и response body.
-   - Нужна редекция или debug-only логирование без токенов.
+1. Feed WebSocket event handling.
+   - `_handleWebSocketUpdate` сейчас debounce-ит события одним timer и может потерять промежуточные события из короткой пачки.
+   - Нужно либо обрабатывать события сразу точечно, либо копить очередь и применять все события.
+   - Отдельно добавить обработку `comment_deleted`, потому что backend уже отправляет этот event.
 
-2. Почистить `flutter_project/lib/test/`.
-   - Сейчас эти legacy/test файлы ломают общий `flutter analyze`.
-   - Лучший вариант: перенести из `lib` или привести к компилируемому состоянию.
+2. Timezone для постов/чата.
+   - `Post.fromJson` вручную вычитает 5 часов из `created_at`.
+   - Personal chat WebSocket payload не содержит `created_at`, из-за чего входящие realtime-сообщения могут отображаться без времени.
+   - Лучше привести backend к timezone-aware UTC DTO и на Flutter использовать `DateTime.parse(...).toLocal()`.
 
-3. Добавить реальные тесты.
-   - Flutter: сейчас только smoke test логина.
-   - Backend: нужны тесты для заявок, уведомлений, маршрутов, чатов, валидации события.
+3. Debug/log cleanup.
+   - Backend еще содержит много `print(...)` в chat/posts/profile routes.
+   - Flutter еще содержит `print(...)` в нескольких UI/служебных местах.
+   - Токены уже не выглядят как явно печатающиеся в auth service, но response body/status и пользовательские данные в логах стоит пройти отдельно.
+
+4. CORS/security.
+   - `ALLOWED_ORIGINS` по умолчанию `*`.
+   - Для production с cookie auth лучше явные origins.
+
+5. Тестовое покрытие.
+   - Backend тесты появились и зеленые, но пока покрывают в основном схемы/security/uploads.
+   - Нужны integration/API tests для заявок, уведомлений, постов, комментариев, чатов, удаления события/поста.
+   - Flutter пока имеет smoke test логина; нужны widget tests для ленты, комментариев, profile/events flows.
 
 ## Производительность
 
 1. Лента с маршрутами.
-   - Уже сделано: карта поста вынесена в `_PostRouteMap`, точки кешируются, `VisibilityDetector` зумит один раз, добавлен `RepaintBoundary`.
-   - Если лаги останутся: посмотреть на `AutomaticKeepAliveClientMixin` у `PostItem`. Сейчас весь пост может удерживаться живым, включая тяжелую карту.
-   - Следующий уровень: показывать статичное превью маршрута, а `FlutterMap` монтировать только по тапу или когда карточка стабильно видима.
+   - Уже сделано: `PostItem` вынесен в `widgets/feed/post_item.dart`, карта в `_PostRouteMap`, точки кешируются, маршрут прореживается до 150 preview points, `VisibilityDetector` зумит один раз, добавлен `RepaintBoundary`, используется `osmTileLayer()` с кешем тайлов.
+   - Риск: `PostItem` все еще использует `AutomaticKeepAliveClientMixin` и `wantKeepAlive => true`; при большом количестве постов с картами это может держать тяжелые карты в памяти.
+   - Следующий шаг при лагах: проверить память/scroll jank и решить, нужен ли keep-alive всему посту.
 
-2. `StorageService.dart`.
-   - Есть много `print`, чтение всей таблицы и backup после save/download/update.
-   - При росте количества маршрутов это может тормозить.
-   - Стоит убрать full-table logs и делать backup только по явному действию.
+2. StorageService.
+   - Стало лучше: убраны full-table dumps и backup на каждую запись, `loadRoutes` ограничен лимитом, ошибки чтения пробрасываются.
+   - Осторожно: backup остается явным методом; не использовать в горячем пути.
 
 3. Карты в других местах.
-   - `widgets/route_details/RouteMap.dart` сейчас `StatelessWidget` с `Future.delayed` в конструкторе.
-   - Лучше переделать в `StatefulWidget` с `addPostFrameCallback` и кешированием точек, как в ленте.
+   - Есть единый `osmTileLayer()`, стоит проверять, что новые карты используют его вместо своих `TileLayer`.
+   - `widgets/route_details/RouteMap.dart` стоит отдельно посмотреть на `Future.delayed` в конструкторе, если будут лаги/странный zoom.
 
 ## Логика и UX
 
-1. Заявки и мероприятия.
-   - Backend уже фильтрует прошедшие мероприятия для моих событий и заявок.
-   - Клиентская дополнительная фильтрация была убрана, чтобы не ломать пагинацию.
+1. Уведомления.
+   - Вынесены в `routes_notifications.py`.
+   - Добавлены `event_updates` через `UserNotification`, чтобы уведомления жили даже после удаления события.
+   - Нужно покрыть API-тестами mark read / single read / deleted event updates.
 
-2. Комментарии.
-   - Идея: вместо отдельного PostDetailsScreen для комментариев использовать bottom sheet в стиле VK.
-   - Проверить, что счетчик комментариев обновляется после закрытия sheet на всех экранах.
+2. Посты и комментарии.
+   - Backend разрешает удалять комментарий автору комментария или владельцу поста.
+   - Flutter bottom sheet сейчас показывает delete action только автору комментария; владельцу поста нужно передавать `post.userId` и разрешать удаление чужих комментариев в своем посте.
+   - При удалении поста записи в БД чистятся, но MinIO-объекты фотографий могут оставаться orphan-файлами.
 
-3. Сохраненные/скачанные маршруты.
-   - Скачанный маршрут не должен выглядеть как личный редактируемый маршрут.
-   - Нужно оставить смысл: сохранить, открыть, пробежать повторно, возможно переименовать/добавить заметку.
+3. Чаты.
+   - `active_connections: Dict[int, WebSocket]` держит только один socket на пользователя; второй девайс/вкладка перезапишет первый.
+   - `send_message` лучше возвращать сохраненное сообщение с `id`, `created_at`, `is_read`, а не request schema.
+   - Нужен единый payload shape для personal/group realtime messages.
 
-4. Создание маршрута мероприятия.
-   - Клиент двигает карту при выборе города.
-   - Backend теперь тоже проверяет лимит 200 км, чтобы нельзя было обойти UI прямым API-запросом.
+4. Мои заявки и мероприятия.
+   - Backend фильтрует активные события в `get_user_applications`.
+   - Нужны тесты на timezone/naive datetime и pagination edge cases.
+
+5. Скачанные маршруты.
+   - `source_post_id` и unique index есть.
+   - Старые дубли, созданные до миграции, автоматически не чистятся.
+
+6. Push-уведомления.
+   - FCM сделан optional через env/dart-defines.
+   - Нужна ручная проверка на реальном Android/device с Firebase config.

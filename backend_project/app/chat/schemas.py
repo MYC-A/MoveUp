@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 
 # Схемы для личных сообщений
@@ -9,6 +9,10 @@ class MessageRead(BaseModel):
     sender_id: int = Field(..., description="ID отправителя сообщения")
     recipient_id: int = Field(..., description="ID получателя сообщения")
     content: str = Field(..., description="Содержимое сообщения")
+    is_read: bool = Field(default=False, description="Прочитано ли сообщение")
+    created_at: datetime = Field(..., description="Время создания сообщения")
+
+    model_config = ConfigDict(from_attributes=True)
 
 class MessageCreate(BaseModel):
     recipient_id: int = Field(..., description="ID получателя сообщения")
