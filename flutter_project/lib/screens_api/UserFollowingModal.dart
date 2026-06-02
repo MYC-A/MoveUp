@@ -89,7 +89,6 @@ class _UserFollowingModalState extends State<UserFollowingModal> {
             if (index < following.length) {
               final user = following[index];
               final avatarUrl = _getAvatarUrl(user['avatar_url']);
-              print('Avatar URL: $avatarUrl'); // Для отладки
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: CachedNetworkImageProvider(avatarUrl),

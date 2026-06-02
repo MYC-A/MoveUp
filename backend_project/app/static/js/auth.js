@@ -21,7 +21,6 @@ const validateForm = fields => fields.every(field => field && field.trim() !== '
 
 // Функция для отправки запросов
 const sendRequest = async (url, data) => {
-    console.log("Отправка запроса на URL:", url); // Логирование
     try {
         const response = await fetch(url, {
             method: "POST",
@@ -87,7 +86,6 @@ document.getElementById('loginButton').addEventListener('click', async (event) =
 // Обработка формы регистрации
 document.getElementById('registerButton').addEventListener('click', async (event) => {
     event.preventDefault();
-    console.log("Кнопка регистрации нажата"); // Логирование
 
     const emailInput = document.querySelector('#registerForm input[type="email"]');
     const fullNameInput = document.querySelector('#registerForm input[type="text"]');
@@ -100,8 +98,6 @@ document.getElementById('registerButton').addEventListener('click', async (event
     const full_name = fullNameInput.value;
     const password = passwordInputs[0].value;
     const password_check = passwordInputs[1].value;
-
-    console.log("Данные формы:", { email, full_name, password, password_check }); // Логирование
 
     if (password !== password_check) {
         alert('Пароли не совпадают.');

@@ -80,9 +80,6 @@ class _PostItemState extends State<PostItem>
   }
 
   void _navigateToUserProfile(int userId) {
-    print("currentUserId: ${widget.currentUserId} and userId: $userId");
-
-    // Если userId совпадает с текущим пользователем, переходим на ProfileScreen
     if (widget.currentUserId != null && userId == widget.currentUserId) {
       Navigator.push(
         context,
@@ -188,8 +185,7 @@ class _PostItemState extends State<PostItem>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Удалить пост?'),
         content: const Text(
           'Пост и все его комментарии будут удалены без возможности восстановления.',
@@ -786,8 +782,7 @@ class _PostRouteMapState extends State<_PostRouteMap> {
     if (points.length <= _previewRouteMaxPoints) return points;
     final step = (points.length - 1) / (_previewRouteMaxPoints - 1);
     return List.generate(_previewRouteMaxPoints, (index) {
-      final sourceIndex =
-          (index * step).round().clamp(0, points.length - 1);
+      final sourceIndex = (index * step).round().clamp(0, points.length - 1);
       return points[sourceIndex];
     });
   }

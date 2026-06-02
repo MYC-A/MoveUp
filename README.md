@@ -10,7 +10,6 @@ MoveUp - мобильное приложение для бега, маршрут
 MoveUp/
   backend_project/       FastAPI backend, HTML-шаблоны, статика, API-роуты
   flutter_project/       Flutter-приложение
-  docs_project/codex/    Tracked рабочая память для агентных сессий
 ```
 
 ## Модули проекта
@@ -85,13 +84,13 @@ http://localhost:8000/docs
 
 ```text
 DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DB_NAME
-SECRET_KEY=change-me-local-secret
+SECRET_KEY=your-random-local-secret
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 MINIO_ENDPOINT=localhost:9000
 MINIO_PUBLIC_URL=http://localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
+MINIO_ACCESS_KEY=your-minio-user
+MINIO_SECRET_KEY=your-minio-password
 MINIO_BUCKET_NAME=photos
 MINIO_POSTS_BUCKET_NAME=posts
 OPEN_ROUTE_API_KEY=
@@ -148,33 +147,10 @@ flutter run \
 
 Если Firebase-параметры не заданы, push-сервис отключается без падения приложения.
 
-## Работа с агентами
-
-Tracked рабочая память лежит в `docs_project/codex/`. Папка `docs/agent/` зарезервирована под локальную ephemeral-память и игнорируется `.gitignore`, поэтому не подходит для информации, которую нужно сохранить в репозитории.
-
-В начале новой сессии читать в таком порядке:
-
-1. `docs_project/codex/README.md`
-2. `docs_project/codex/project_context.md`
-3. `docs_project/codex/checks.md`
-4. `docs_project/codex/backlog.md`
-5. `docs_project/codex/recent_changes.md`
-6. Последний `docs_project/codex/audit_*.md`
-
-Для существенной задачи обновлять:
-
-1. `checks.md`, если меняются результаты проверок.
-2. `recent_changes.md`, если задача что-то исправила или добавила.
-3. `backlog.md`, если найден новый риск или долгосрочный next step.
-4. Новый `audit_YYYY-MM-DD.md`, если сделан большой обзор проекта.
-
 ## Известные технические долги
 
-- В git уже отслеживаются старые `.env`, `.idea` и `__pycache__`; `.gitignore` добавлен, но tracked cleanup нужно сделать отдельной аккуратной git-операцией.
 - Во Flutter media URL еще нормализуются в нескольких UI-файлах через `AppConfig`, но часть повторов можно дополнительно свернуть в единый helper.
 - Backend-настройки БД смешивают `DATABASE_URL` и отдельные DB-поля; фактически используется `DATABASE_URL`.
-- Автоматические backend-тесты пока не заведены.
-- Android debug build в агентном контейнере может не запускаться без установленного Android SDK; проверять сборку лучше локально.
 
 ## Git workflow
 
@@ -185,7 +161,6 @@ main
 fix/backend-auth-validation
 fix/flutter-api-config
 feature/events-chat-contract
-docs/agent-workflow
 ```
 
 Flutter и backend лучше держать в одном репозитории, пока они остаются одним продуктом с общими API-контрактами.

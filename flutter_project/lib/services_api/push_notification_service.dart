@@ -143,7 +143,7 @@ class PushNotificationService {
       );
 
       if (response.statusCode >= 400) {
-        debugPrint('Ошибка удаления push token: ${response.body}');
+        debugPrint('Ошибка удаления push token: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Ошибка отключения push token: $e');
@@ -231,7 +231,7 @@ class PushNotificationService {
       );
 
       if (response.statusCode >= 400) {
-        debugPrint('Ошибка регистрации push token: ${response.body}');
+        debugPrint('Ошибка регистрации push token: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Ошибка отправки push token на backend: $e');

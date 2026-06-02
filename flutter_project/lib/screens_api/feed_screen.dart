@@ -63,7 +63,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       final userId = await _postService.getCurrentUserId();
       setState(() {
         _currentUserId = userId;
-        print("_currentUserId: $_currentUserId");
       });
     } catch (e) {
       debugPrint('Ошибка загрузки ID текущего пользователя: $e');
