@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/chat_overview_controller.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
@@ -9,6 +9,7 @@ import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 class _ChatTimelineItem {
   final Map<String, dynamic>? message;
@@ -35,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _pageSize = 30;
 
   final ChatService _chatService = ChatService();
+  ChatOverviewController? _chatOverviewController;
   final LkUsersService _lkService = LkUsersService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -61,6 +63,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_handleScroll);
 
     _initChat();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _chatOverviewController = context.read<ChatOverviewController>();
   }
 
   Future<void> _initChat() async {
@@ -106,10 +114,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _markMessagesAsRead() async {
     try {
       await _chatService.markMessagesAsRead(widget.recipientId);
-      ChatListScreen.state?.refreshUnreadMessagesCount();
+      _refreshChatOverview();
     } catch (e) {
       debugPrint('Ошибка при отметке сообщений как прочитанных: $e');
     }
+  }
+
+  void _refreshChatOverview() {
+    final controller = _chatOverviewController;
+    if (controller == null) return;
+    unawaited(controller.refreshAfterConversationChanged());
   }
 
   void _emitMessages() {
@@ -265,7 +279,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _messages.removeWhere((m) => m['id'] == deletedId);
             });
             _emitMessages();
-            ChatListScreen.state?.refreshUnreadMessagesCount();
+            _refreshChatOverview();
           }
           return;
         }
@@ -336,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (shouldScroll) {
         _scrollToBottom();
       }
-      ChatListScreen.state?.refreshUnreadMessagesCount();
+      _refreshChatOverview();
     } catch (e) {
       debugPrint('Ошибка отправки сообщения: $e');
     }

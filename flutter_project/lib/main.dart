@@ -13,12 +13,13 @@ import 'package:flutter_application_1/screens_api/profile_screen.dart';
 import 'package:flutter_application_1/screens_api/register_screen.dart';
 import 'package:flutter_application_1/screens/SplashScreen.dart';
 import 'package:flutter_application_1/services_api/auth_service.dart';
-import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/chat_overview_controller.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,28 +67,31 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: PushNotificationService.navigatorKey,
-      title: 'MoveUp',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      // Настройка локализаций
-      localizationsDelegates: [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: [
-        const Locale('ru', 'RU'), // Русская локаль
-      ],
-      locale:
-          const Locale('ru', 'RU'), // Устанавливаем русскую локаль по умолчанию
-      home: SplashScreen(),
-      routes: {
-        '/login': (context) => LoginScreen(),
-        '/register': (context) => RegisterScreen(),
-        '/main': (context) => MainScreen(),
-      },
+    return ChangeNotifierProvider(
+      create: (_) => ChatOverviewController(),
+      child: MaterialApp(
+        navigatorKey: PushNotificationService.navigatorKey,
+        title: 'MoveUp',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        // Настройка локализаций
+        localizationsDelegates: [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: [
+          const Locale('ru', 'RU'), // Русская локаль
+        ],
+        locale:
+            const Locale('ru', 'RU'), // Устанавливаем русскую локаль по умолчанию
+        home: SplashScreen(),
+        routes: {
+          '/login': (context) => LoginScreen(),
+          '/register': (context) => RegisterScreen(),
+          '/main': (context) => MainScreen(),
+        },
+      ),
     );
   }
 }
@@ -100,13 +104,10 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
-  static const Duration _unreadPollingInterval = Duration(seconds: 15);
-
   late int _selectedIndex;
   List<Widget?> _screens = [];
   final AuthService _authService = AuthService();
-  final ChatService _chatService = ChatService();
-  Timer? _unreadTimer;
+  ChatOverviewController? _chatOverviewController;
   int _totalUnreadMessages = 0;
 
   @override
@@ -115,13 +116,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex;
     _screens.addAll(List.filled(5, null));
-    // Если стартуем не на чат-табе — запускаем собственный опрос непрочитанных.
-    // Если на чат-табе — ChatListScreen (с initiallyActive: true) сам возьмёт
-    // на себя опрос и сообщит счётчик через onUnreadTotalChanged.
-    if (_selectedIndex != 3) {
-      _startUnreadPolling();
-      _loadUnreadMessagesCount();
-    }
     PushNotificationService.registerCurrentDeviceToken();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingNotificationIfAny();
@@ -129,8 +123,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = context.read<ChatOverviewController>();
+    if (_chatOverviewController == controller) return;
+
+    _chatOverviewController?.removeListener(_handleChatOverviewChanged);
+    _chatOverviewController = controller;
+    controller.addListener(_handleChatOverviewChanged);
+    controller.start();
+    controller.setOverviewActive(_selectedIndex == 3);
+    _handleChatOverviewChanged();
+  }
+
+  @override
   void dispose() {
-    _stopUnreadPolling();
+    _chatOverviewController?.removeListener(_handleChatOverviewChanged);
+    _chatOverviewController?.setOverviewActive(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -138,50 +147,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (_selectedIndex == 3) {
-        // Чат-таб активен — ChatListScreen сам опрашивает сервер и
-        // уведомляет через onUnreadTotalChanged. Дублировать не нужно.
-        ChatListScreen.setActivePolling(true);
-      } else {
-        _startUnreadPolling();
-        _loadUnreadMessagesCount();
-      }
+      _chatOverviewController?.start();
+      _chatOverviewController?.setOverviewActive(_selectedIndex == 3);
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      _stopUnreadPolling();
+      _chatOverviewController?.setOverviewActive(false);
+      _chatOverviewController?.stop();
     }
   }
 
-  void _startUnreadPolling() {
-    _unreadTimer?.cancel();
-    _unreadTimer = Timer.periodic(_unreadPollingInterval, (_) {
-      _loadUnreadMessagesCount();
-    });
-  }
-
-  void _stopUnreadPolling() {
-    _unreadTimer?.cancel();
-    _unreadTimer = null;
-  }
-
-  Future<void> _loadUnreadMessagesCount() async {
-    try {
-      final unread = await _chatService.getUnreadMessagesCount();
-      _setTotalUnreadMessages(_countUnreadMessages(unread));
-    } catch (e) {
-      debugPrint('Ошибка загрузки общего количества сообщений: $e');
-    }
-  }
-
-  int _countUnreadMessages(Map<String, Map<int, int>> unread) {
-    var total = 0;
-    for (final group in unread.values) {
-      total += group.values.where((value) => value > 0).length;
-    }
-    return total;
-  }
-
-  void _setTotalUnreadMessages(int total) {
+  void _handleChatOverviewChanged() {
+    final total = _chatOverviewController?.totalUnreadConversations ?? 0;
     if (!mounted || _totalUnreadMessages == total) return;
     setState(() {
       _totalUnreadMessages = total;
@@ -203,7 +179,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         case 3:
           _screens[index] = ChatListScreen(
             initiallyActive: _selectedIndex == 3,
-            onUnreadTotalChanged: _setTotalUnreadMessages,
           );
           break;
         case 4:
@@ -221,9 +196,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final isEnteringChatTab = _selectedIndex != 3 && index == 3;
 
     if (isLeavingChatTab) {
-      // ChatListScreen больше не активен — возобновляем собственный опрос
-      ChatListScreen.setActivePolling(false);
-      _startUnreadPolling();
+      _chatOverviewController?.setOverviewActive(false);
     }
 
     setState(() {
@@ -231,18 +204,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
 
     if (isEnteringChatTab) {
-      // Останавливаем дублирующий опрос из MainScreen — ChatListScreen сам
-      // загрузит данные и вернёт badge-счётчик через onUnreadTotalChanged.
-      _stopUnreadPolling();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ChatListScreen.setActivePolling(true);
-      });
+      _chatOverviewController?.setOverviewActive(true);
     }
   }
 
   Future<void> _logout() async {
     try {
       await _authService.logout();
+      _chatOverviewController?.reset();
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => LoginScreen()),

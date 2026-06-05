@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/app_config.dart';
-import 'package:flutter_application_1/screens_api/ChatListScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/chat_overview_controller.dart';
 import 'package:flutter_application_1/services_api/push_notification_service.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_radii.dart';
@@ -11,6 +11,7 @@ import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 class _GroupChatTimelineItem {
   final Map<String, dynamic>? message;
@@ -38,6 +39,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   static const int _pageSize = 30;
 
   final ChatService _chatService = ChatService();
+  ChatOverviewController? _chatOverviewController;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final StreamController<List<Map<String, dynamic>>> _messagesController =
@@ -61,6 +63,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
     _scrollController.addListener(_handleScroll);
     _initChat();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _chatOverviewController = context.read<ChatOverviewController>();
   }
 
   Future<void> _initChat() async {
@@ -105,10 +113,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Future<void> _markMessagesAsRead() async {
     try {
       await _chatService.markGroupMessagesAsRead(widget.groupChatId);
-      ChatListScreen.state?.refreshUnreadMessagesCount();
+      _refreshChatOverview();
     } catch (e) {
       debugPrint('Ошибка отметки сообщений как прочитанных: $e');
     }
+  }
+
+  void _refreshChatOverview() {
+    final controller = _chatOverviewController;
+    if (controller == null) return;
+    unawaited(controller.refreshAfterConversationChanged());
   }
 
   void _emitMessages() {
@@ -395,7 +409,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               _messages.removeWhere((m) => m['id'] == deletedId);
             });
             _emitMessages();
-            ChatListScreen.state?.refreshUnreadMessagesCount();
+            _refreshChatOverview();
           }
           return;
         }

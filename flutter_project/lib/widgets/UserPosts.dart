@@ -37,8 +37,9 @@ class _UserPostsState extends State<UserPosts> {
   bool isLoading = false;
   bool hasMore = true;
   int? currentUserId;
-  Timer? debounceTimer;
+  Timer? webSocketBatchTimer;
   Timer? pollTimer;
+  final List<Map<String, dynamic>> _pendingWebSocketUpdates = [];
   String? _loadError;
 
   // Единый CacheManager для приложения
@@ -64,7 +65,7 @@ class _UserPostsState extends State<UserPosts> {
 
   @override
   void dispose() {
-    debounceTimer?.cancel();
+    webSocketBatchTimer?.cancel();
     pollTimer?.cancel();
     widget.scrollController.removeListener(_onScroll);
     webSocketService.disconnect();
@@ -167,65 +168,91 @@ class _UserPostsState extends State<UserPosts> {
 
   void _handleWebSocketUpdate(Map<String, dynamic> update) {
     debugPrint('Получено WebSocket-обновление: $update');
-    debounceTimer?.cancel();
-    debounceTimer = Timer(Duration(milliseconds: 100), () {
-      setState(() {
-        final postId = update['post_id'];
-        final postIndex = posts.indexWhere((post) => post.id == postId);
-        if (update['type'] == 'post_deleted') {
-          if (postIndex != -1) {
-            posts.removeAt(postIndex);
-            if (postIndex < mapControllers.length) {
-              final removed = mapControllers.removeAt(postIndex);
-              WidgetsBinding.instance
-                  .addPostFrameCallback((_) => removed.dispose());
-            }
-            if (skip > 0) skip -= 1;
-            posts = List.from(posts);
-          }
-          return;
-        }
-        if (postIndex != -1) {
-          final post = posts[postIndex];
-          switch (update['type']) {
-            case 'like':
-              post.likesCount = update['likes_count'] ?? post.likesCount;
-              if (update['user_id'] == currentUserId) {
-                post.likedByCurrentUser = update['liked'] ?? false;
-              }
-              posts = List.from(posts);
-              debugPrint(
-                  'Обновлён лайк для поста $postId: likesCount=${post.likesCount}, likedByCurrentUser=${post.likedByCurrentUser}');
-              break;
-            case 'comment':
-              final commentsCount = update['comments_count'];
-              post.commentsCount = commentsCount is num
-                  ? commentsCount.toInt()
-                  : post.commentsCount + 1;
-              posts = List.from(posts);
-              debugPrint(
-                  'Обновлён комментарий для поста $postId: commentsCount=${post.commentsCount}');
-              break;
-            case 'photo':
-              break;
-          }
-        }
-      });
+    _pendingWebSocketUpdates.add(Map<String, dynamic>.from(update));
+    webSocketBatchTimer ??= Timer(
+      const Duration(milliseconds: 100),
+      _flushWebSocketUpdates,
+    );
+  }
+
+  void _flushWebSocketUpdates() {
+    webSocketBatchTimer = null;
+    if (_pendingWebSocketUpdates.isEmpty || !mounted) return;
+
+    final updates = List<Map<String, dynamic>>.from(_pendingWebSocketUpdates);
+    _pendingWebSocketUpdates.clear();
+
+    setState(() {
+      for (final update in updates) {
+        _applyWebSocketUpdate(update);
+      }
+      posts = List.from(posts);
     });
+  }
+
+  void _applyWebSocketUpdate(Map<String, dynamic> update) {
+    final postId = update['post_id'];
+    final postIndex = posts.indexWhere((post) => post.id == postId);
+
+    if (update['type'] == 'post_deleted') {
+      if (postIndex != -1) {
+        _removePostAt(postIndex);
+      }
+      return;
+    }
+
+    if (postIndex == -1) return;
+
+    final post = posts[postIndex];
+    switch (update['type']) {
+      case 'like':
+        final likesCount = update['likes_count'];
+        if (likesCount is num) {
+          post.likesCount = likesCount.toInt();
+        }
+        if (update['user_id'] == currentUserId) {
+          post.likedByCurrentUser = update['liked'] == true;
+        }
+        debugPrint(
+            'Обновлён лайк для поста $postId: likesCount=${post.likesCount}, likedByCurrentUser=${post.likedByCurrentUser}');
+        break;
+      case 'comment':
+        final commentsCount = update['comments_count'];
+        post.commentsCount = commentsCount is num
+            ? commentsCount.toInt()
+            : post.commentsCount + 1;
+        debugPrint(
+            'Обновлён комментарий для поста $postId: commentsCount=${post.commentsCount}');
+        break;
+      case 'comment_deleted':
+        final commentsCount = update['comments_count'];
+        post.commentsCount = commentsCount is num
+            ? commentsCount.toInt()
+            : (post.commentsCount > 0 ? post.commentsCount - 1 : 0);
+        debugPrint(
+            'Удалён комментарий для поста $postId: commentsCount=${post.commentsCount}');
+        break;
+      case 'photo':
+        break;
+    }
   }
 
   void _removePostById(int postId) {
     final index = posts.indexWhere((p) => p.id == postId);
     if (index == -1) return;
     setState(() {
-      posts.removeAt(index);
-      if (index < mapControllers.length) {
-        final removed = mapControllers.removeAt(index);
-        WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
-      }
-      if (skip > 0) skip -= 1;
+      _removePostAt(index);
       posts = List.from(posts);
     });
+  }
+
+  void _removePostAt(int index) {
+    posts.removeAt(index);
+    if (index < mapControllers.length) {
+      final removed = mapControllers.removeAt(index);
+      WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
+    }
+    if (skip > 0) skip -= 1;
   }
 
   Future<void> _deletePost(Post post) async {
@@ -352,4 +379,3 @@ class _UserPostsState extends State<UserPosts> {
     );
   }
 }
-

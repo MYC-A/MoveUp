@@ -33,22 +33,16 @@ class Post {
     this.isExpanded = false, // По умолчанию текст свернут
   });
 
-  factory Post.fromJson(Map<String, dynamic> json) {
-    final createdAtRaw = json['created_at'] as String?;
-    DateTime createdAt;
-    if (createdAtRaw != null) {
-      final parsedDate = DateTime.tryParse(createdAtRaw);
-      if (parsedDate != null) {
-        // Предполагаем, что время в UTC+5, конвертируем в UTC
-        createdAt = parsedDate.subtract(Duration(hours: 5)); // UTC+5 -> UTC
-        createdAt = createdAt.toLocal(); // UTC -> локальный пояс
-      } else {
-        createdAt = DateTime.now().toLocal();
-      }
-    } else {
-      createdAt = DateTime.now().toLocal();
-    }
+  static DateTime _parseServerDateTime(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return DateTime.now().toLocal();
 
+    final hasTimezone = RegExp(r'(z|Z|[+-]\d{2}:?\d{2})$').hasMatch(value);
+    final normalized = hasTimezone ? value : '${value}Z';
+    return DateTime.tryParse(normalized)?.toLocal() ?? DateTime.now().toLocal();
+  }
+
+  factory Post.fromJson(Map<String, dynamic> json) {
     final user = (json['user'] as Map?) ?? const {};
     return Post(
       id: (json['id'] as num?)?.toInt() ?? 0,
@@ -64,7 +58,7 @@ class Post {
           const [],
       likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
       commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
-      createdAt: createdAt,
+      createdAt: _parseServerDateTime(json['created_at'] as String?),
       userFullName: (user['full_name'] ?? 'Пользователь').toString(),
       userAvatarUrl: user['avatar_url'] as String?, // Может быть null
       photoUrls: json['photo_urls'] != null

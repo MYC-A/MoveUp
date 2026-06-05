@@ -258,33 +258,39 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         _centerMapOnUser(); // <-- Центрируем только один раз
         _hasCenteredOnce = true; // <-- Помечаем, что уже центрировали
       }
-      _positionStreamSubscription = _gpsService.getPositionStream().listen(
-        (position) {
-          if (!mounted) return;
-          final newPosition = LatLng(position.latitude, position.longitude);
-          setState(() {
-            _currentPosition = newPosition;
-          });
-          if (_followUser) {
-            _smoothMoveTo(newPosition);
-          }
-          if (_isTracking && !_isPaused) {
-            _addPoint(newPosition);
-          }
-        },
-        onError: (error) {
-          debugPrint('Ошибка в потоке позиций: $error');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка получения местоположения')),
-          );
-        },
-      );
+      await _startPositionStream();
     } catch (e) {
       debugPrint('Ошибка получения текущего местоположения: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка получения местоположения')),
       );
     }
+  }
+
+  Future<void> _startPositionStream() async {
+    await _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = _gpsService.getPositionStream().listen(
+      (position) {
+        if (!mounted) return;
+        final newPosition = LatLng(position.latitude, position.longitude);
+        setState(() {
+          _currentPosition = newPosition;
+        });
+        if (_followUser) {
+          _smoothMoveTo(newPosition);
+        }
+        if (_isTracking && !_isPaused) {
+          _addPoint(newPosition);
+        }
+      },
+      onError: (error) {
+        debugPrint('Ошибка в потоке позиций: $error');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка получения местоположения')),
+        );
+      },
+    );
   }
 
   static const String _trackerChannelId = 'moveup_tracker_channel';
@@ -454,32 +460,6 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       _centerMapOnUser(); // <-- Здесь
     });
   }
-/*
-  Future<void> _getCurrentLocation() async {
-    Position position = await _gpsService.getCurrentLocation();
-    setState(() {
-      _currentPosition = LatLng(position.latitude, position.longitude);
-    });
-    
-
-    _positionStreamSubscription =
-        _gpsService.getPositionStream().listen((position) {
-      final newPosition = LatLng(position.latitude, position.longitude);
-      setState(() {
-        _currentPosition = newPosition;
-      });
-
-      if (_followUser) {
-        _smoothMoveTo(newPosition);
-      }
-
-      if (_isTracking && !_isPaused) {
-        _addPoint(newPosition);
-      }
-    });
-  }
-  */
-
   void _smoothMoveTo(LatLng newPosition) {
     const int steps = 10;
     const Duration duration = Duration(milliseconds: 500);
@@ -669,6 +649,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       _isWidgetActive = false;
     });
     _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = null;
     _trackingTimer?.cancel();
     FlutterBackgroundService().invoke('stopService');
     FlutterBackgroundService().invoke('closeNotification');
@@ -916,10 +897,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
   }
 
   double _calculateCalories() {
-    const double caloriesPerKmPerKg = 0.75; // Коэффициент сжигания калорий
-    const double userWeight = 70.0; // Вес пользователя в кг
-    double distanceInKm = _route != null ? _route!.distance / 1000 : 0.0;
-    return distanceInKm * userWeight * caloriesPerKmPerKg;
+    return estimateCalories(_route?.distance ?? 0, weightKg: _userWeightKg)
+        .toDouble();
   }
 
   @override

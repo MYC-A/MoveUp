@@ -179,6 +179,16 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                     ? _post.commentsCount + 1
                     : _post.commentsCount;
             break;
+          case 'comment_deleted':
+            final deletedId = update['comment_id'];
+            if (deletedId is int) {
+              _comments.removeWhere((comment) => comment.id == deletedId);
+            }
+            final commentsCount = update['comments_count'];
+            _post.commentsCount = commentsCount is num
+                ? commentsCount.toInt()
+                : (_post.commentsCount > 0 ? _post.commentsCount - 1 : 0);
+            break;
         }
       });
 

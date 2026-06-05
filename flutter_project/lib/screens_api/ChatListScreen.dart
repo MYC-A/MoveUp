@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/app_config.dart';
@@ -6,6 +5,7 @@ import 'package:flutter_application_1/screens_api/ChatScreen.dart';
 import 'package:flutter_application_1/screens_api/UserSelectionModal.dart';
 import 'package:flutter_application_1/screens_api/UserSearchScreen.dart';
 import 'package:flutter_application_1/services_api/ChatService.dart';
+import 'package:flutter_application_1/services_api/chat_overview_controller.dart';
 import 'package:flutter_application_1/screens_api/GroupChatScreen.dart';
 import 'package:flutter_application_1/services_api/LkUsersService.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
@@ -14,6 +14,7 @@ import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_icon_button.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
+import 'package:provider/provider.dart';
 
 class ChatListScreen extends StatefulWidget {
   final bool initiallyActive;
@@ -27,172 +28,38 @@ class ChatListScreen extends StatefulWidget {
 
   @override
   _ChatListScreenState createState() => _ChatListScreenState();
-
-  // Публичный метод для перезагрузки данных чата
-  void reloadChatData() {
-    state?._refreshChatOverview(showLoading: false);
-  }
-
-  void setPollingActive(bool isActive) {
-    state?._setPollingActive(isActive);
-  }
-
-  static void setActivePolling(bool isActive) {
-    state?._setPollingActive(isActive);
-  }
-
-  static _ChatListScreenState? state; // Публичное статическое поле
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  static const Duration _pollingInterval = Duration(seconds: 5);
-
   final ChatService _chatService = ChatService();
-  List<Map<String, dynamic>> _users = [];
-  List<Map<String, dynamic>> _groupChats = [];
   final LkUsersService lkService = LkUsersService();
-  bool _isLoading = true;
-  int? currentUserId;
-  Map<int, int> _unreadPersonalMessagesCount = {}; // Для личных чатов
-  Map<int, int> _unreadGroupMessagesCount = {}; // Для групповых чатов
-  Timer? _timer; // Таймер для polling
-  bool _isPollingActive = false;
-  bool _isRefreshingOverview = false;
+  ChatOverviewController? _chatOverviewController;
 
   @override
-  void initState() {
-    super.initState();
-    ChatListScreen.state = this;
-    _isPollingActive = widget.initiallyActive;
-    if (_isPollingActive) {
-      _startPolling();
-      _activateChat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = context.read<ChatOverviewController>();
+    if (_chatOverviewController == controller) return;
+
+    _chatOverviewController?.removeListener(_handleOverviewChanged);
+    _chatOverviewController = controller;
+    controller.addListener(_handleOverviewChanged);
+    if (widget.initiallyActive) {
+      controller.setOverviewActive(true);
     }
   }
 
   @override
   void dispose() {
-    _stopPolling();
-    _chatService.disconnect();
-    if (ChatListScreen.state == this) {
-      ChatListScreen.state = null;
-    }
+    _chatOverviewController?.removeListener(_handleOverviewChanged);
+    _chatOverviewController?.setOverviewActive(false);
     super.dispose();
   }
 
-  void _setPollingActive(bool isActive) {
-    if (_isPollingActive == isActive) {
-      if (isActive) {
-        _refreshChatOverview(
-            showLoading: _users.isEmpty && _groupChats.isEmpty);
-      }
-      return;
-    }
-
-    _isPollingActive = isActive;
-    if (isActive) {
-      _startPolling();
-      _activateChat();
-    } else {
-      _stopPolling();
-      _chatService.disconnect();
-    }
-  }
-
-  // Загружает обзор чата и затем подключает WebSocket для моментального
-  // обновления счётчика непрочитанных при получении нового сообщения.
-  Future<void> _activateChat() async {
-    await _refreshChatOverview(
-        showLoading: _users.isEmpty && _groupChats.isEmpty);
-    if (!mounted || !_isPollingActive) return;
-    final userId = currentUserId ?? await _chatService.getCachedCurrentUserId();
-    if (userId == null || !mounted || !_isPollingActive) return;
-    _chatService.connectToChat(userId, _onWebSocketMessage);
-  }
-
-  void _onWebSocketMessage(Map<String, dynamic> message) {
-    if (!mounted || !_isPollingActive) return;
-    final type = message['type'] as String?;
-    // Обновляем счётчик непрочитанных как при получении новых, так и при
-    // удалении сообщений (удалённое непрочитанное должно снять значок).
-    if (type == 'personal' || type == 'group' || type == 'message_deleted') {
-      _loadUnreadMessagesCount();
-    }
-  }
-
-  void _startPolling() {
-    _timer?.cancel();
-    _timer = Timer.periodic(_pollingInterval, (_) {
-      _refreshChatOverview(showLoading: false);
-    });
-  }
-
-  void _stopPolling() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  Future<void> _refreshChatOverview({bool showLoading = false}) async {
-    if (_isRefreshingOverview) return;
-    _isRefreshingOverview = true;
-
-    if (showLoading && mounted) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
-    try {
-      final results = await Future.wait<dynamic>([
-        _chatService.getChatData(),
-        _chatService.getUnreadMessagesCount(),
-      ]);
-      if (!mounted) return;
-
-      final data = results[0] as Map<String, dynamic>;
-      final count = results[1] as Map<String, Map<int, int>>;
-      final personalCount = count['personal'] ?? {};
-      final groupCount = count['group'] ?? {};
-      setState(() {
-        currentUserId = data['user']['id'];
-        _users = List<Map<String, dynamic>>.from(data['users_with_messages']);
-        _groupChats = List<Map<String, dynamic>>.from(data['group_chats']);
-        _unreadPersonalMessagesCount = personalCount;
-        _unreadGroupMessagesCount = groupCount;
-        _isLoading = false;
-      });
-      _notifyUnreadTotal(personalCount, groupCount);
-    } catch (e) {
-      debugPrint('Ошибка загрузки данных чата: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } finally {
-      _isRefreshingOverview = false;
-    }
-  }
-
-  Future<void> _loadUnreadMessagesCount() async {
-    try {
-      final count = await _chatService.getUnreadMessagesCount();
-      if (!mounted) return;
-      final personalCount = count['personal'] ?? {};
-      final groupCount = count['group'] ?? {};
-      setState(() {
-        _unreadPersonalMessagesCount = personalCount;
-        _unreadGroupMessagesCount = groupCount;
-      });
-      _notifyUnreadTotal(personalCount, groupCount);
-    } catch (e) {
-      debugPrint('Ошибка загрузки количества непрочитанных сообщений: $e');
-    }
-  }
-
-  // Публичный метод-обертка
-  Future<void> refreshUnreadMessagesCount() async {
-    await _loadUnreadMessagesCount();
+  void _handleOverviewChanged() {
+    final controller = _chatOverviewController;
+    if (controller == null) return;
+    widget.onUnreadTotalChanged?.call(controller.totalUnreadConversations);
   }
 
   String _initialForName(String? name) {
@@ -205,16 +72,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final rawUrl = (value ?? '').toString().trim();
     if (rawUrl.isEmpty) return null;
     return AppConfig.normalizeMediaUrl(rawUrl);
-  }
-
-  void _notifyUnreadTotal(
-    Map<int, int> personalCount,
-    Map<int, int> groupCount,
-  ) {
-    final totalPersonal =
-        personalCount.values.where((value) => value > 0).length;
-    final totalGroup = groupCount.values.where((value) => value > 0).length;
-    widget.onUnreadTotalChanged?.call(totalPersonal + totalGroup);
   }
 
   void _showCreateGroupChatDialog() {
@@ -237,16 +94,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
               SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () async {
+                  final currentUserId =
+                      _chatOverviewController?.currentUserId;
                   if (currentUserId == null) return;
 
                   try {
-                    await lkService.fetchUserFollowers(currentUserId!, 0, 100);
+                    await lkService.fetchUserFollowers(currentUserId, 0, 100);
 
                     showDialog(
                       context: context,
                       builder: (context) {
                         return UserSelectionModal(
-                          userId: currentUserId!,
+                          userId: currentUserId,
                           onUserSelected: (int userId) async {
                             final chatName = _chatNameController.text.trim();
                             if (chatName.isNotEmpty) {
@@ -255,7 +114,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     .createGroupChat(chatName, [userId]);
                                 Navigator.pop(context);
                                 Navigator.pop(context);
-                                _refreshChatOverview(showLoading: false);
+                                _chatOverviewController?.refreshOverview(
+                                  showLoading: false,
+                                );
                               } catch (e) {
                                 debugPrint('Ошибка создания чата: $e');
                               }
@@ -307,14 +168,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const AppLoading(label: 'Загружаем чаты')
-          : _buildChatList(),
+      body: Consumer<ChatOverviewController>(
+        builder: (context, controller, _) {
+          if (controller.isLoadingOverview) {
+            return const AppLoading(label: 'Загружаем чаты');
+          }
+          return _buildChatList(controller);
+        },
+      ),
     );
   }
 
-  Widget _buildChatList() {
-    final itemCount = _users.length + _groupChats.length;
+  Widget _buildChatList(ChatOverviewController controller) {
+    final users = controller.users;
+    final groupChats = controller.groupChats;
+    final itemCount = users.length + groupChats.length;
     if (itemCount == 0) {
       return const AppEmptyState(
         icon: Icons.chat_bubble_outline_rounded,
@@ -333,19 +201,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
       itemCount: itemCount,
       separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
-        if (index < _users.length) {
-          return _buildPersonalChatTile(_users[index]);
+        if (index < users.length) {
+          return _buildPersonalChatTile(users[index], controller);
         }
-        return _buildGroupChatTile(_groupChats[index - _users.length]);
+        return _buildGroupChatTile(groupChats[index - users.length], controller);
       },
     );
   }
 
-  Widget _buildPersonalChatTile(Map<String, dynamic> user) {
+  Widget _buildPersonalChatTile(
+    Map<String, dynamic> user,
+    ChatOverviewController controller,
+  ) {
     final userId = user['id'] as int;
     final fullName = user['full_name']?.toString() ?? 'Пользователь';
     final avatarUrl = _avatarUrl(user['avatar_url']);
-    final unreadCount = _unreadPersonalMessagesCount[userId] ?? 0;
+    final unreadCount = controller.unreadPersonalMessagesCount[userId] ?? 0;
 
     return _ChatOverviewTile(
       title: fullName,
@@ -363,16 +234,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ChatScreen(recipientId: userId, recipientName: fullName),
           ),
         ).then((_) {
-          _loadUnreadMessagesCount();
+          controller.refreshAfterConversationChanged();
         });
       },
     );
   }
 
-  Widget _buildGroupChatTile(Map<String, dynamic> groupChat) {
+  Widget _buildGroupChatTile(
+    Map<String, dynamic> groupChat,
+    ChatOverviewController controller,
+  ) {
     final groupChatId = groupChat['id'] as int;
     final groupChatName = groupChat['name']?.toString() ?? 'Групповой чат';
-    final unreadCount = _unreadGroupMessagesCount[groupChatId] ?? 0;
+    final unreadCount = controller.unreadGroupMessagesCount[groupChatId] ?? 0;
 
     return _ChatOverviewTile(
       title: groupChatName,
@@ -391,7 +265,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
           ),
         ).then((_) {
-          _loadUnreadMessagesCount();
+          controller.refreshAfterConversationChanged();
         });
       },
     );
