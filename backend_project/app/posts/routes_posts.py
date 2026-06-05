@@ -400,35 +400,33 @@ async def like_post(
     existing_like = result.scalars().first()
 
     if existing_like:
-        # Убираем лайк — атомарный декремент чтобы избежать race condition
         await db.delete(existing_like)
-        await db.execute(
-            update(Post)
-            .where(Post.id == post_id)
-            .values(likes_count=func.greatest(Post.likes_count - 1, 0))
-        )
         liked = False
     else:
-        # Добавляем лайк — атомарный инкремент.
-        # Делаем flush сразу чтобы поймать UniqueViolation до того как autoflush
-        # сработает внутри UPDATE (двойное нажатие = две одновременные заявки).
         new_like = PostLike(user_id=current_user.id, post_id=post_id)
         db.add(new_like)
         try:
             await db.flush()
         except IntegrityError:
-            # Конкурентная заявка уже вставила лайк — откат и возврат текущего состояния
+            # Конкурентный дублирующий запрос — откатываемся, считаем реальный счётчик
             await db.rollback()
-            result = await db.execute(select(Post).filter(Post.id == post_id))
-            post = result.scalars().first()
-            return {"likes_count": post.likes_count, "liked": True}
-        await db.execute(
-            update(Post)
-            .where(Post.id == post_id)
-            .values(likes_count=Post.likes_count + 1)
-        )
+            count_res = await db.execute(
+                select(func.count()).where(PostLike.post_id == post_id)
+            )
+            actual_count = count_res.scalar() or 0
+            return {"likes_count": actual_count, "liked": True}
         liked = True
 
+    # Пересчитываем из источника истины — post_likes — чтобы счётчик всегда был точным
+    # независимо от конкурентных запросов и старых данных.
+    count_res = await db.execute(
+        select(func.count()).where(PostLike.post_id == post_id)
+    )
+    actual_count = count_res.scalar() or 0
+
+    await db.execute(
+        update(Post).where(Post.id == post_id).values(likes_count=actual_count)
+    )
     await db.commit()
     await db.refresh(post)
 
@@ -436,20 +434,20 @@ async def like_post(
     await broadcast_feed_update({
         "type": "like",
         "post_id": post_id,
-        "likes_count": post.likes_count,
-        "liked": liked,  # Отправляем состояние лайка для текущего пользователя
-        "user_id": current_user.id  # Добавляем ID пользователя, который поставил лайк
+        "likes_count": actual_count,
+        "liked": liked,
+        "user_id": current_user.id
     })
 
     await broadcast_post_update(post_id, {
         "type": "like",
         "post_id": post_id,
-        "likes_count": post.likes_count,
+        "likes_count": actual_count,
         "liked": liked,
         "user_id": current_user.id
     })
 
-    return {"likes_count": post.likes_count, "liked": liked}
+    return {"likes_count": actual_count, "liked": liked}
 
 
 @router.post("/posts/{post_id}/create_comment")
