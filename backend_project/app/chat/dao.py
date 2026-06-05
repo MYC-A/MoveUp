@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy import select, and_, or_, update, func, literal, exists
+from sqlalchemy import select, and_, or_, update, func, literal, exists, case
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 
@@ -27,19 +27,30 @@ class MessagesDAO(BaseDAO):
             Список пользователей, с которыми есть переписка.
         """
         async with async_session_maker() as session:
-            # Находим всех пользователей, с которыми есть переписка
-            query = select(User).join(
-                cls.model,
-                or_(
-                    User.id == cls.model.sender_id,
-                    User.id == cls.model.recipient_id
+            # Для каждого собеседника находим ID последнего сообщения
+            partner_id_col = case(
+                (cls.model.sender_id == user_id, cls.model.recipient_id),
+                else_=cls.model.sender_id,
+            )
+            subq = (
+                select(
+                    partner_id_col.label("partner_id"),
+                    func.max(cls.model.id).label("last_msg_id"),
                 )
-            ).filter(
-                or_(
-                    cls.model.sender_id == user_id,
-                    cls.model.recipient_id == user_id
+                .where(
+                    or_(
+                        cls.model.sender_id == user_id,
+                        cls.model.recipient_id == user_id,
+                    )
                 )
-            ).distinct()
+                .group_by(partner_id_col)
+                .subquery()
+            )
+            query = (
+                select(User)
+                .join(subq, User.id == subq.c.partner_id)
+                .order_by(subq.c.last_msg_id.desc())
+            )
             result = await session.execute(query)
             return result.scalars().all()
 
@@ -183,11 +194,23 @@ class GroupMessagesDAO(BaseDAO):
         Возвращает список групповых чатов, в которых участвует пользователь.
         """
         async with async_session_maker() as session:
-            query = select(GroupChat).join(
-                group_chat_participants,
-                group_chat_participants.c.group_chat_id == GroupChat.id
-            ).filter(
-                group_chat_participants.c.user_id == user_id
+            last_msg_subq = (
+                select(
+                    GroupMessage.group_chat_id,
+                    func.max(GroupMessage.id).label("last_msg_id"),
+                )
+                .group_by(GroupMessage.group_chat_id)
+                .subquery()
+            )
+            query = (
+                select(GroupChat)
+                .join(
+                    group_chat_participants,
+                    group_chat_participants.c.group_chat_id == GroupChat.id,
+                )
+                .outerjoin(last_msg_subq, last_msg_subq.c.group_chat_id == GroupChat.id)
+                .filter(group_chat_participants.c.user_id == user_id)
+                .order_by(last_msg_subq.c.last_msg_id.desc().nullslast())
             )
             result = await session.execute(query)
             return result.scalars().all()

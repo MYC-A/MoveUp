@@ -55,6 +55,7 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
   late int _commentsCount;
   bool _isLoading = false;
   bool _isSending = false;
+  bool _isRefreshing = false;
   bool _hasMore = true;
   String? _error;
   ScrollController? _activeScrollController;
@@ -141,7 +142,8 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
   // Периодически запрашивает актуальный список комментариев и добавляет новые /
   // убирает удалённые без полной перезагрузки (не сбрасывает позицию скролла).
   Future<void> _refreshComments() async {
-    if (_isLoading) return;
+    if (_isLoading || _isRefreshing || _isSending) return;
+    _isRefreshing = true;
     try {
       final fetchLimit = (_skip + 10).clamp(20, 100);
       final fresh =
@@ -165,7 +167,10 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
         _skip = _comments.length;
       });
       widget.onCommentsCountChanged?.call(_commentsCount);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   void _onFocusChange() {

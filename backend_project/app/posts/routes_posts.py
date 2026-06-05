@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
-from sqlalchemy import select, delete, or_, and_, func
+from sqlalchemy import select, delete, or_, and_, func, update
 from app.models.follow import UserFollow
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
@@ -399,15 +399,23 @@ async def like_post(
     existing_like = result.scalars().first()
 
     if existing_like:
-        # Убираем лайк
+        # Убираем лайк — атомарный декремент чтобы избежать race condition
         await db.delete(existing_like)
-        post.likes_count -= 1
+        await db.execute(
+            update(Post)
+            .where(Post.id == post_id)
+            .values(likes_count=func.greatest(Post.likes_count - 1, 0))
+        )
         liked = False
     else:
-        # Добавляем лайк
+        # Добавляем лайк — атомарный инкремент
         new_like = PostLike(user_id=current_user.id, post_id=post_id)
         db.add(new_like)
-        post.likes_count += 1
+        await db.execute(
+            update(Post)
+            .where(Post.id == post_id)
+            .values(likes_count=Post.likes_count + 1)
+        )
         liked = True
 
     await db.commit()
