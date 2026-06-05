@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 from fastapi.security import OAuth2PasswordRequestForm
 from minio import Minio, S3Error
 from sqlalchemy import select, delete, or_, and_, func, update
+from sqlalchemy.exc import IntegrityError
 from app.models.follow import UserFollow
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
@@ -408,9 +409,19 @@ async def like_post(
         )
         liked = False
     else:
-        # Добавляем лайк — атомарный инкремент
+        # Добавляем лайк — атомарный инкремент.
+        # Делаем flush сразу чтобы поймать UniqueViolation до того как autoflush
+        # сработает внутри UPDATE (двойное нажатие = две одновременные заявки).
         new_like = PostLike(user_id=current_user.id, post_id=post_id)
         db.add(new_like)
+        try:
+            await db.flush()
+        except IntegrityError:
+            # Конкурентная заявка уже вставила лайк — откат и возврат текущего состояния
+            await db.rollback()
+            result = await db.execute(select(Post).filter(Post.id == post_id))
+            post = result.scalars().first()
+            return {"likes_count": post.likes_count, "liked": True}
         await db.execute(
             update(Post)
             .where(Post.id == post_id)
