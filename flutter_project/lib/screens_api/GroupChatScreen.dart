@@ -384,6 +384,22 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _chatService.connectToChat(
       currentUserId!,
       (message) {
+        if (!mounted) return;
+
+        // Сообщение удалено → убираем из UI у всех участников сразу.
+        if (message['type'] == 'message_deleted' &&
+            message['group_chat_id'] == widget.groupChatId) {
+          final deletedId = message['message_id'];
+          if (deletedId is int) {
+            setState(() {
+              _messages.removeWhere((m) => m['id'] == deletedId);
+            });
+            _emitMessages();
+            ChatListScreen.state?.refreshUnreadMessagesCount();
+          }
+          return;
+        }
+
         if (message['type'] == 'group' &&
             message['group_chat_id'] == widget.groupChatId &&
             mounted) {
@@ -410,6 +426,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Future<void> _deleteMessage(Map<String, dynamic> message) async {
     final messageId = message['id'];
     if (messageId is! int) return;
+
+    // Скрываем клавиатуру до показа диалога, чтобы не было прыжков layout-а.
+    FocusManager.instance.primaryFocus?.unfocus();
 
     final confirmed = await showDialog<bool>(
       context: context,

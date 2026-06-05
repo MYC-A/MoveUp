@@ -257,6 +257,19 @@ class _ChatScreenState extends State<ChatScreen> {
       (message) {
         if (!mounted) return;
 
+        // Сообщение удалено (отправителем с другого устройства или собеседником).
+        if (message['type'] == 'message_deleted') {
+          final deletedId = message['message_id'];
+          if (deletedId is int) {
+            setState(() {
+              _messages.removeWhere((m) => m['id'] == deletedId);
+            });
+            _emitMessages();
+            ChatListScreen.state?.refreshUnreadMessagesCount();
+          }
+          return;
+        }
+
         // Собеседник прочитал наши сообщения → меняем ✓ на ✓✓ в реальном времени.
         if (message['type'] == 'read_receipt' &&
             message['reader_id'] == widget.recipientId) {
@@ -332,6 +345,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _deleteMessage(Map<String, dynamic> message) async {
     final messageId = message['id'];
     if (messageId is! int) return;
+
+    // Скрываем клавиатуру до показа диалога, чтобы не было прыжков layout-а.
+    FocusManager.instance.primaryFocus?.unfocus();
 
     final confirmed = await showDialog<bool>(
       context: context,

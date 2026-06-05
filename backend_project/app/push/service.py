@@ -40,12 +40,33 @@ class PushNotificationService:
             cls._init_failed = True
             return False
 
-        credentials_path = Path(settings.FIREBASE_CREDENTIALS_PATH).expanduser()
+        raw_path = settings.FIREBASE_CREDENTIALS_PATH
+
+        # Частая ошибка: Windows-путь вида "C:\..." скопирован в .env на Linux.
+        # На Linux такой путь трактуется как относительный (нет ведущего "/").
+        import sys
+        if sys.platform != "win32" and len(raw_path) >= 2 and raw_path[1] == ":":
+            logger.error(
+                "FIREBASE_CREDENTIALS_PATH выглядит как Windows-путь (%s). "
+                "Загрузите service-account.json на VPS и укажите Linux-путь, "
+                "например: FIREBASE_CREDENTIALS_PATH=./firebase-service-account.json",
+                raw_path,
+            )
+            cls._init_failed = True
+            return False
+
+        credentials_path = Path(raw_path).expanduser()
         if not credentials_path.is_absolute():
             credentials_path = Path.cwd() / credentials_path
 
         if not credentials_path.exists():
-            logger.warning("Firebase credentials file not found: %s", credentials_path)
+            logger.warning(
+                "Firebase credentials file not found: %s "
+                "(resolved from '%s', cwd='%s')",
+                credentials_path,
+                raw_path,
+                Path.cwd(),
+            )
             cls._init_failed = True
             return False
 

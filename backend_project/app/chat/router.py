@@ -428,13 +428,26 @@ async def delete_personal_message(
     message_id: int,
     current_user: User = Depends(get_current_user),
 ):
-    """Удаление личного сообщения. Только отправитель может удалить."""
+    """Удаление личного сообщения. Только отправитель может удалить.
+    После удаления уведомляет обоих участников через WebSocket, чтобы
+    сообщение исчезло с экрана собеседника в реальном времени."""
     message = await MessagesDAO.get_by_id(message_id)
     if message is None:
         raise HTTPException(status_code=404, detail="Сообщение не найдено")
     if message.sender_id != current_user.id:
         raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
+
+    recipient_id = message.recipient_id
+    sender_id = message.sender_id
     await MessagesDAO.delete_message(message_id)
+
+    deletion_event = {
+        'type': 'message_deleted',
+        'message_id': message_id,
+        'conversation_type': 'personal',
+    }
+    await notify_user(recipient_id, deletion_event)
+    await notify_user(sender_id, deletion_event)
     return {"status": "ok"}
 
 
@@ -444,7 +457,8 @@ async def delete_group_message_endpoint(
     message_id: int,
     current_user: User = Depends(get_current_user),
 ):
-    """Удаление сообщения из группового чата. Только отправитель может удалить."""
+    """Удаление сообщения из группового чата. Только отправитель может удалить.
+    После удаления уведомляет всех участников через WebSocket."""
     if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
         raise HTTPException(status_code=403, detail="Вы не участник этого чата")
     message = await GroupMessagesDAO.get_message_by_id(message_id)
@@ -453,6 +467,16 @@ async def delete_group_message_endpoint(
     if message.sender_id != current_user.id:
         raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
     await GroupMessagesDAO.delete_message(message_id)
+
+    participants = list(set(await GroupMessagesDAO.get_group_chat_participants(group_chat_id)))
+    deletion_event = {
+        'type': 'message_deleted',
+        'message_id': message_id,
+        'conversation_type': 'group',
+        'group_chat_id': group_chat_id,
+    }
+    for participant_id in participants:
+        await notify_user(participant_id, deletion_event)
     return {"status": "ok"}
 
 

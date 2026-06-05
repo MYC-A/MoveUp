@@ -113,7 +113,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void _onWebSocketMessage(Map<String, dynamic> message) {
     if (!mounted || !_isPollingActive) return;
     final type = message['type'] as String?;
-    if (type == 'personal' || type == 'group') {
+    // Обновляем счётчик непрочитанных как при получении новых, так и при
+    // удалении сообщений (удалённое непрочитанное должно снять значок).
+    if (type == 'personal' || type == 'group' || type == 'message_deleted') {
       _loadUnreadMessagesCount();
     }
   }
