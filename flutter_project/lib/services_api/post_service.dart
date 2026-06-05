@@ -7,6 +7,7 @@ import '../models_api/post.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'geocoding_service.dart';
+import 'Helper.dart';
 
 class PostService {
   final String baseUrl = AppConfig.apiBaseUrl;
@@ -306,8 +307,8 @@ class Comment {
       id: json['id'] ?? 0,
       userId: json['user_id'] ?? 0,
       content: json['content'] ?? '',
-      createdAt:
-          DateTime.parse(json['created_at'] ?? DateTime.now().toString()),
+      createdAt: Helper.parseServerDateTime(json['created_at']) ??
+          DateTime.now().toLocal(),
       userFullName: user['full_name'] ?? user['username'] ?? 'Пользователь',
       userAvatarUrl:
           avatarUrl != null ? AppConfig.normalizeMediaUrl(avatarUrl) : null,

@@ -302,44 +302,57 @@ class _PostItemState extends State<PostItem>
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                Row(
-                  children: [
-                    if (hasRoute) ...[
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppColors.routeSoft,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(3),
-                          child: Icon(
-                            Icons.directions_run,
-                            color: AppColors.route,
-                            size: 13,
+                Builder(
+                  builder: (context) {
+                    final hasCity =
+                        post.city != null && post.city!.isNotEmpty;
+                    final metaStyle = textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    );
+                    return Row(
+                      children: [
+                        if (hasRoute) ...[
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AppColors.routeSoft,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(3),
+                              child: Icon(
+                                Icons.directions_run,
+                                color: AppColors.route,
+                                size: 13,
+                              ),
+                            ),
                           ),
+                          const SizedBox(width: AppSpacing.xs),
+                        ],
+                        if (hasCity) ...[
+                          const Icon(Icons.place_outlined,
+                              size: 14, color: AppColors.textSecondary),
+                          const SizedBox(width: 2),
+                          // Город сжимается при нехватке места — но время
+                          // всегда остаётся видимым целиком.
+                          Flexible(
+                            child: Text(
+                              post.city!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: metaStyle,
+                            ),
+                          ),
+                          Text(' · ', style: metaStyle),
+                        ],
+                        Text(
+                          Helper.formatDateTime(post.createdAt),
+                          maxLines: 1,
+                          style: metaStyle,
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                    ],
-                    if (post.city != null && post.city!.isNotEmpty) ...[
-                      const Icon(Icons.place_outlined,
-                          size: 14, color: AppColors.textSecondary),
-                      const SizedBox(width: 2),
-                    ],
-                    Flexible(
-                      child: Text(
-                        (post.city != null && post.city!.isNotEmpty)
-                            ? '${post.city} · ${Helper.formatDateTime(post.createdAt)}'
-                            : Helper.formatDateTime(post.createdAt),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

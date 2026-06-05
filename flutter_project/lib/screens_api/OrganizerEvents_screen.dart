@@ -504,14 +504,7 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   }
 
   String _formatDateRange(dynamic start, dynamic end) {
-    final hasStart = start != null && start.toString().isNotEmpty;
-    final hasEnd = end != null && end.toString().isNotEmpty;
-
-    if (!hasStart && !hasEnd) return 'Время не указано';
-    if (!hasEnd) return Helper.formatDateTime(start);
-    if (!hasStart) return Helper.formatDateTime(end);
-
-    return '${Helper.formatDateTime(start)} - ${Helper.formatDateTime(end)}';
+    return Helper.formatDateRange(start, end);
   }
 
   String _formatSeats(Map<String, dynamic> event) {
@@ -684,10 +677,16 @@ class _InfoStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      children: children,
+    // Пиллы располагаются столбиком на всю ширину — так длинное значение
+    // (например, диапазон дат) переносится и не обрезается на узких экранах.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          children[i],
+        ],
+      ],
     );
   }
 }
@@ -716,7 +715,6 @@ class _InfoPill extends StatelessWidget {
           vertical: AppSpacing.xs,
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 16, color: AppColors.textSecondary),
             const SizedBox(width: AppSpacing.xxs),
@@ -727,11 +725,11 @@ class _InfoPill extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
             ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
+            // Значение занимает остаток ширины и при необходимости переносится.
+            Expanded(
               child: Text(
                 value,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: AppColors.textPrimary,

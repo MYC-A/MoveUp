@@ -1,3 +1,5 @@
+import '../services_api/Helper.dart';
+
 class Post {
   final int id;
   final int userId;
@@ -33,15 +35,6 @@ class Post {
     this.isExpanded = false, // По умолчанию текст свернут
   });
 
-  static DateTime _parseServerDateTime(String? raw) {
-    final value = raw?.trim();
-    if (value == null || value.isEmpty) return DateTime.now().toLocal();
-
-    final hasTimezone = RegExp(r'(z|Z|[+-]\d{2}:?\d{2})$').hasMatch(value);
-    final normalized = hasTimezone ? value : '${value}Z';
-    return DateTime.tryParse(normalized)?.toLocal() ?? DateTime.now().toLocal();
-  }
-
   factory Post.fromJson(Map<String, dynamic> json) {
     final user = (json['user'] as Map?) ?? const {};
     return Post(
@@ -58,7 +51,8 @@ class Post {
           const [],
       likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
       commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
-      createdAt: _parseServerDateTime(json['created_at'] as String?),
+      createdAt: Helper.parseServerDateTime(json['created_at']) ??
+          DateTime.now().toLocal(),
       userFullName: (user['full_name'] ?? 'Пользователь').toString(),
       userAvatarUrl: user['avatar_url'] as String?, // Может быть null
       photoUrls: json['photo_urls'] != null
