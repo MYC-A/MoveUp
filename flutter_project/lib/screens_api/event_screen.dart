@@ -229,6 +229,7 @@ class _EventScreenState extends State<EventScreen> {
       CameraFit.bounds(
         bounds: bounds,
         padding: EdgeInsets.all(50),
+        maxZoom: 17.0,
       ),
     );
   }
@@ -1895,6 +1896,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
       CameraFit.bounds(
         bounds: bounds,
         padding: EdgeInsets.all(50),
+        maxZoom: 17.0,
       ),
     );
   }

@@ -410,6 +410,39 @@ async def send_group_message(
 
     return message_data
 
+@router.delete("/messages/{message_id}")
+async def delete_personal_message(
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Удаление личного сообщения. Только отправитель может удалить."""
+    message = await MessagesDAO.get_by_id(message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+    if message.sender_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
+    await MessagesDAO.delete_message(message_id)
+    return {"status": "ok"}
+
+
+@router.delete("/group_chats/{group_chat_id}/messages/{message_id}")
+async def delete_group_message_endpoint(
+    group_chat_id: int,
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Удаление сообщения из группового чата. Только отправитель может удалить."""
+    if not await GroupMessagesDAO.is_participant(group_chat_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+    message = await GroupMessagesDAO.get_message_by_id(message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+    if message.sender_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
+    await GroupMessagesDAO.delete_message(message_id)
+    return {"status": "ok"}
+
+
 @router.get("/group_chats/{group_chat_id}/get_messages", response_model=List[GroupMessageRead])
 async def get_group_messages(
     group_chat_id: int,

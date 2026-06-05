@@ -177,7 +177,8 @@ class _RouteViewScreenState extends State<RouteViewScreen> {
                   _mapController.fitCamera(
                     CameraFit.bounds(
                       bounds: _routeBounds!,
-                      padding: EdgeInsets.all(50), // Отступы для границ
+                      padding: EdgeInsets.all(50),
+                      maxZoom: 17.0,
                     ),
                   );
                   // Принудительно обновляем карту

@@ -61,6 +61,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
         CameraFit.bounds(
           bounds: LatLngBounds.fromPoints(points),
           padding: const EdgeInsets.all(48),
+          maxZoom: 17.0,
         ),
       );
     });

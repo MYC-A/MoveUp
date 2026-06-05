@@ -313,13 +313,107 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _deleteMessage(Map<String, dynamic> message) async {
+    final messageId = message['id'];
+    if (messageId is! int) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить сообщение?'),
+        content: const Text('Сообщение будет удалено у всех участников.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить',
+                style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _chatService.deleteMessage(messageId);
+      if (!mounted) return;
+      setState(() {
+        _messages.removeWhere((m) => m['id'] == messageId);
+      });
+      _emitMessages();
+    } catch (e) {
+      debugPrint('Ошибка удаления сообщения: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить сообщение')),
+      );
+    }
+  }
+
   Widget _buildMessage(Map<String, dynamic> message) {
     final isMe = message['sender_id'] == currentUserId;
+    final isRead = message['is_read'] ?? false;
     final text = message['content']?.toString() ?? '';
     final time = _formatMessageTime(message['created_at']?.toString());
 
     final metaColor =
         isMe ? AppColors.surface.withValues(alpha: 0.75) : AppColors.textMuted;
+
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: isMe ? AppColors.primary : AppColors.surface,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(18),
+          topRight: const Radius.circular(18),
+          bottomLeft: Radius.circular(isMe ? 18 : 4),
+          bottomRight: Radius.circular(isMe ? 4 : 18),
+        ),
+        border: isMe ? null : Border.all(color: AppColors.border),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.end,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 15.5,
+              height: 1.25,
+              color: isMe ? AppColors.surface : AppColors.textPrimary,
+            ),
+          ),
+          if (time != null || isMe) ...[
+            const SizedBox(width: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (time != null)
+                  Text(
+                    time,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: metaColor,
+                    ),
+                  ),
+                if (isMe) ...[
+                  if (time != null) const SizedBox(width: 3),
+                  Icon(
+                    isRead ? Icons.done_all : Icons.done,
+                    color: isRead ? AppColors.routeSoft : metaColor,
+                    size: 14,
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.md, 2, AppSpacing.md, 2),
@@ -329,44 +423,12 @@ class _ChatScreenState extends State<ChatScreen> {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.76,
           ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: isMe ? AppColors.primary : AppColors.surface,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isMe ? 18 : 4),
-                bottomRight: Radius.circular(isMe ? 4 : 18),
-              ),
-              border: isMe ? null : Border.all(color: AppColors.border),
-            ),
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                Text(
-                  text,
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    height: 1.25,
-                    color: isMe ? AppColors.surface : AppColors.textPrimary,
-                  ),
-                ),
-                if (time != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    time,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: metaColor,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          child: isMe
+              ? GestureDetector(
+                  onLongPress: () => _deleteMessage(message),
+                  child: bubble,
+                )
+              : bubble,
         ),
       ),
     );

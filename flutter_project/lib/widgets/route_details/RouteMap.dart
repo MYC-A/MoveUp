@@ -27,7 +27,11 @@ class _RouteMapState extends State<RouteMap> {
     if (_points.isEmpty) return;
     final bounds = LatLngBounds.fromPoints(_points);
     _mapController.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.all(50),
+        maxZoom: 17.0,
+      ),
     );
   }
 

@@ -298,8 +298,8 @@ class _PostItemState extends State<PostItem>
                         post.userFullName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: textTheme.titleLarge?.copyWith(
-                          fontSize: 21,
+                        style: textTheme.titleMedium?.copyWith(
+                          fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -832,6 +832,7 @@ class _PostRouteMapState extends State<_PostRouteMap> {
       CameraFit.bounds(
         bounds: bounds,
         padding: const EdgeInsets.all(50),
+        maxZoom: 17.0,
       ),
     );
   }
@@ -919,14 +920,6 @@ class _PostRouteMapState extends State<_PostRouteMap> {
                       ],
                     ],
                   ),
-                ),
-              ),
-              const Positioned(
-                top: AppSpacing.md,
-                left: AppSpacing.md,
-                child: _MapBadge(
-                  icon: Icons.directions_run,
-                  label: 'Маршрут',
                 ),
               ),
               Positioned(

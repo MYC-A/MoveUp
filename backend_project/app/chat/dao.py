@@ -93,6 +93,22 @@ class MessagesDAO(BaseDAO):
 
     # Пример mark_messages_as_read
     @classmethod
+    async def get_by_id(cls, message_id: int):
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(cls.model).where(cls.model.id == message_id)
+            )
+            return result.scalar_one_or_none()
+
+    @classmethod
+    async def delete_message(cls, message_id: int) -> None:
+        async with async_session_maker() as session:
+            await session.execute(
+                cls.model.__table__.delete().where(cls.model.id == message_id)
+            )
+            await session.commit()
+
+    @classmethod
     async def mark_messages_as_read(cls, user_id: int, recipient_id: int) -> int:
         """
         Помечает сообщения как прочитанные.
@@ -372,6 +388,27 @@ class GroupMessagesDAO(BaseDAO):
 
             await session.commit()  # Коммитим изменения
             return group_chat.id
+
+    @classmethod
+    async def get_message_by_id(cls, message_id: int):
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(cls.model).where(cls.model.id == message_id)
+            )
+            return result.scalar_one_or_none()
+
+    @classmethod
+    async def delete_message(cls, message_id: int) -> None:
+        async with async_session_maker() as session:
+            await session.execute(
+                GroupMessageReadStatus.__table__.delete().where(
+                    GroupMessageReadStatus.message_id == message_id
+                )
+            )
+            await session.execute(
+                cls.model.__table__.delete().where(cls.model.id == message_id)
+            )
+            await session.commit()
 
     @classmethod
     async def add_participant_to_group_chat(cls, group_chat_id: int, user_id: int):

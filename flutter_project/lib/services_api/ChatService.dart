@@ -335,6 +335,41 @@ class ChatService {
     throw ApiException.fromResponse(response);
   }
 
+  // Удалить личное сообщение (DELETE /chat/messages/{message_id})
+  Future<void> deleteMessage(int messageId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+    final url = Uri.parse('$baseUrl/chat/messages/$messageId');
+    final response = await Api.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
+  // Удалить сообщение из группового чата (DELETE /chat/group_chats/{group_chat_id}/messages/{message_id})
+  Future<void> deleteGroupMessage(int groupChatId, int messageId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+    final url = Uri.parse(
+        '$baseUrl/chat/group_chats/$groupChatId/messages/$messageId');
+    final response = await Api.delete(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
   // Покинуть групповой чат (POST /chat/group_chats/{group_chat_id}/leave)
   Future<void> leaveGroupChat(int groupChatId) async {
     final token = await storage.read(key: 'access_token');

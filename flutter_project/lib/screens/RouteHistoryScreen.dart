@@ -511,6 +511,7 @@ class _RouteMiniMapState extends State<_RouteMiniMap> {
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(points),
         padding: const EdgeInsets.all(28),
+        maxZoom: 17.0,
       ),
     );
   }

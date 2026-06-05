@@ -407,6 +407,46 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
   }
 
+  Future<void> _deleteMessage(Map<String, dynamic> message) async {
+    final messageId = message['id'];
+    if (messageId is! int) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить сообщение?'),
+        content: const Text('Сообщение будет удалено у всех участников.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить',
+                style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _chatService.deleteGroupMessage(widget.groupChatId, messageId);
+      if (!mounted) return;
+      setState(() {
+        _messages.removeWhere((m) => m['id'] == messageId);
+      });
+      _emitMessages();
+    } catch (e) {
+      debugPrint('Ошибка удаления сообщения: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить сообщение')),
+      );
+    }
+  }
+
   Widget _buildMessage(Map<String, dynamic> message) {
     final isMe = message['sender_id'] == currentUserId;
     final isRead = message['is_read'] ?? false;
@@ -445,7 +485,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.76,
             ),
-            child: Container(
+            child: GestureDetector(
+              onLongPress:
+                  (isMe && !isTemp) ? () => _deleteMessage(message) : null,
+              child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: isMe ? AppColors.primary : AppColors.surface,
@@ -457,8 +500,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ),
                 border: isMe ? null : Border.all(color: AppColors.border),
               ),
-              // Время «приклеено» к концу текста и переносится вниз, если строка
-              // не помещается — компактный вид как в обычных мессенджерах.
               child: Wrap(
                 alignment: WrapAlignment.end,
                 crossAxisAlignment: WrapCrossAlignment.end,
@@ -498,6 +539,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   ],
                 ],
               ),
+            ),
             ),
           ),
         ],
