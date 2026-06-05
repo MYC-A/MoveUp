@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -223,7 +224,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     _loadUserWeight();
     // Инициализация только при первом создании экрана
     if (_isWidgetActive) {
-      startBackgroundService();
+      unawaited(startBackgroundService());
       _route = widget.route;
       if (_route != null) {
         _trackingDuration = _route!.duration;
@@ -293,25 +294,139 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     );
   }
 
-  static const String _trackerChannelId = 'moveup_tracker_channel';
+  static const String _trackerChannelId = 'moveup_tracker_live_channel';
+  static const String _trackerChannelName = 'Трекер маршрута';
+  static const String _trackerChannelDescription =
+      'Время, дистанция и калории текущей записи маршрута';
+  static const int _trackerNotificationId = 42801;
 
-  Future<void> startBackgroundService() async {
-    final service = FlutterBackgroundService();
+  static const NotificationDetails _trackerNotificationDetails =
+      NotificationDetails(
+    android: AndroidNotificationDetails(
+      _trackerChannelId,
+      _trackerChannelName,
+      channelDescription: _trackerChannelDescription,
+      icon: 'ic_bg_service_small',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      showWhen: false,
+      playSound: false,
+      enableVibration: false,
+      channelShowBadge: false,
+      silent: true,
+      visibility: NotificationVisibility.public,
+      category: AndroidNotificationCategory.workout,
+    ),
+  );
 
-    // Канал уведомления нужно создать ДО configure() (требование плагина),
-    // иначе foreground-уведомление не успевает показаться и Android убивает
-    // сервис с ForegroundServiceDidNotStartInTimeException.
+  Future<bool> _ensureTrackerNotificationPermission() async {
+    final granted = await FlutterLocalNotificationsPlugin()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+
+    if (granted == false && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Разрешите уведомления, чтобы видеть запись маршрута '
+            'на экране блокировки.',
+          ),
+        ),
+      );
+    }
+
+    return granted ?? true;
+  }
+
+  static Future<void> _createTrackerNotificationChannel() async {
     final localNotifications = FlutterLocalNotificationsPlugin();
     const channel = AndroidNotificationChannel(
       _trackerChannelId,
-      'Трекер маршрута',
-      description: 'Запись пробежки в фоне',
-      importance: Importance.low,
+      _trackerChannelName,
+      description: _trackerChannelDescription,
+      importance: Importance.defaultImportance,
+      playSound: false,
+      enableVibration: false,
+      showBadge: false,
     );
     await localNotifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+  }
+
+  static Future<void> _showTrackerNotification(
+    FlutterLocalNotificationsPlugin localNotifications,
+    String title,
+    String content,
+  ) {
+    return localNotifications.show(
+      _trackerNotificationId,
+      title,
+      content,
+      _trackerNotificationDetails,
+    );
+  }
+
+  static int _readTrackerInt(dynamic value, int fallback) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static double _readTrackerDouble(dynamic value, double fallback) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static bool _readTrackerBool(dynamic value, bool fallback) {
+    if (value is bool) return value;
+    if (value is String) return value.toLowerCase() == 'true';
+    return fallback;
+  }
+
+  static String _formatTrackerTime(int elapsedSeconds) {
+    final safeElapsedSeconds = elapsedSeconds.clamp(0, 1 << 31).toInt();
+    final duration = Duration(seconds: safeElapsedSeconds);
+    return '${duration.inHours.toString().padLeft(2, '0')}:'
+        '${(duration.inMinutes % 60).toString().padLeft(2, '0')}:'
+        '${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
+  }
+
+  static String _formatTrackerDistance(double distanceMeters) {
+    return distanceMeters >= 1000
+        ? '${(distanceMeters / 1000).toStringAsFixed(2)} км'
+        : '${distanceMeters.toStringAsFixed(0)} м';
+  }
+
+  static String _trackerNotificationTitle({
+    required int elapsedSeconds,
+    required bool paused,
+  }) {
+    final prefix = paused ? 'Пауза' : 'Пробежка';
+    return '$prefix · ${_formatTrackerTime(elapsedSeconds)}';
+  }
+
+  static String _trackerNotificationContent({
+    required double distanceMeters,
+    required int calories,
+  }) {
+    return 'Дистанция: ${_formatTrackerDistance(distanceMeters)} · '
+        '$calories ккал';
+  }
+
+  Future<bool> startBackgroundService() async {
+    final service = FlutterBackgroundService();
+
+    // Канал уведомления нужно создать ДО configure() (требование плагина),
+    // иначе foreground-уведомление не успевает показаться и Android убивает
+    // сервис с ForegroundServiceDidNotStartInTimeException.
+    await _createTrackerNotificationChannel();
+
+    if (await service.isRunning()) return true;
 
     await service.configure(
       androidConfiguration: AndroidConfiguration(
@@ -320,8 +435,9 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         autoStartOnBoot: false,
         isForegroundMode: true,
         notificationChannelId: _trackerChannelId,
-        initialNotificationTitle: 'Трекер маршрута',
-        initialNotificationContent: 'Подготовка…',
+        initialNotificationTitle: 'Пробежка · 00:00:00',
+        initialNotificationContent: 'Дистанция: 0 м · 0 ккал',
+        foregroundServiceNotificationId: _trackerNotificationId,
         // Тип FGS должен совпадать с manifest (foregroundServiceType="location")
         // и требует разрешения FOREGROUND_SERVICE_LOCATION на Android 14+.
         foregroundServiceTypes: [AndroidForegroundType.location],
@@ -331,47 +447,101 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
         onForeground: onStart,
       ),
     );
-    await service.startService();
+    return service.startService();
   }
 
+  @pragma('vm:entry-point')
   static void onStart(ServiceInstance service) async {
-    if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: "Трекер маршрута",
-        content: "Запись пробежки…",
+    DartPluginRegistrant.ensureInitialized();
+    await _createTrackerNotificationChannel();
+
+    final localNotifications = FlutterLocalNotificationsPlugin();
+    Timer? notificationTimer;
+    var syncedElapsedSeconds = 0;
+    var distanceMeters = 0.0;
+    var calories = 0;
+    var paused = false;
+    var syncedAt = DateTime.now();
+
+    int currentElapsedSeconds() {
+      if (paused) return syncedElapsedSeconds;
+      return syncedElapsedSeconds +
+          DateTime.now().difference(syncedAt).inSeconds;
+    }
+
+    Future<void> renderTrackerNotification() async {
+      if (service is! AndroidServiceInstance) return;
+      await _showTrackerNotification(
+        localNotifications,
+        _trackerNotificationTitle(
+          elapsedSeconds: currentElapsedSeconds(),
+          paused: paused,
+        ),
+        _trackerNotificationContent(
+          distanceMeters: distanceMeters,
+          calories: calories,
+        ),
       );
     }
 
-    service.on('closeNotification').listen((event) {
+    Future<void> stopTrackerService() async {
+      notificationTimer?.cancel();
+      await localNotifications.cancel(_trackerNotificationId);
       if (service is AndroidServiceInstance) {
         service.stopSelf();
       }
+    }
+
+    await renderTrackerNotification();
+    notificationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(renderTrackerNotification());
     });
 
-    // Обновляем текст уведомления (в шторке и на экране блокировки) живыми
-    // данными, которые присылает UI каждую секунду.
-    service.on('update').listen((event) {
-      if (service is AndroidServiceInstance && event != null) {
-        service.setForegroundNotificationInfo(
-          title: event['title']?.toString() ?? 'Трекер маршрута',
-          content: event['content']?.toString() ?? '',
-        );
-      }
+    service.on('closeNotification').listen((event) {
+      unawaited(stopTrackerService());
+    });
+
+    service.on('stopService').listen((event) {
+      unawaited(stopTrackerService());
+    });
+
+    // UI присылает актуальные дистанцию/калории/паузу, а сам foreground
+    // service продолжает обновлять прошедшее время даже на экране блокировки.
+    service.on('update').listen((event) async {
+      if (event == null) return;
+      syncedElapsedSeconds = _readTrackerInt(
+        event['elapsed_seconds'],
+        currentElapsedSeconds(),
+      );
+      distanceMeters = _readTrackerDouble(
+        event['distance_meters'],
+        distanceMeters,
+      );
+      calories = _readTrackerInt(event['calories'], calories);
+      paused = _readTrackerBool(event['paused'], paused);
+      syncedAt = DateTime.now();
+      await renderTrackerNotification();
     });
   }
 
-  void showNotification() {
+  void showNotification({bool paused = false}) {
     final distanceMeters = _route?.distance ?? 0;
-    final distanceText = distanceMeters >= 1000
-        ? '${(distanceMeters / 1000).toStringAsFixed(2)} км'
-        : '${distanceMeters.toStringAsFixed(0)} м';
-    final timeText =
-        '${_trackingDuration.inHours.toString().padLeft(2, '0')}:${(_trackingDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_trackingDuration.inSeconds % 60).toString().padLeft(2, '0')}';
+    final elapsedSeconds = _trackingDuration.inSeconds;
     final calories = estimateCalories(distanceMeters, weightKg: _userWeightKg);
 
     FlutterBackgroundService().invoke('update', {
-      "title": "Пробежка · $timeText",
-      "content": "Дистанция: $distanceText · $calories ккал",
+      'elapsed_seconds': elapsedSeconds,
+      'distance_meters': distanceMeters,
+      'calories': calories,
+      'paused': paused,
+      'title': _trackerNotificationTitle(
+        elapsedSeconds: elapsedSeconds,
+        paused: paused,
+      ),
+      'content': _trackerNotificationContent(
+        distanceMeters: distanceMeters,
+        calories: calories,
+      ),
     });
   }
 
@@ -550,47 +720,69 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     });
   }
 
-  void _startTracking() async {
+  void _startTrackingTimer() {
+    _trackingTimer?.cancel();
+    _trackingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !_isTracking || _isPaused) return;
+      setState(() {
+        _trackingDuration += const Duration(seconds: 1);
+      });
+      showNotification();
+    });
+  }
+
+  Future<void> _startTracking() async {
     final status = await Permission.location.status;
     if (!status.isGranted) {
       await Permission.location.request();
     }
 
-    if (await Permission.location.isGranted) {
-      setState(() {
-        _route = RunningRoute(
-          id: DateTime.now().toString(),
-          name: 'Новый маршрут',
-          points: [],
-          distance: 0.0,
-          date: DateTime.now(),
-        );
-        _isTracking = true;
-        _isPaused = false;
-        _isWidgetActive = true; // Активируем виджет
-        _trackingDuration = Duration.zero;
-        _trackingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-          setState(() {
-            _trackingDuration += Duration(seconds: 1);
-          });
-          showNotification(); // Обновляем уведомление каждую секунду
-        });
-      });
-
-      startBackgroundService(); // Запускаем фоновый сервис
-      if (_currentPosition != null) {
-        _route!.addPoint(_currentPosition!);
-      }
-      // Просим фоновую геолокацию, чтобы трек продолжался при свёрнутом
-      // приложении/выключенном экране (не блокируем запись, если откажут).
-      unawaited(_ensureBackgroundLocation());
-    } else {
+    if (!await Permission.location.isGranted) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text('Разрешение на доступ к местоположению не предоставлено')),
+        const SnackBar(
+          content: Text('Разрешение на доступ к местоположению не предоставлено'),
+        ),
+      );
+      return;
+    }
+
+    await _ensureTrackerNotificationPermission();
+    if (!mounted) return;
+
+    setState(() {
+      _route = RunningRoute(
+        id: DateTime.now().toString(),
+        name: 'Новый маршрут',
+        points: [],
+        distance: 0.0,
+        date: DateTime.now(),
+      );
+      _isTracking = true;
+      _isPaused = false;
+      _isWidgetActive = true; // Активируем виджет
+      _trackingDuration = Duration.zero;
+    });
+
+    final serviceStarted = await startBackgroundService();
+    if (!mounted) return;
+    if (!serviceStarted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось запустить уведомление трекера'),
+        ),
       );
     }
+
+    if (_currentPosition != null) {
+      _route!.addPoint(_currentPosition!);
+    }
+    showNotification();
+    _startTrackingTimer();
+
+    // Просим фоновую геолокацию, чтобы трек продолжался при свёрнутом
+    // приложении/выключенном экране (не блокируем запись, если откажут).
+    unawaited(_ensureBackgroundLocation());
   }
 
   Future<void> _loadUserWeight() async {
@@ -627,6 +819,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     });
     _positionStreamSubscription?.pause();
     _trackingTimer?.cancel();
+    showNotification(paused: true);
   }
 
   void _resumeTracking() {
@@ -634,11 +827,8 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       _isPaused = false;
     });
     _positionStreamSubscription?.resume();
-    _trackingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      setState(() {
-        _trackingDuration += Duration(seconds: 1);
-      });
-    });
+    showNotification();
+    _startTrackingTimer();
   }
 
   void _stopAndSaveRoute() {
@@ -653,6 +843,7 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
     _trackingTimer?.cancel();
     FlutterBackgroundService().invoke('stopService');
     FlutterBackgroundService().invoke('closeNotification');
+    unawaited(FlutterLocalNotificationsPlugin().cancel(_trackerNotificationId));
 
     // 2) Если нет движения — сразу сообщить и выйти
     final movedDistance = _route?.distance ?? 0.0;
