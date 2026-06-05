@@ -99,8 +99,10 @@ async def get_chat_page(
     headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
 
     )
-# Активные WebSocket-подключения: {user_id: websocket}
-active_connections: Dict[int, WebSocket] = {}
+# Активные WebSocket-подключения: {user_id: [websocket, ...]}
+# Список позволяет одному пользователю держать несколько соединений одновременно
+# (например, ChatListScreen + ChatScreen на одном устройстве).
+active_connections: Dict[int, List[WebSocket]] = {}
 
 
 def _truncate_push_body(content: str, max_length: int = 120) -> str:
@@ -208,21 +210,33 @@ async def mark_messages_as_read(
 ):
     """
     Помечает все непрочитанные сообщения между текущим пользователем и собеседником как прочитанные.
+    Уведомляет отправителя через WebSocket, чтобы он видел двойную галочку (✓✓) в реальном времени.
     """
     marked_count = await MessagesDAO.mark_messages_as_read(current_user.id, data.recipient_id)
+    if marked_count > 0:
+        await notify_user(data.recipient_id, {
+            'type': 'read_receipt',
+            'reader_id': current_user.id,
+        })
     return {"status": "ok", "msg": "Messages marked as read", "marked_count": marked_count}
 
 
 # Функция для отправки сообщения пользователю, если он подключен
 async def notify_user(user_id: int, message: dict):
-    #Отправить сообщение пользователю, если он подключен.
-    if user_id in active_connections:
-        websocket = active_connections[user_id]
-        print(f"Уведомление пользователя {user_id}: {message}")
-        # Отправляем сообщение в формате JSON
-        await websocket.send_json(message)
-    else:
-        print(f"Пользователь {user_id} не подключен")
+    connections = active_connections.get(user_id)
+    if not connections:
+        return
+    dead: List[WebSocket] = []
+    for ws in list(connections):
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        try:
+            connections.remove(ws)
+        except ValueError:
+            pass
 
 
 # WebSocket эндпоинт для соединений
@@ -254,26 +268,25 @@ async def websocket_endpoint(
 
     # Принимаем WebSocket-соединение
     await websocket.accept()
-    # Сохраняем активное соединение для пользователя
-    active_connections[user_id] = websocket
+    if user_id not in active_connections:
+        active_connections[user_id] = []
+    active_connections[user_id].append(websocket)
     try:
         while True:
             try:
-                message = await websocket.receive_json()
-                print(f"Получено сообщение от клиента: {message}")
-                # Обработка сообщения или логика передачи
-                # Просто поддерживаем соединение активным (1 секунда паузы)
+                await websocket.receive_json()
                 await asyncio.sleep(1)
-            except Exception as e:
-                print(f"Ошибка при обработке сообщения: {e}")
+            except Exception:
                 break
     except WebSocketDisconnect:
-        # Удаляем пользователя из активных соединений при отключении
-        active_connections.pop(user_id, None)
+        pass
     finally:
-        # Удаляем соединение из активных
-        active_connections.pop(user_id, None)
-        print(f"Соединение для пользователя {user_id} закрыто")
+        conns = active_connections.get(user_id)
+        if conns is not None:
+            try:
+                conns.remove(websocket)
+            except ValueError:
+                pass
 
 
 # Получение сообщений между двумя пользователями

@@ -25,7 +25,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(options: options);
     }
-    await PushNotificationService.showRemoteMessage(message);
+    // FCM-сообщения теперь содержат поле notification, поэтому ОС показывает
+    // уведомление в трее автоматически (background/killed). Вызывать
+    // showRemoteMessage здесь не нужно — это создало бы дублирующее уведомление.
   } catch (e) {
     debugPrint('Ошибка фоновой инициализации Firebase: $e');
   }

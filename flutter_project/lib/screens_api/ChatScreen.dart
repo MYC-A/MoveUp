@@ -256,6 +256,22 @@ class _ChatScreenState extends State<ChatScreen> {
       currentUserId!,
       (message) {
         if (!mounted) return;
+
+        // Собеседник прочитал наши сообщения → меняем ✓ на ✓✓ в реальном времени.
+        if (message['type'] == 'read_receipt' &&
+            message['reader_id'] == widget.recipientId) {
+          setState(() {
+            for (int i = 0; i < _messages.length; i++) {
+              if (_messages[i]['sender_id'] == currentUserId &&
+                  _messages[i]['is_read'] == false) {
+                _messages[i] = Map<String, dynamic>.from(_messages[i])
+                  ..['is_read'] = true;
+              }
+            }
+          });
+          return;
+        }
+
         if (message['type'] == 'personal' &&
             message['sender_id'] == widget.recipientId &&
             message['recipient_id'] == currentUserId) {

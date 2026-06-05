@@ -45,7 +45,7 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  static const Duration _pollingInterval = Duration(seconds: 15);
+  static const Duration _pollingInterval = Duration(seconds: 5);
 
   final ChatService _chatService = ChatService();
   List<Map<String, dynamic>> _users = [];
@@ -62,19 +62,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
-    ChatListScreen.state = this; // Устанавливаем ссылку на состояние
+    ChatListScreen.state = this;
     _isPollingActive = widget.initiallyActive;
     if (_isPollingActive) {
       _startPolling();
-      _refreshChatOverview(showLoading: true);
+      _activateChat();
     }
   }
 
   @override
   void dispose() {
     _stopPolling();
+    _chatService.disconnect();
     if (ChatListScreen.state == this) {
-      ChatListScreen.state = null; // Очищаем ссылку при уничтожении
+      ChatListScreen.state = null;
     }
     super.dispose();
   }
@@ -91,9 +92,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _isPollingActive = isActive;
     if (isActive) {
       _startPolling();
-      _refreshChatOverview(showLoading: _users.isEmpty && _groupChats.isEmpty);
+      _activateChat();
     } else {
       _stopPolling();
+      _chatService.disconnect();
+    }
+  }
+
+  // Загружает обзор чата и затем подключает WebSocket для моментального
+  // обновления счётчика непрочитанных при получении нового сообщения.
+  Future<void> _activateChat() async {
+    await _refreshChatOverview(
+        showLoading: _users.isEmpty && _groupChats.isEmpty);
+    if (!mounted || !_isPollingActive) return;
+    final userId = currentUserId ?? await _chatService.getCachedCurrentUserId();
+    if (userId == null || !mounted || !_isPollingActive) return;
+    _chatService.connectToChat(userId, _onWebSocketMessage);
+  }
+
+  void _onWebSocketMessage(Map<String, dynamic> message) {
+    if (!mounted || !_isPollingActive) return;
+    final type = message['type'] as String?;
+    if (type == 'personal' || type == 'group') {
+      _loadUnreadMessagesCount();
     }
   }
 

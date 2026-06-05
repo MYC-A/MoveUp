@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
@@ -57,6 +59,7 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
   String? _error;
   ScrollController? _activeScrollController;
   int? _currentUserId;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -65,6 +68,9 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
     _focusNode.addListener(_onFocusChange);
     _loadCurrentUserId();
     _loadComments();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) _refreshComments();
+    });
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -125,10 +131,41 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _focusNode.removeListener(_onFocusChange);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  // Периодически запрашивает актуальный список комментариев и добавляет новые /
+  // убирает удалённые без полной перезагрузки (не сбрасывает позицию скролла).
+  Future<void> _refreshComments() async {
+    if (_isLoading) return;
+    try {
+      final fetchLimit = (_skip + 10).clamp(20, 100);
+      final fresh =
+          await _postService.getComments(widget.postId, 0, fetchLimit);
+      if (!mounted) return;
+
+      final freshMap = <int, Comment>{for (final c in fresh) c.id: c};
+      final currentIds = _comments.map((c) => c.id).toSet();
+      final added = freshMap.keys.toSet().difference(currentIds);
+      final removed = currentIds.difference(freshMap.keys.toSet());
+      if (added.isEmpty && removed.isEmpty) return;
+
+      setState(() {
+        _comments.removeWhere((c) => removed.contains(c.id));
+        for (final id in added) {
+          _comments.add(freshMap[id]!);
+        }
+        _comments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        final delta = added.length - removed.length;
+        _commentsCount = (_commentsCount + delta).clamp(0, 1 << 31);
+        _skip = _comments.length;
+      });
+      widget.onCommentsCountChanged?.call(_commentsCount);
+    } catch (_) {}
   }
 
   void _onFocusChange() {

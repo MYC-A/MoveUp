@@ -85,9 +85,25 @@ class PushNotificationService:
         for token in tokens:
             message = messaging.Message(
                 token=token,
+                # Поле notification гарантирует, что ОС покажет уведомление
+                # даже когда приложение убито (data-only этого не обеспечивает
+                # на большинстве Android-производителей с агрессивной оптимизацией).
+                notification=messaging.Notification(
+                    title=title,
+                    body=body,
+                ),
                 data=payload_data,
                 android=messaging.AndroidConfig(
                     priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id=settings.FCM_ANDROID_CHANNEL_ID,
+                        sound="default",
+                    ),
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound="default", badge=unread_count),
+                    ),
                 ),
             )
 
