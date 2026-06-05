@@ -291,21 +291,20 @@ class _PostItemState extends State<PostItem>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  post.userFullName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleMedium?.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
                 Row(
                   children: [
-                    Flexible(
-                      child: Text(
-                        post.userFullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.titleMedium?.copyWith(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
                     if (hasRoute) ...[
-                      const SizedBox(width: AppSpacing.xs),
                       DecoratedBox(
                         decoration: BoxDecoration(
                           color: AppColors.routeSoft,
@@ -316,19 +315,15 @@ class _PostItemState extends State<PostItem>
                           child: Icon(
                             Icons.directions_run,
                             color: AppColors.route,
-                            size: 16,
+                            size: 13,
                           ),
                         ),
                       ),
+                      const SizedBox(width: AppSpacing.xs),
                     ],
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Row(
-                  children: [
                     if (post.city != null && post.city!.isNotEmpty) ...[
                       const Icon(Icons.place_outlined,
-                          size: 15, color: AppColors.textSecondary),
+                          size: 14, color: AppColors.textSecondary),
                       const SizedBox(width: 2),
                     ],
                     Flexible(
@@ -340,7 +335,7 @@ class _PostItemState extends State<PostItem>
                         overflow: TextOverflow.ellipsis,
                         style: textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
-                          fontSize: 15,
+                          fontSize: 14,
                         ),
                       ),
                     ),
@@ -933,47 +928,6 @@ class _PostRouteMapState extends State<_PostRouteMap> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MapBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _MapBadge({
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.textPrimary.withValues(alpha: 0.48),
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-          ],
         ),
       ),
     );

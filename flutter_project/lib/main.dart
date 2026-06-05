@@ -115,8 +115,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex;
     _screens.addAll(List.filled(5, null));
-    _startUnreadPolling();
-    _loadUnreadMessagesCount();
+    // Если стартуем не на чат-табе — запускаем собственный опрос непрочитанных.
+    // Если на чат-табе — ChatListScreen (с initiallyActive: true) сам возьмёт
+    // на себя опрос и сообщит счётчик через onUnreadTotalChanged.
+    if (_selectedIndex != 3) {
+      _startUnreadPolling();
+      _loadUnreadMessagesCount();
+    }
     PushNotificationService.registerCurrentDeviceToken();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingNotificationIfAny();
@@ -133,8 +138,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _startUnreadPolling();
-      _loadUnreadMessagesCount();
+      if (_selectedIndex == 3) {
+        // Чат-таб активен — ChatListScreen сам опрашивает сервер и
+        // уведомляет через onUnreadTotalChanged. Дублировать не нужно.
+        ChatListScreen.setActivePolling(true);
+      } else {
+        _startUnreadPolling();
+        _loadUnreadMessagesCount();
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _stopUnreadPolling();
@@ -207,18 +218,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _onItemTapped(int index) {
     final isLeavingChatTab = _selectedIndex == 3 && index != 3;
+    final isEnteringChatTab = _selectedIndex != 3 && index == 3;
+
     if (isLeavingChatTab) {
+      // ChatListScreen больше не активен — возобновляем собственный опрос
       ChatListScreen.setActivePolling(false);
+      _startUnreadPolling();
     }
 
     setState(() {
       _selectedIndex = index;
     });
 
-    if (index == 3) {
+    if (isEnteringChatTab) {
+      // Останавливаем дублирующий опрос из MainScreen — ChatListScreen сам
+      // загрузит данные и вернёт badge-счётчик через onUnreadTotalChanged.
+      _stopUnreadPolling();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ChatListScreen.setActivePolling(true);
-        _loadUnreadMessagesCount();
       });
     }
   }
