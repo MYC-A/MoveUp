@@ -145,26 +145,20 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
     if (_isLoading || _isRefreshing || _isSending) return;
     _isRefreshing = true;
     try {
-      final fetchLimit = (_skip + 10).clamp(20, 100);
+      // Backend sorts comments ASC — new ones are always appended at the end.
+      // Fetching from _skip gives us only comments added after the last one we saw.
       final fresh =
-          await _postService.getComments(widget.postId, 0, fetchLimit);
-      if (!mounted) return;
+          await _postService.getComments(widget.postId, _skip, _limit);
+      if (!mounted || fresh.isEmpty) return;
 
-      final freshMap = <int, Comment>{for (final c in fresh) c.id: c};
-      final currentIds = _comments.map((c) => c.id).toSet();
-      final added = freshMap.keys.toSet().difference(currentIds);
-      final removed = currentIds.difference(freshMap.keys.toSet());
-      if (added.isEmpty && removed.isEmpty) return;
+      final existingIds = _comments.map((c) => c.id).toSet();
+      final added = fresh.where((c) => !existingIds.contains(c.id)).toList();
+      if (added.isEmpty) return;
 
       setState(() {
-        _comments.removeWhere((c) => removed.contains(c.id));
-        for (final id in added) {
-          _comments.add(freshMap[id]!);
-        }
-        _comments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        final delta = added.length - removed.length;
-        _commentsCount = (_commentsCount + delta).clamp(0, 1 << 31);
-        _skip = _comments.length;
+        _comments.addAll(added);
+        _skip += added.length;
+        _commentsCount = (_commentsCount + added.length).clamp(0, 1 << 31);
       });
       widget.onCommentsCountChanged?.call(_commentsCount);
     } catch (_) {
@@ -230,6 +224,7 @@ class _PostCommentsSheetState extends State<_PostCommentsSheet> {
       setState(() {
         if (!_comments.any((item) => item.id == comment.id)) {
           _comments.add(comment);
+          _skip += 1;
         }
         _commentsCount += 1;
         _controller.clear();
