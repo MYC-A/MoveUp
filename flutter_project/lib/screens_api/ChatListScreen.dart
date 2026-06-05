@@ -18,12 +18,10 @@ import 'package:provider/provider.dart';
 
 class ChatListScreen extends StatefulWidget {
   final bool initiallyActive;
-  final ValueChanged<int>? onUnreadTotalChanged;
 
   const ChatListScreen({
     Key? key,
     this.initiallyActive = false,
-    this.onUnreadTotalChanged,
   }) : super(key: key);
 
   @override
@@ -41,9 +39,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final controller = context.read<ChatOverviewController>();
     if (_chatOverviewController == controller) return;
 
-    _chatOverviewController?.removeListener(_handleOverviewChanged);
     _chatOverviewController = controller;
-    controller.addListener(_handleOverviewChanged);
     if (widget.initiallyActive) {
       controller.setOverviewActive(true);
     }
@@ -51,15 +47,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   void dispose() {
-    _chatOverviewController?.removeListener(_handleOverviewChanged);
     _chatOverviewController?.setOverviewActive(false);
     super.dispose();
-  }
-
-  void _handleOverviewChanged() {
-    final controller = _chatOverviewController;
-    if (controller == null) return;
-    widget.onUnreadTotalChanged?.call(controller.totalUnreadConversations);
   }
 
   String _initialForName(String? name) {
