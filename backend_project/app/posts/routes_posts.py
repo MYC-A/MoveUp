@@ -640,7 +640,7 @@ async def get_post_details(
             "route_data": post.route_data,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
-            "created_at": post.created_at,
+            "created_at": post.created_at.isoformat(),
             "user": {
                 "id": post.user.id,
                 "full_name": post.user.full_name,

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
@@ -245,13 +243,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
   }
 
-  List<LatLng> get _visibleRouteLinePoints {
-    if (_showOptimizedRoute && _optimizedRoutePoints.length > 1) {
-      return _optimizedRoutePoints;
-    }
-    return _routePoints;
-  }
-
   List<Marker> _buildRoutePointMarkers() {
     return _routePoints.asMap().entries.map((entry) {
       final index = entry.key;
@@ -275,72 +266,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     }).toList();
   }
 
-  List<Marker> _buildRouteDirectionMarkers() {
-    if (!_showOptimizedRoute) {
-      return _buildSegmentOrderMarkers();
-    }
-
-    final points = _visibleRouteLinePoints;
-    if (points.length < 2) return [];
-
-    final arrowsCount = points.length <= 8
-        ? points.length - 1
-        : math.min(6, math.max(2, (points.length / 30).ceil()));
-    final usedSegments = <int>{};
-    final markers = <Marker>[];
-
-    for (var i = 1; i <= arrowsCount; i++) {
-      final segmentIndex = ((points.length - 1) * i / (arrowsCount + 1))
-          .floor()
-          .clamp(0, points.length - 2)
-          .toInt();
-      if (!usedSegments.add(segmentIndex)) continue;
-
-      final from = points[segmentIndex];
-      final to = points[segmentIndex + 1];
-      markers.add(
-        Marker(
-          point: _midpoint(from, to),
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          child: _RouteDirectionArrow(
-            angle: _bearingRadians(from, to),
-            color: _showOptimizedRoute ? Colors.red : Colors.blue,
-          ),
-        ),
-      );
-    }
-
-    return markers;
-  }
-
-  List<Marker> _buildSegmentOrderMarkers() {
-    if (_routePoints.length < 2) return [];
-
-    return List.generate(_routePoints.length - 1, (index) {
-      final from = _routePoints[index];
-      final to = _routePoints[index + 1];
-      final position = _pointAlongSegment(
-        from,
-        to,
-        index.isEven ? 0.38 : 0.62,
-      );
-
-      return Marker(
-        point: position,
-        width: 48,
-        height: 26,
-        alignment: Alignment.center,
-        child: _RouteSegmentOrderBadge(
-          from: index + 1,
-          to: index + 2,
-          color: Colors.blue,
-        ),
-      );
-    });
-  }
-
   void _removeRoutePoint(int index) {
     setState(() {
       _routePoints.removeAt(index);
@@ -351,30 +276,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _redLineDuration = 0;
     });
     _updateBlueLineInfo();
-  }
-
-  LatLng _midpoint(LatLng from, LatLng to) {
-    return LatLng(
-      (from.latitude + to.latitude) / 2,
-      (from.longitude + to.longitude) / 2,
-    );
-  }
-
-  LatLng _pointAlongSegment(LatLng from, LatLng to, double fraction) {
-    return LatLng(
-      from.latitude + (to.latitude - from.latitude) * fraction,
-      from.longitude + (to.longitude - from.longitude) * fraction,
-    );
-  }
-
-  double _bearingRadians(LatLng from, LatLng to) {
-    final lat1 = from.latitude * math.pi / 180;
-    final lat2 = to.latitude * math.pi / 180;
-    final deltaLng = (to.longitude - from.longitude) * math.pi / 180;
-    final y = math.sin(deltaLng) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(deltaLng);
-    return math.atan2(y, x);
   }
 
   Future<void> _submitForm() async {
@@ -965,10 +866,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   ],
                                 ),
                                 MarkerLayer(
-                                  markers: [
-                                    ..._buildRouteDirectionMarkers(),
-                                    ..._buildRoutePointMarkers(),
-                                  ],
+                                  markers: _buildRoutePointMarkers(),
                                 ),
                               ],
                             ),
@@ -1241,82 +1139,6 @@ class _RoutePointMarker extends StatelessWidget {
                 : Icon(icon, color: Colors.white, size: 20),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RouteSegmentOrderBadge extends StatelessWidget {
-  final int from;
-  final int to;
-  final Color color;
-
-  const _RouteSegmentOrderBadge({
-    required this.from,
-    required this.to,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color, width: 1.4),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 5,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Text(
-        '$from->$to',
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-class _RouteDirectionArrow extends StatelessWidget {
-  final double angle;
-  final Color color;
-
-  const _RouteDirectionArrow({
-    required this.angle,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: angle,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: color, width: 1.5),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x24000000),
-              blurRadius: 5,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Icon(
-          Icons.navigation_rounded,
-          color: color,
-          size: 18,
-        ),
       ),
     );
   }

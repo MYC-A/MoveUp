@@ -290,7 +290,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
         name: _post.content.isNotEmpty ? _post.content : 'Маршрут ${_post.id}',
         points: points,
         distance: _post.distance,
-        date: DateTime.parse(_post.createdAt.toString()),
+        date: _post.createdAt.toLocal(),
         duration: Duration(seconds: _post.duration),
         description: _post.content,
         is_downloaded: 1,
@@ -338,6 +338,7 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
 
     final postAvatarUrl = (_post.userAvatarUrl ?? '')
         .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
+    final postContent = _post.content.trim();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -387,27 +388,33 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                               radius: 20,
                             ),
                             SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _post.userFullName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Colors.black,
-                                    fontFamily: 'Roboto',
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _post.userFullName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: Colors.black,
+                                      fontFamily: 'Roboto',
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  Helper.formatDateTime(_post.createdAt),
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                    fontFamily: 'Roboto',
+                                  Text(
+                                    Helper.formatDateTime(_post.createdAt),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                      fontFamily: 'Roboto',
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -582,44 +589,45 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                             ],
                           ),
                         ),
-                      Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _post.content,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.black,
-                                fontFamily: 'Roboto',
+                      if (postContent.isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                postContent,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black,
+                                  fontFamily: 'Roboto',
+                                ),
+                                maxLines: _isExpanded ? null : 3,
+                                overflow: _isExpanded
+                                    ? TextOverflow.visible
+                                    : TextOverflow.ellipsis,
                               ),
-                              maxLines: _isExpanded ? null : 3,
-                              overflow: _isExpanded
-                                  ? TextOverflow.visible
-                                  : TextOverflow.ellipsis,
-                            ),
-                            if (_post.content.length > 100)
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _isExpanded = !_isExpanded;
-                                  });
-                                },
-                                child: Text(
-                                  _isExpanded
-                                      ? 'Свернуть'
-                                      : 'Показать полностью',
-                                  style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontFamily: 'Roboto',
-                                    fontWeight: FontWeight.bold,
+                              if (postContent.length > 100)
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _isExpanded = !_isExpanded;
+                                    });
+                                  },
+                                  child: Text(
+                                    _isExpanded
+                                        ? 'Свернуть'
+                                        : 'Показать полностью',
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontFamily: 'Roboto',
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
                       if (_post.photoUrls != null &&
                           _post.photoUrls!.isNotEmpty)
                         Padding(
@@ -671,54 +679,69 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
                           ),
                         ),
                       Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    _post.likedByCurrentUser
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: _post.likedByCurrentUser
-                                        ? Colors.red
-                                        : Colors.grey,
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      _post.likedByCurrentUser
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      color: _post.likedByCurrentUser
+                                          ? Colors.red
+                                          : Colors.grey,
+                                    ),
+                                    onPressed: _likePost,
                                   ),
-                                  onPressed: _likePost,
-                                ),
-                                Text(
-                                  '${_post.likesCount} лайков',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontFamily: 'Roboto',
+                                  Flexible(
+                                    child: Text(
+                                      '${_post.likesCount} лайков',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontFamily: 'Roboto',
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.comment, color: Colors.grey),
-                                  onPressed: () {
-                                    if (!_scrollController.hasClients) return;
-                                    _scrollController.animateTo(
-                                      _scrollController
-                                          .position.maxScrollExtent,
-                                      duration: Duration(milliseconds: 300),
-                                      curve: Curves.easeOut,
-                                    );
-                                  },
-                                ),
-                                Text(
-                                  '${_post.commentsCount} комментариев',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontFamily: 'Roboto',
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(Icons.comment,
+                                        color: Colors.grey),
+                                    onPressed: () {
+                                      if (!_scrollController.hasClients) return;
+                                      _scrollController.animateTo(
+                                        _scrollController
+                                            .position.maxScrollExtent,
+                                        duration: Duration(milliseconds: 300),
+                                        curve: Curves.easeOut,
+                                      );
+                                    },
                                   ),
-                                ),
-                              ],
+                                  Flexible(
+                                    child: Text(
+                                      '${_post.commentsCount} комментариев',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontFamily: 'Roboto',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

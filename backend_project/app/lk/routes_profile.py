@@ -526,7 +526,7 @@ async def get_user_posts(
             "user_id": post.user_id,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
-            "created_at": post.created_at,
+            "created_at": post.created_at.isoformat(),
             "liked_by_current_user": liked_by_current_user,  # Добавляем информацию о лайке
             "user": {
                 "id": post.user.id,

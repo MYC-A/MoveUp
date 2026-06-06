@@ -205,13 +205,13 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               _SeatsBadge(event: event),
             ],
           ),
-          if (event.organizerName?.isNotEmpty == true) ...[
+          if (event.organizerName?.trim().isNotEmpty == true) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoPill(
               icon: Icons.person_pin_circle_outlined,
               label: _isOrganizer
-                  ? 'Организатор: вы'
-                  : 'Организатор: ${event.organizerName}',
+                  ? 'Вы организатор'
+                  : event.organizerName!.trim(),
               color: AppColors.primary,
             ),
           ],

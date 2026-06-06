@@ -221,6 +221,8 @@ class _PostItemState extends State<PostItem>
         (post.userAvatarUrl ?? 'https://via.placeholder.com/150')
             .replaceAll('localhost:9000', AppConfig.mediaBaseUrlWithoutScheme);
     final hasRoute = widget.isValidRoute(post.routeData);
+    final hasContent = post.content.trim().isNotEmpty;
+    final hasPhotos = post.photoUrls?.isNotEmpty == true;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -248,10 +250,11 @@ class _PostItemState extends State<PostItem>
           if (hasRoute) _buildRouteMap(post),
           if (hasRoute && (post.distance > 0 || post.duration > 0))
             _buildRouteStats(post),
-          _buildContent(post),
+          if (hasContent) _buildContent(post),
           _buildPostChips(post, hasRoute),
-          if (post.photoUrls != null && post.photoUrls!.isNotEmpty)
-            _buildPhotoGrid(post),
+          if (hasPhotos) _buildPhotoGrid(post),
+          if (!hasRoute && !hasContent && !hasPhotos)
+            const SizedBox(height: AppSpacing.xs),
           const Divider(height: 1, color: AppColors.border),
           _buildActions(post),
         ],
@@ -458,9 +461,6 @@ class _PostItemState extends State<PostItem>
   Widget _buildContent(Post post) {
     final textTheme = Theme.of(context).textTheme;
 
-    // Без описания не рисуем блок вообще — иначе остаётся пустой отступ.
-    if (post.content.trim().isEmpty) return const SizedBox.shrink();
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -534,12 +534,17 @@ class _PostItemState extends State<PostItem>
 
     if (chips.isEmpty) return const SizedBox.shrink();
 
+    final hasContent = post.content.trim().isNotEmpty;
+    final hasPhotos = post.photoUrls?.isNotEmpty == true;
+    final topPadding = hasContent ? 0.0 : AppSpacing.xs;
+    final bottomPadding = hasPhotos ? AppSpacing.sm : AppSpacing.md;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        0,
+        topPadding,
         AppSpacing.lg,
-        AppSpacing.md,
+        bottomPadding,
       ),
       child: Wrap(
         spacing: AppSpacing.xs,
@@ -748,6 +753,8 @@ class _PostChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxLabelWidth = MediaQuery.sizeOf(context).width * 0.58;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: background,
@@ -763,13 +770,18 @@ class _PostChip extends StatelessWidget {
           children: [
             Icon(icon, color: foreground, size: 18),
             const SizedBox(width: AppSpacing.xs),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: foreground,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxLabelWidth),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: foreground,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
             ),
           ],
         ),

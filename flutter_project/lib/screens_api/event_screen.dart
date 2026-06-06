@@ -1538,43 +1538,64 @@ class _OrganizerChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.pill),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(AppRadii.pill),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            const Icon(Icons.person_pin_circle_outlined,
-                size: 16, color: AppColors.primary),
-            const SizedBox(width: AppSpacing.xxs),
-            Expanded(
-              child: Text(
-                isMe ? 'Организатор: вы' : 'Организатор: $name',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  height: 1.2,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
+    final label = isMe ? 'Вы организатор' : name;
+    final maxWidth =
+        (MediaQuery.sizeOf(context).width - AppSpacing.lg * 4)
+            .clamp(140.0, 300.0)
+            .toDouble();
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.18),
               ),
             ),
-            const SizedBox(width: AppSpacing.xxs),
-            const Icon(Icons.chevron_right,
-                size: 16, color: AppColors.primary),
-          ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.person_pin_circle_outlined,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: AppSpacing.xxs),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xxs),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
