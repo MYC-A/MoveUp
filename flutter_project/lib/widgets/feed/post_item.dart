@@ -302,17 +302,23 @@ class _PostItemState extends State<PostItem>
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                Builder(
-                  builder: (context) {
+                LayoutBuilder(
+                  builder: (context, constraints) {
                     final hasCity =
                         post.city != null && post.city!.isNotEmpty;
                     final metaStyle = textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 14,
                     );
-                    return Row(
+                    // Город и время — отдельные «блоки» в Wrap: если оба
+                    // помещаются по ширине, они в одной строке; если нет —
+                    // время переносится на следующую строку и НЕ обрезается.
+                    return Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: AppSpacing.xs,
+                      runSpacing: 2,
                       children: [
-                        if (hasRoute) ...[
+                        if (hasRoute)
                           DecoratedBox(
                             decoration: BoxDecoration(
                               color: AppColors.routeSoft,
@@ -327,28 +333,41 @@ class _PostItemState extends State<PostItem>
                               ),
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.xs),
-                        ],
-                        if (hasCity) ...[
-                          const Icon(Icons.place_outlined,
-                              size: 14, color: AppColors.textSecondary),
-                          const SizedBox(width: 2),
-                          // Город сжимается при нехватке места — но время
-                          // всегда остаётся видимым целиком.
-                          Flexible(
-                            child: Text(
-                              post.city!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: metaStyle,
+                        if (hasCity)
+                          ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: constraints.maxWidth),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.place_outlined,
+                                    size: 14, color: AppColors.textSecondary),
+                                const SizedBox(width: 2),
+                                // Город ужимается только если длиннее всей
+                                // доступной ширины (почти никогда).
+                                Flexible(
+                                  child: Text(
+                                    post.city!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: metaStyle,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(' · ', style: metaStyle),
-                        ],
-                        Text(
-                          Helper.formatDateTime(post.createdAt),
-                          maxLines: 1,
-                          style: metaStyle,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.schedule,
+                                size: 13, color: AppColors.textSecondary),
+                            const SizedBox(width: 2),
+                            Text(
+                              Helper.formatDateTime(post.createdAt),
+                              maxLines: 1,
+                              style: metaStyle,
+                            ),
+                          ],
                         ),
                       ],
                     );

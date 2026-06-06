@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.exceptions import HTTPException
@@ -7,6 +9,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.db.base import init_db
+
+# Включаем вывод логов приложения. По умолчанию uvicorn показывает только свои
+# логи, а logger.info()/logger.warning() из модулей не виден — из-за этого
+# диагностику push-уведомлений не было видно в консоли.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 from app.exceptions import TokenExpiredException, TokenNoFoundException
 from app.lk.routes_profile import router as profile_router
 from app.lk.routes_notifications import router as notifications_router

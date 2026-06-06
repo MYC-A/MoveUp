@@ -75,6 +75,10 @@ class PushNotificationService:
                 cred = credentials.Certificate(str(credentials_path))
                 firebase_admin.initialize_app(cred)
             cls._initialized = True
+            logger.info(
+                "Firebase Admin SDK инициализирован (credentials: %s)",
+                credentials_path,
+            )
             return True
         except Exception:
             logger.exception("Failed to initialize Firebase Admin SDK")
@@ -90,14 +94,36 @@ class PushNotificationService:
         data: dict[str, Any],
         unread_count: int,
     ) -> None:
+        logger.info("Push: запрос на отправку уведомления получателю %s", recipient_id)
+
         if not cls._initialize_firebase() or messaging is None:
+            logger.warning(
+                "Push: отправка получателю %s ПРОПУЩЕНА — Firebase не инициализирован "
+                "(FCM_ENABLED=%s, credentials_path=%r). Проверьте .env и наличие "
+                "service-account.json.",
+                recipient_id,
+                settings.FCM_ENABLED,
+                settings.FIREBASE_CREDENTIALS_PATH,
+            )
             return
 
         tokens = await PushTokenDAO.get_active_tokens_for_user(recipient_id)
         if not tokens:
+            logger.warning(
+                "Push: у получателя %s НЕТ активных FCM-токенов — уведомление не "
+                "отправлено. Устройство должно зарегистрировать токен при входе.",
+                recipient_id,
+            )
             return
 
+        logger.info(
+            "Push: найдено %d активных токен(ов) для получателя %s, отправляю...",
+            len(tokens),
+            recipient_id,
+        )
+
         invalid_tokens: list[str] = []
+        sent_count = 0
         payload_data = {key: str(value) for key, value in data.items() if value is not None}
         payload_data["title"] = title
         payload_data["body"] = body
@@ -129,14 +155,36 @@ class PushNotificationService:
             )
 
             try:
-                await asyncio.to_thread(messaging.send, message)
+                message_id = await asyncio.to_thread(messaging.send, message)
+                sent_count += 1
+                logger.info(
+                    "Push: уведомление получателю %s доставлено в FCM (token=…%s, id=%s)",
+                    recipient_id,
+                    token[-8:],
+                    message_id,
+                )
             except Exception as exc:
                 if exc.__class__.__name__ in {
                     "UnregisteredError",
                     "SenderIdMismatchError",
                 }:
                     invalid_tokens.append(token)
+                    logger.warning(
+                        "Push: токен получателя %s недействителен (…%s, %s) — "
+                        "будет деактивирован.",
+                        recipient_id,
+                        token[-8:],
+                        exc.__class__.__name__,
+                    )
                 else:
                     logger.exception("Failed to send FCM message to user %s", recipient_id)
+
+        logger.info(
+            "Push: итог для получателя %s — отправлено %d/%d, деактивировано %d токен(ов).",
+            recipient_id,
+            sent_count,
+            len(tokens),
+            len(invalid_tokens),
+        )
 
         await PushTokenDAO.deactivate_tokens(invalid_tokens)
