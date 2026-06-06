@@ -1147,30 +1147,32 @@ class _RoutePointMarker extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: color, width: 1.5),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x26000000),
-                  blurRadius: 6,
-                  offset: Offset(0, 2),
+          if (_isStart || _isFinish) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: color, width: 1.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: _isStart || _isFinish ? 10 : 12,
-                fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          const SizedBox(height: 2),
+            const SizedBox(height: 2),
+          ],
           Container(
             width: 34,
             height: 34,
