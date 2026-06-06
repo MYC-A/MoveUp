@@ -37,7 +37,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // уведомление в трее автоматически (background/killed). Вызывать
     // showRemoteMessage здесь не нужно — это создало бы дублирующее уведомление.
   } catch (e) {
-    debugPrint('Failed to initialize Firebase in background handler: $e');
+    debugPrint('Ошибка фоновой инициализации Firebase: $e');
   }
 }
 
@@ -116,7 +116,6 @@ class PushNotificationService {
         'project=${AppFirebaseOptions.projectId} '
         'sender=${AppFirebaseOptions.messagingSenderId}',
       );
-      _initializing = true;
       WidgetsFlutterBinding.ensureInitialized();
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(options: options);
@@ -367,8 +366,7 @@ class PushNotificationService {
       await _showSimpleLocalNotification(
         message: message,
         data: data,
-        key:
-            'push_debug:${data['debug_at'] ?? message.messageId ?? DateTime.now().microsecondsSinceEpoch}',
+        key: 'push_debug:${data['debug_at'] ?? message.messageId ?? DateTime.now().microsecondsSinceEpoch}',
         fallbackTitle: 'MoveUp test push',
       );
       return;
@@ -483,7 +481,7 @@ class PushNotificationService {
         _conversationLines[key] = List<String>.from(stored);
       }
     } catch (e) {
-      debugPrint('Failed to read push lines: $e');
+      debugPrint('Ошибка чтения push-lines: $e');
     }
 
     return List<String>.from(
@@ -499,7 +497,7 @@ class PushNotificationService {
         _conversationTotal[key] = stored;
       }
     } catch (e) {
-      debugPrint('Failed to read push total: $e');
+      debugPrint('Ошибка чтения push-total: $e');
     }
 
     return _conversationTotal[key] ?? 0;
@@ -518,7 +516,7 @@ class PushNotificationService {
       await prefs.setStringList('push_lines_$key', lines);
       await prefs.setInt('push_total_$key', total);
     } catch (e) {
-      debugPrint('Failed to save push state: $e');
+      debugPrint('Ошибка сохранения push-state: $e');
     }
   }
 
@@ -532,7 +530,7 @@ class PushNotificationService {
       await prefs.remove('push_lines_$key');
       await prefs.remove('push_total_$key');
     } catch (e) {
-      debugPrint('Failed to clear push state: $e');
+      debugPrint('Ошибка очистки push-state: $e');
     }
   }
 
@@ -585,8 +583,7 @@ class PushNotificationService {
       return;
     }
     if (handler == null) {
-      _debugLog(
-          'open pending notification delayed: navigation handler is null');
+      _debugLog('open pending notification delayed: navigation handler is null');
       return;
     }
 

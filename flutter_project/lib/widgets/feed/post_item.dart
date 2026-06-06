@@ -80,8 +80,7 @@ class _PostItemState extends State<PostItem>
   }
 
   void _navigateToUserProfile(int userId) {
-    debugPrint(
-        'Post author tap: currentUserId=${widget.currentUserId}, userId=$userId');
+    print("currentUserId: ${widget.currentUserId} and userId: $userId");
 
     // Если userId совпадает с текущим пользователем, переходим на ProfileScreen
     if (widget.currentUserId != null && userId == widget.currentUserId) {
@@ -283,7 +282,7 @@ class _PostItemState extends State<PostItem>
                 cacheManager: customCacheManager,
               ),
               onBackgroundImageError: (exception, stackTrace) {
-                debugPrint('Failed to load post avatar: $exception');
+                debugPrint('Ошибка загрузки аватарки: $exception');
               },
             ),
           ),
@@ -303,23 +302,17 @@ class _PostItemState extends State<PostItem>
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                LayoutBuilder(
-                  builder: (context, constraints) {
+                Builder(
+                  builder: (context) {
                     final hasCity =
                         post.city != null && post.city!.isNotEmpty;
                     final metaStyle = textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 14,
                     );
-                    // Город и время — отдельные «блоки» в Wrap: если оба
-                    // помещаются по ширине, они в одной строке; если нет —
-                    // время переносится на следующую строку и НЕ обрезается.
-                    return Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: AppSpacing.xs,
-                      runSpacing: 2,
+                    return Row(
                       children: [
-                        if (hasRoute)
+                        if (hasRoute) ...[
                           DecoratedBox(
                             decoration: BoxDecoration(
                               color: AppColors.routeSoft,
@@ -334,39 +327,28 @@ class _PostItemState extends State<PostItem>
                               ),
                             ),
                           ),
-                        if (hasCity)
-                          SizedBox(
-                            width: constraints.maxWidth,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                const Icon(Icons.place_outlined,
-                                    size: 14, color: AppColors.textSecondary),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    post.city!.trim(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false,
-                                    style: metaStyle,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.schedule,
-                                size: 13, color: AppColors.textSecondary),
-                            const SizedBox(width: 2),
-                            Text(
-                              Helper.formatDateTime(post.createdAt),
+                          const SizedBox(width: AppSpacing.xs),
+                        ],
+                        if (hasCity) ...[
+                          const Icon(Icons.place_outlined,
+                              size: 14, color: AppColors.textSecondary),
+                          const SizedBox(width: 2),
+                          // Город сжимается при нехватке места — но время
+                          // всегда остаётся видимым целиком.
+                          Flexible(
+                            child: Text(
+                              post.city!,
                               maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: metaStyle,
                             ),
-                          ],
+                          ),
+                          Text(' · ', style: metaStyle),
+                        ],
+                        Text(
+                          Helper.formatDateTime(post.createdAt),
+                          maxLines: 1,
+                          style: metaStyle,
                         ),
                       ],
                     );
