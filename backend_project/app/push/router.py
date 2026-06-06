@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends
 
 from app.push.dao import PushTokenDAO
+from app.push.service import PushNotificationService
 from app.push.schemas import PushTokenDelete, PushTokenRegister
 from app.users.dependensies_user import get_current_user
 from app.users.models_user import User
@@ -57,3 +58,10 @@ async def delete_push_token(
     )
     await PushTokenDAO.deactivate_token(payload.token, user_id=current_user.id)
     return {"status": "ok"}
+
+
+@router.post("/debug/send_test")
+async def send_debug_push(current_user: User = Depends(get_current_user)):
+    logger.info("Debug push requested: user=%s", current_user.id)
+    result = await PushNotificationService.send_debug_push(current_user.id)
+    return {"status": "ok", **result}

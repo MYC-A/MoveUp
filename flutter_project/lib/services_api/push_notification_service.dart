@@ -58,6 +58,7 @@ class PushNotificationService {
       notificationNavigationHandler;
 
   static bool _initialized = false;
+  static bool _initializing = false;
   static bool _localNotificationsReady = false;
   static String? _activeConversationKey;
   static Map<String, dynamic>? _pendingNotificationData;
@@ -88,14 +89,24 @@ class PushNotificationService {
       _debugLog('initialize skipped: already initialized');
       return;
     }
+    if (_initializing) {
+      _debugLog('initialize skipped: initialization is already running');
+      return;
+    }
+    _initializing = true;
     if (!_isSupportedPlatform) {
       _debugLog('disabled: unsupported platform=$defaultTargetPlatform');
+      _initializing = false;
       return;
     }
 
     final options = AppFirebaseOptions.currentPlatform;
     if (options == null) {
-      _debugLog('disabled: Firebase dart-defines are not configured');
+      _debugLog(
+        'disabled: Firebase dart-defines are not configured; '
+        'missing=${AppFirebaseOptions.missingConfigKeys.join(', ')}',
+      );
+      _initializing = false;
       return;
     }
 
@@ -138,6 +149,8 @@ class PushNotificationService {
     } catch (e, stackTrace) {
       _debugLog('initialize failed: $e');
       debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -162,8 +175,16 @@ class PushNotificationService {
 
   static Future<void> registerCurrentDeviceToken() async {
     if (!_initialized) {
-      _debugLog('register token skipped: service is not initialized');
-      return;
+      _debugLog(
+        'register token requested before push init; trying initialize. '
+        'firebaseConfigured=${AppFirebaseOptions.isConfigured} '
+        'missing=${AppFirebaseOptions.missingConfigKeys.join(', ')}',
+      );
+      await initialize();
+      if (!_initialized) {
+        _debugLog('register token skipped: service is still not initialized');
+        return;
+      }
     }
 
     try {
@@ -340,8 +361,19 @@ class PushNotificationService {
     await _initializeLocalNotifications();
 
     final data = message.data;
-    if (data['type'] != 'chat_message') {
-      _debugLog('foreground message ignored: unsupported type=${data['type']}');
+    final messageType = data['type']?.toString();
+    if (messageType == 'push_debug') {
+      await _showSimpleLocalNotification(
+        message: message,
+        data: data,
+        key: 'push_debug:${data['debug_at'] ?? message.messageId ?? DateTime.now().microsecondsSinceEpoch}',
+        fallbackTitle: 'MoveUp test push',
+      );
+      return;
+    }
+
+    if (messageType != 'chat_message') {
+      _debugLog('foreground message ignored: unsupported type=$messageType');
       return;
     }
 
@@ -404,6 +436,40 @@ class PushNotificationService {
     _debugLog(
       'local notification shown: key=$key id=${_notificationIdFor(key)} '
       'unread=$unreadCount title=$title',
+    );
+  }
+
+  static Future<void> _showSimpleLocalNotification({
+    required RemoteMessage message,
+    required Map<String, dynamic> data,
+    required String key,
+    required String fallbackTitle,
+  }) async {
+    final title = message.notification?.title ??
+        data['title']?.toString() ??
+        fallbackTitle;
+    final body = _truncate(
+      message.notification?.body ?? data['body']?.toString() ?? '',
+    );
+
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: 'Диагностические и системные уведомления MoveUp',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    await _localNotifications.show(
+      _notificationIdFor(key),
+      title,
+      body,
+      const NotificationDetails(android: androidDetails),
+      payload: json.encode(data),
+    );
+    _debugLog(
+      'simple local notification shown: key=$key id=${_notificationIdFor(key)} '
+      'type=${data['type']} title=$title',
     );
   }
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -202,3 +203,104 @@ class PushNotificationService:
             len(invalid_tokens),
             len(tokens),
         )
+
+
+    @classmethod
+    async def send_debug_push(cls, recipient_id: int) -> dict[str, Any]:
+        """Sends an auth-only diagnostic push to the current user's devices."""
+        result: dict[str, Any] = {
+            "firebase_configured": cls._is_configured(),
+            "firebase_initialized": False,
+            "active_tokens": 0,
+            "sent": 0,
+            "invalid_tokens": 0,
+            "errors": [],
+        }
+
+        if not cls._initialize_firebase() or messaging is None:
+            logger.warning(
+                "FCM debug push skipped for user %s: firebase is not initialized",
+                recipient_id,
+            )
+            result["errors"].append("firebase_not_initialized")
+            return result
+
+        result["firebase_initialized"] = True
+        tokens = await PushTokenDAO.get_active_tokens_for_user(recipient_id)
+        result["active_tokens"] = len(tokens)
+        if not tokens:
+            logger.warning("FCM debug push skipped for user %s: no active tokens", recipient_id)
+            result["errors"].append("no_active_tokens")
+            return result
+
+        invalid_tokens: list[str] = []
+        now = datetime.now(timezone.utc).isoformat()
+        logger.info("FCM debug push start: user=%s tokens=%s", recipient_id, len(tokens))
+
+        for token in tokens:
+            message = messaging.Message(
+                token=token,
+                notification=messaging.Notification(
+                    title="MoveUp test push",
+                    body=f"Diagnostic notification at {now}",
+                ),
+                data={
+                    "type": "push_debug",
+                    "title": "MoveUp test push",
+                    "body": f"Diagnostic notification at {now}",
+                    "debug_at": now,
+                },
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id=settings.FCM_ANDROID_CHANNEL_ID,
+                        sound="default",
+                    ),
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound="default", badge=1),
+                    ),
+                ),
+            )
+
+            try:
+                message_id = await asyncio.to_thread(messaging.send, message)
+                result["sent"] += 1
+                logger.info(
+                    "FCM debug push ok: user=%s token=%s message_id=%s",
+                    recipient_id,
+                    _short_token(token),
+                    message_id,
+                )
+            except Exception as exc:
+                if exc.__class__.__name__ in {
+                    "UnregisteredError",
+                    "SenderIdMismatchError",
+                }:
+                    invalid_tokens.append(token)
+                    logger.warning(
+                        "FCM debug token invalid: user=%s token=%s error=%s",
+                        recipient_id,
+                        _short_token(token),
+                        exc.__class__.__name__,
+                    )
+                else:
+                    error = f"{exc.__class__.__name__}: {exc}"
+                    result["errors"].append(error)
+                    logger.exception(
+                        "FCM debug push failed: user=%s token=%s",
+                        recipient_id,
+                        _short_token(token),
+                    )
+
+        await PushTokenDAO.deactivate_tokens(invalid_tokens)
+        result["invalid_tokens"] = len(invalid_tokens)
+        logger.info(
+            "FCM debug push done: user=%s sent=%s invalid=%s active_before=%s",
+            recipient_id,
+            result["sent"],
+            result["invalid_tokens"],
+            result["active_tokens"],
+        )
+        return result
