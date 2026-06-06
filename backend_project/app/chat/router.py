@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 import logging
 
+logger = logging.getLogger(__name__)
+
 # Создаем экземпляр маршрутизатора с префиксом /chat и тегом "Chat"
 router = APIRouter(prefix='/chat', tags=['Chat'])
 # Настройка шаблонов Jinja2
@@ -145,6 +147,11 @@ async def _send_personal_message_push(
     content: str,
 ) -> None:
     if not PushNotificationService.is_enabled():
+        logger.warning(
+            "Personal push skipped: FCM is disabled recipient=%s message_id=%s",
+            recipient_id,
+            message_id,
+        )
         return
 
     unread = await MessagesDAO.get_unread_messages_count(recipient_id)
@@ -173,6 +180,12 @@ async def _send_group_message_push(
     content: str,
 ) -> None:
     if not PushNotificationService.is_enabled():
+        logger.warning(
+            "Group push skipped: FCM is disabled recipient=%s group_chat=%s message_id=%s",
+            recipient_id,
+            group_chat_id,
+            message_id,
+        )
         return
 
     sender_name = sender.full_name or "Участник"

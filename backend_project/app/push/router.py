@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 
 from app.push.dao import PushTokenDAO
@@ -6,6 +8,15 @@ from app.users.dependensies_user import get_current_user
 from app.users.models_user import User
 
 router = APIRouter(prefix="/push", tags=["Push"])
+logger = logging.getLogger(__name__)
+
+
+def _short_token(token: str | None) -> str:
+    if not token:
+        return "<empty>"
+    if len(token) <= 12:
+        return token
+    return f"{token[:6]}...{token[-6:]}"
 
 
 @router.post("/tokens")
@@ -13,11 +24,23 @@ async def register_push_token(
     payload: PushTokenRegister,
     current_user: User = Depends(get_current_user),
 ):
+    logger.info(
+        "Register push token: user=%s platform=%s token=%s device_id=%s",
+        current_user.id,
+        payload.platform,
+        _short_token(payload.token),
+        payload.device_id,
+    )
     await PushTokenDAO.upsert_token(
         user_id=current_user.id,
         token=payload.token,
         platform=payload.platform,
         device_id=payload.device_id,
+    )
+    logger.info(
+        "Register push token ok: user=%s token=%s",
+        current_user.id,
+        _short_token(payload.token),
     )
     return {"status": "ok"}
 
@@ -27,5 +50,10 @@ async def delete_push_token(
     payload: PushTokenDelete,
     current_user: User = Depends(get_current_user),
 ):
+    logger.info(
+        "Deactivate push token: user=%s token=%s",
+        current_user.id,
+        _short_token(payload.token),
+    )
     await PushTokenDAO.deactivate_token(payload.token, user_id=current_user.id)
     return {"status": "ok"}

@@ -601,50 +601,45 @@ async def approve_application(
 ):
     try:
         event_result = await db.execute(
-            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+            select(Event)
+            .where(Event.id == event_id, Event.organizer_id == current_user)
+            .with_for_update()
         )
-        event = event_result.scalars().first()
+        event = event_result.scalar_one_or_none()
         if not event:
             raise ValueError("Событие не найдено или вы не являетесь организатором")
 
-        # Обновляем статус участника
         participant = await EventParticipantDAO.update_participant(
             participant_id=participant_id,
             event_id=event_id,
             new_status=ApprovedType.APPROVED,
             session=db,
+            commit=False,
         )
 
-        # Чат опционален. Создаём его лениво при первом одобрении ТОЛЬКО если
-        # организатор включил чат при создании мероприятия (group_chat_enabled).
-        # Если чат не нужен — заявка просто одобряется без чата.
+        # Чат опционален. Создаем его в той же транзакции, что и одобрение:
+        # статус заявки, счетчик мест и состав группового чата не расходятся.
         if event.group_chat_id is None and event.group_chat_enabled:
             group_chat = GroupChat(
                 name=event.title,
                 creator_id=event.organizer_id,
             )
             db.add(group_chat)
-            await db.flush()  # получаем group_chat.id без отдельного commit
+            await db.flush()
 
-            # Организатор сразу состоит в чате события.
             await db.execute(
                 group_chat_participants.insert().values(
                     group_chat_id=group_chat.id,
                     user_id=event.organizer_id,
                 )
             )
-
             event.group_chat_id = group_chat.id
-            await db.commit()
-            await db.refresh(event)
 
-        # Добавляем одобренного участника в групповой чат, если чат есть и его
-        # там ещё нет.
         if event.group_chat_id is not None:
             existing_chat_member = await db.execute(
                 select(group_chat_participants).where(
-                    (group_chat_participants.c.group_chat_id == event.group_chat_id) &
-                    (group_chat_participants.c.user_id == participant.user_id)
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id)
+                    & (group_chat_participants.c.user_id == participant.user_id)
                 )
             )
             if existing_chat_member.first() is None:
@@ -654,9 +649,9 @@ async def approve_application(
                         user_id=participant.user_id,
                     )
                 )
-                await db.commit()
 
-        # Возвращаем данные мероприятия
+        await db.commit()
+
         return {
             "id": event.id,
             "title": event.title,
@@ -666,8 +661,10 @@ async def approve_application(
             "status": participant.approved.value,
         }
     except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        await db.rollback()
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 @router.post("/event/{event_id}/applications/{participant_id}/reject")
@@ -756,9 +753,11 @@ async def remove_event_participant(
 ):
     try:
         event_result = await db.execute(
-            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+            select(Event)
+            .where(Event.id == event_id, Event.organizer_id == current_user)
+            .with_for_update()
         )
-        event = event_result.scalars().first()
+        event = event_result.scalar_one_or_none()
         if not event:
             raise ValueError("Событие не найдено или вы не являетесь организатором")
 
@@ -766,21 +765,24 @@ async def remove_event_participant(
             participant_id=participant_id,
             event_id=event_id,
             session=db,
+            commit=False,
         )
 
         if event.group_chat_id is not None:
             await db.execute(
                 delete(group_chat_participants).where(
-                    (group_chat_participants.c.group_chat_id == event.group_chat_id) &
-                    (group_chat_participants.c.user_id == participant.user_id)
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id)
+                    & (group_chat_participants.c.user_id == participant.user_id)
                 )
             )
-            await db.commit()
 
+        await db.commit()
         return {"message": "Участник удален", "participant_id": participant_id}
     except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
+        await db.rollback()
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 

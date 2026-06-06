@@ -91,15 +91,19 @@ class EventDAO(BaseDAO):
             cls,
             event_data: dict,
             organizer_id: int,
-            session: AsyncSession
+            session: AsyncSession,
+            commit: bool = True,
     ):
         if "max_participants" in event_data:
             event_data["available_seats"] = event_data["max_participants"]
 
         event = Event(**event_data, organizer_id=organizer_id)
         session.add(event)
-        await session.commit()
-        await session.refresh(event)
+        if commit:
+            await session.commit()
+            await session.refresh(event)
+        else:
+            await session.flush()
         return event
 
     @classmethod
@@ -180,6 +184,7 @@ class EventParticipantDAO(BaseDAO):
             event_id: int,  # Добавляем event_id для прямого доступа к мероприятию
             new_status: ApprovedType,
             session: AsyncSession,
+            commit: bool = True,
     ) -> EventParticipant:
         """
         Обновляет статус участника мероприятия.
@@ -188,49 +193,61 @@ class EventParticipantDAO(BaseDAO):
         :param event_id: ID мероприятия.
         :param new_status: Новый статус заявки (APPROVED, AWAITS, DENIED).
         :param session: Асинхронная сессия SQLAlchemy.
+        :param commit: Фиксировать изменения внутри DAO или оставить транзакцию вызывающему коду.
         :return: Обновленный участник мероприятия.
         :raises ValueError: Если участник не найден или нет доступных мест.
         :raises Exception: Если произошла ошибка при работе с базой данных.
         """
         try:
-            # Находим участника по ID и проверяем, что он принадлежит указанному мероприятию
-            participant = await session.execute(
-                select(EventParticipant)
-                .where(EventParticipant.id == participant_id)
-                .where(EventParticipant.event_id == event_id)
+            event_result = await session.execute(
+                select(Event)
+                .where(Event.id == event_id)
+                .with_for_update()
             )
-            participant = participant.scalar()
-            if not participant:
-                raise ValueError("Участник мероприятия не найден")
-
-            # Получаем мероприятие по event_id
-            event = await session.get(Event, event_id)
+            event = event_result.scalar_one_or_none()
             if not event:
                 raise ValueError("Мероприятие не найдено")
 
-            # Текущий статус участника
+            # Блокируем заявку в той же транзакции: два параллельных одобрения
+            # не смогут одновременно списать одно и то же свободное место.
+            participant_result = await session.execute(
+                select(EventParticipant)
+                .where(EventParticipant.id == participant_id)
+                .where(EventParticipant.event_id == event_id)
+                .with_for_update()
+            )
+            participant = participant_result.scalar_one_or_none()
+            if not participant:
+                raise ValueError("Участник мероприятия не найден")
+
             current_status = participant.approved
 
             if current_status == new_status:
+                if commit:
+                    await session.commit()
                 return participant
 
-            # Если новый статус — APPROVED
             if new_status == ApprovedType.APPROVED:
                 if event.available_seats <= 0:
                     raise ValueError("Нет доступных мест для участия")
-                event.available_seats -= 1  # Уменьшаем количество доступных мест
+                event.available_seats -= 1
+            elif current_status == ApprovedType.APPROVED:
+                event.available_seats = min(
+                    event.available_seats + 1,
+                    event.max_participants,
+                )
 
-            # Если текущий статус — APPROVED, а новый — не APPROVED
-            elif current_status == ApprovedType.APPROVED and new_status != ApprovedType.APPROVED:
-                event.available_seats += 1  # Увеличиваем количество доступных мест
-
-            # Обновляем статус участника
             participant.approved = new_status
             participant.status_changed = True
-            await session.commit()
+            if commit:
+                await session.commit()
+                await session.refresh(participant)
+            else:
+                await session.flush()
             return participant
         except Exception as e:
-            await session.rollback()
+            if commit:
+                await session.rollback()
             raise e
 
     @classmethod
@@ -239,29 +256,40 @@ class EventParticipantDAO(BaseDAO):
             participant_id: int,
             event_id: int,
             session: AsyncSession,
+            commit: bool = True,
     ) -> EventParticipant:
         try:
+            event_result = await session.execute(
+                select(Event)
+                .where(Event.id == event_id)
+                .with_for_update()
+            )
+            event = event_result.scalar_one_or_none()
+            if not event:
+                raise ValueError("Мероприятие не найдено")
+
             result = await session.execute(
                 select(EventParticipant)
                 .where(EventParticipant.id == participant_id)
                 .where(EventParticipant.event_id == event_id)
+                .with_for_update()
             )
             participant = result.scalar_one_or_none()
             if not participant:
                 raise ValueError("Участник мероприятия не найден")
 
-            event = await session.get(Event, event_id)
-            if not event:
-                raise ValueError("Мероприятие не найдено")
-
             if participant.approved == ApprovedType.APPROVED:
                 event.available_seats = min(event.available_seats + 1, event.max_participants)
 
             await session.delete(participant)
-            await session.commit()
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
             return participant
         except Exception as e:
-            await session.rollback()
+            if commit:
+                await session.rollback()
             raise e
 
     @staticmethod

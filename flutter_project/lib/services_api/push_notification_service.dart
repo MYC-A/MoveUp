@@ -17,13 +17,21 @@ import 'package:flutter_application_1/config/firebase_options.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final options = AppFirebaseOptions.currentPlatform;
-  if (options == null) return;
+  if (options == null) {
+    debugPrint('PUSH BG: Firebase options are not configured');
+    return;
+  }
 
   try {
+    debugPrint(
+      'PUSH BG: message received id=${message.messageId ?? '<no-id>'} '
+      'type=${message.data['type']}',
+    );
     WidgetsFlutterBinding.ensureInitialized();
     DartPluginRegistrant.ensureInitialized();
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(options: options);
+      debugPrint('PUSH BG: Firebase.initializeApp ok');
     }
     // FCM-сообщения теперь содержат поле notification, поэтому ОС показывает
     // уведомление в трее автоматически (background/killed). Вызывать
@@ -56,23 +64,53 @@ class PushNotificationService {
 
   static bool get isInitialized => _initialized;
 
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('PUSH: $message');
+    }
+  }
+
+  static String _shortToken(String? token) {
+    if (token == null || token.isEmpty) return '<empty>';
+    if (token.length <= 12) return token;
+    return '${token.substring(0, 6)}...${token.substring(token.length - 6)}';
+  }
+
+  static String _messageSummary(RemoteMessage message) {
+    return 'id=${message.messageId ?? '<no-id>'} '
+        'type=${message.data['type']} '
+        'conversation=${message.data['conversation_type']}:${message.data['conversation_id']} '
+        'hasNotification=${message.notification != null}';
+  }
+
   static Future<void> initialize() async {
-    if (_initialized) return;
+    if (_initialized) {
+      _debugLog('initialize skipped: already initialized');
+      return;
+    }
     if (!_isSupportedPlatform) {
-      debugPrint('Push disabled: unsupported platform');
+      _debugLog('disabled: unsupported platform=$defaultTargetPlatform');
       return;
     }
 
     final options = AppFirebaseOptions.currentPlatform;
     if (options == null) {
-      debugPrint('Push disabled: Firebase dart-defines are not configured');
+      _debugLog('disabled: Firebase dart-defines are not configured');
       return;
     }
 
     try {
+      _debugLog(
+        'initialize start platform=$_platformName '
+        'project=${AppFirebaseOptions.projectId} '
+        'sender=${AppFirebaseOptions.messagingSenderId}',
+      );
       WidgetsFlutterBinding.ensureInitialized();
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(options: options);
+        _debugLog('Firebase.initializeApp ok');
+      } else {
+        _debugLog('Firebase already initialized apps=${Firebase.apps.length}');
       }
 
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
@@ -84,14 +122,22 @@ class PushNotificationService {
       final initialMessage =
           await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
+        _debugLog('initial message found: ${_messageSummary(initialMessage)}');
         _handleMessageTap(initialMessage);
+      } else {
+        _debugLog('initial message: none');
       }
 
       _initialized = true;
+      _debugLog('initialize ok; registering current device token');
       await registerCurrentDeviceToken();
-      FirebaseMessaging.instance.onTokenRefresh.listen(_registerTokenOnBackend);
-    } catch (e) {
-      debugPrint('Ошибка инициализации push-уведомлений: $e');
+      FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+        _debugLog('token refresh: ${_shortToken(token)}');
+        unawaited(_registerTokenOnBackend(token));
+      });
+    } catch (e, stackTrace) {
+      _debugLog('initialize failed: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -115,26 +161,47 @@ class PushNotificationService {
   }
 
   static Future<void> registerCurrentDeviceToken() async {
-    if (!_initialized) return;
+    if (!_initialized) {
+      _debugLog('register token skipped: service is not initialized');
+      return;
+    }
 
     try {
+      _debugLog('requesting FCM token');
       final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
-        await _registerTokenOnBackend(token);
+      if (token == null || token.isEmpty) {
+        _debugLog('FCM token is empty');
+        return;
       }
-    } catch (e) {
-      debugPrint('Ошибка получения push token: $e');
+      _debugLog('FCM token received: ${_shortToken(token)}');
+      await _registerTokenOnBackend(token);
+    } catch (e, stackTrace) {
+      _debugLog('failed to get FCM token: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
   static Future<void> unregisterCurrentDeviceToken() async {
-    if (!_initialized) return;
+    if (!_initialized) {
+      _debugLog('unregister token skipped: service is not initialized');
+      return;
+    }
 
     try {
       final token = await FirebaseMessaging.instance.getToken();
       final accessToken = await _storage.read(key: 'access_token');
-      if (token == null || token.isEmpty || accessToken == null) return;
+      if (token == null || token.isEmpty) {
+        _debugLog('unregister token skipped: FCM token is empty');
+        return;
+      }
+      if (accessToken == null) {
+        _debugLog(
+          'unregister token skipped: no access token for ${_shortToken(token)}',
+        );
+        return;
+      }
 
+      _debugLog('unregister token on backend: ${_shortToken(token)}');
       final response = await http.post(
         Uri.parse('${AppConfig.apiBaseUrl}/push/tokens/delete'),
         headers: {
@@ -144,11 +211,13 @@ class PushNotificationService {
         body: json.encode({'token': token}),
       );
 
-      if (response.statusCode >= 400) {
-        debugPrint('Ошибка удаления push token: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Ошибка отключения push token: $e');
+      _debugLog(
+        'unregister token response: status=${response.statusCode} '
+        'body=${_truncate(response.body, maxLength: 180)}',
+      );
+    } catch (e, stackTrace) {
+      _debugLog('failed to unregister token: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -157,7 +226,12 @@ class PushNotificationService {
   }
 
   static Future<void> _initializeLocalNotifications() async {
-    if (_localNotificationsReady) return;
+    if (_localNotificationsReady) {
+      _debugLog('local notifications already initialized');
+      return;
+    }
+
+    _debugLog('initializing local notifications channel=$_channelId');
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -178,6 +252,7 @@ class PushNotificationService {
     final launchDetails =
         await _localNotifications.getNotificationAppLaunchDetails();
     if (launchDetails?.didNotificationLaunchApp ?? false) {
+      _debugLog('app launched from local notification payload');
       _handleNotificationPayload(launchDetails?.notificationResponse?.payload);
     }
 
@@ -195,33 +270,51 @@ class PushNotificationService {
         ?.createNotificationChannel(channel);
 
     _localNotificationsReady = true;
+    _debugLog('local notifications ready channel=$_channelId');
   }
 
   static Future<void> _requestPermissions() async {
-    await FirebaseMessaging.instance.requestPermission(
+    final settings = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
+    _debugLog(
+      'FCM permission: authorization=${settings.authorizationStatus} '
+      'alert=${settings.alert} badge=${settings.badge} sound=${settings.sound}',
+    );
+
     await FirebaseMessaging.instance
         .setForegroundNotificationPresentationOptions(
       alert: false,
       badge: true,
       sound: false,
     );
-    await _localNotifications
+
+    final androidPermission = await _localNotifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+    _debugLog('Android POST_NOTIFICATIONS permission=$androidPermission');
   }
 
   static Future<void> _registerTokenOnBackend(String token) async {
     final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) return;
+    if (accessToken == null) {
+      _debugLog(
+        'backend token registration skipped: no access token for ${_shortToken(token)}',
+      );
+      return;
+    }
 
     try {
+      final url = Uri.parse('${AppConfig.apiBaseUrl}/push/tokens');
+      _debugLog(
+        'register token on backend: url=$url platform=$_platformName '
+        'token=${_shortToken(token)}',
+      );
       final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/push/tokens'),
+        url,
         headers: {
           'Content-Type': 'application/json',
           'Cookie': 'users_access_token=$accessToken',
@@ -232,27 +325,39 @@ class PushNotificationService {
         }),
       );
 
-      if (response.statusCode >= 400) {
-        debugPrint('Ошибка регистрации push token: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Ошибка отправки push token на backend: $e');
+      _debugLog(
+        'register token response: status=${response.statusCode} '
+        'body=${_truncate(response.body, maxLength: 180)}',
+      );
+    } catch (e, stackTrace) {
+      _debugLog('failed to send token to backend: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
   static Future<void> showRemoteMessage(RemoteMessage message) async {
+    _debugLog('foreground message received: ${_messageSummary(message)}');
     await _initializeLocalNotifications();
 
     final data = message.data;
-    if (data['type'] != 'chat_message') return;
+    if (data['type'] != 'chat_message') {
+      _debugLog('foreground message ignored: unsupported type=${data['type']}');
+      return;
+    }
 
     final conversationType = data['conversation_type'] ?? 'personal';
     final conversationId =
         int.tryParse(data['conversation_id']?.toString() ?? '');
-    if (conversationId == null) return;
+    if (conversationId == null) {
+      _debugLog('foreground message ignored: conversation_id is missing');
+      return;
+    }
 
     final key = _conversationKey(conversationType, conversationId);
-    if (_activeConversationKey == key) return;
+    if (_activeConversationKey == key) {
+      _debugLog('foreground message ignored: active conversation=$key');
+      return;
+    }
 
     final title = message.notification?.title ??
         data['title']?.toString() ??
@@ -295,6 +400,10 @@ class PushNotificationService {
       body,
       NotificationDetails(android: androidDetails),
       payload: json.encode(data),
+    );
+    _debugLog(
+      'local notification shown: key=$key id=${_notificationIdFor(key)} '
+      'unread=$unreadCount title=$title',
     );
   }
 
@@ -360,14 +469,18 @@ class PushNotificationService {
   }
 
   static void _handleMessageTap(RemoteMessage message) {
-    debugPrint('Открыто FCM-уведомление: ${message.data}');
+    _debugLog('FCM notification opened: ${_messageSummary(message)}');
     _handleNotificationData(message.data);
   }
 
   static void _handleNotificationPayload(String? payload) {
-    if (payload == null || payload.isEmpty) return;
+    if (payload == null || payload.isEmpty) {
+      _debugLog('local notification payload ignored: empty');
+      return;
+    }
 
     try {
+      _debugLog('local notification payload received: $payload');
       final decoded = json.decode(payload);
       if (decoded is Map<String, dynamic>) {
         _handleNotificationData(decoded);
@@ -376,14 +489,22 @@ class PushNotificationService {
           decoded.map((key, value) => MapEntry(key.toString(), value)),
         );
       }
-    } catch (e) {
-      debugPrint('Ошибка обработки payload push-уведомления: $e');
+    } catch (e, stackTrace) {
+      _debugLog('failed to parse notification payload: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
   static void _handleNotificationData(Map<String, dynamic> data) {
-    if (data['type'] != 'chat_message') return;
+    if (data['type'] != 'chat_message') {
+      _debugLog('notification data ignored: unsupported type=${data['type']}');
+      return;
+    }
 
+    _debugLog(
+      'notification data queued: '
+      '${data['conversation_type']}:${data['conversation_id']}',
+    );
     _pendingNotificationData = Map<String, dynamic>.from(data);
     _openPendingNotification();
   }
@@ -391,9 +512,17 @@ class PushNotificationService {
   static void _openPendingNotification() {
     final data = _pendingNotificationData;
     final handler = notificationNavigationHandler;
-    if (data == null || handler == null) return;
+    if (data == null) {
+      _debugLog('open pending notification skipped: no pending data');
+      return;
+    }
+    if (handler == null) {
+      _debugLog('open pending notification delayed: navigation handler is null');
+      return;
+    }
 
     final didOpen = handler(data);
+    _debugLog('open pending notification result=$didOpen data=$data');
     if (didOpen) {
       _pendingNotificationData = null;
     }

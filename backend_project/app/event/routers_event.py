@@ -49,37 +49,30 @@ async def create_event(
     # только если он действительно нужен.
     event_dict["group_chat_enabled"] = event_data.create_group_chat
 
-    # Создаем мероприятие
-    event = await EventDAO.create_event(
-        event_data=event_dict,
-        organizer_id=current_user.id,
-        session=db
-    )
-
-    # Если указан флаг создания группового чата
-    if event_data.create_group_chat:
-        # Создаем групповой чат
-        group_chat = GroupChat(
-            name=event_data.title,
-            creator_id=current_user.id,
+    async with db.begin():
+        event = await EventDAO.create_event(
+            event_data=event_dict,
+            organizer_id=current_user.id,
+            session=db,
+            commit=False,
         )
-        db.add(group_chat)
-        await db.commit()
-        await db.refresh(group_chat)
 
-        # Добавляем организатора в группу
-        stmt = group_chat_participants.insert().values(
-            group_chat_id=group_chat.id,
-            user_id=current_user.id
-        )
-        await db.execute(stmt)
-        await db.commit()
+        if event_data.create_group_chat:
+            group_chat = GroupChat(
+                name=event_data.title,
+                creator_id=current_user.id,
+            )
+            db.add(group_chat)
+            await db.flush()
 
-        # Привязываем чат к мероприятию
-        event.group_chat_id = group_chat.id
-        await db.commit()
+            await db.execute(
+                group_chat_participants.insert().values(
+                    group_chat_id=group_chat.id,
+                    user_id=current_user.id,
+                )
+            )
+            event.group_chat_id = group_chat.id
 
-    # Обновляем объект события
     await db.refresh(event)
 
     # Преобразуем SQLAlchemy-модель в словарь
@@ -172,15 +165,49 @@ async def cancel_participation(
 ):
     """Отмена записи на мероприятие (отписаться). Освобождает место, если
     заявка была одобрена."""
-    participant = await EventParticipantDAO.find_user_participant(
-        event_id, current_user.id, session=db
-    )
-    if not participant:
-        raise HTTPException(status_code=404, detail="Вы не записаны на это мероприятие")
-    await EventParticipantDAO.remove_participant(
-        participant_id=participant.id, event_id=event_id, session=db
-    )
-    return {"status": "ok", "msg": "Запись отменена"}
+    try:
+        participant = await EventParticipantDAO.find_user_participant(
+            event_id, current_user.id, session=db
+        )
+        if not participant:
+            raise HTTPException(
+                status_code=404,
+                detail="Вы не записаны на это мероприятие",
+            )
+
+        event_result = await db.execute(
+            select(Event).where(Event.id == event_id).with_for_update()
+        )
+        event = event_result.scalar_one_or_none()
+        if not event:
+            raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+        removed_participant = await EventParticipantDAO.remove_participant(
+            participant_id=participant.id,
+            event_id=event_id,
+            session=db,
+            commit=False,
+        )
+
+        if event.group_chat_id is not None:
+            await db.execute(
+                delete(group_chat_participants).where(
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id)
+                    & (group_chat_participants.c.user_id == removed_participant.user_id)
+                )
+            )
+
+        await db.commit()
+        return {"status": "ok", "msg": "Запись отменена"}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка сервера: " + str(e))
 
 
 @router.get("/", response_model=List[EventRead])

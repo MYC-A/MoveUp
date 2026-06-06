@@ -176,6 +176,33 @@ class EventService {
     }
   }
 
+  Future<Event> getEventDetails(int eventId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+
+    final response = await Api.get(
+      Uri.parse('$baseUrl/events/$eventId'),
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is Map<String, dynamic>) {
+        return Event.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return Event.fromJson(Map<String, dynamic>.from(decoded));
+      }
+      throw ApiException(
+          ApiErrorKind.unknown, 'Некорректный ответ сервера');
+    }
+
+    throw ApiException.fromResponse(response);
+  }
+
   Future<List<String>> getEventCities() async {
     try {
       final response = await Api.get(Uri.parse('$baseUrl/events/cities'));

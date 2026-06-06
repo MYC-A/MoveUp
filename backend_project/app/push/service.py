@@ -8,6 +8,15 @@ from app.push.dao import PushTokenDAO
 
 logger = logging.getLogger(__name__)
 
+
+def _short_token(token: str | None) -> str:
+    if not token:
+        return "<empty>"
+    if len(token) <= 12:
+        return token
+    return f"{token[:6]}...{token[-6:]}"
+
+
 try:
     import firebase_admin
     from firebase_admin import credentials, messaging
@@ -33,7 +42,15 @@ class PushNotificationService:
     def _initialize_firebase(cls) -> bool:
         if cls._initialized:
             return True
-        if cls._init_failed or not cls._is_configured():
+        if cls._init_failed:
+            logger.warning("FCM initialization skipped: previous initialization failed")
+            return False
+        if not cls._is_configured():
+            logger.warning(
+                "FCM is disabled or not configured: FCM_ENABLED=%s, credentials_path_set=%s",
+                settings.FCM_ENABLED,
+                bool(settings.FIREBASE_CREDENTIALS_PATH),
+            )
             return False
         if firebase_admin is None or credentials is None:
             logger.warning("FCM is enabled, but firebase-admin is not installed")
@@ -75,6 +92,11 @@ class PushNotificationService:
                 cred = credentials.Certificate(str(credentials_path))
                 firebase_admin.initialize_app(cred)
             cls._initialized = True
+            logger.info(
+                "Firebase Admin SDK initialized: credentials=%s channel=%s",
+                credentials_path,
+                settings.FCM_ANDROID_CHANNEL_ID,
+            )
             return True
         except Exception:
             logger.exception("Failed to initialize Firebase Admin SDK")
@@ -91,13 +113,29 @@ class PushNotificationService:
         unread_count: int,
     ) -> None:
         if not cls._initialize_firebase() or messaging is None:
+            logger.warning(
+                "FCM send skipped for user %s: firebase is not initialized",
+                recipient_id,
+            )
             return
 
         tokens = await PushTokenDAO.get_active_tokens_for_user(recipient_id)
         if not tokens:
+            logger.warning("FCM send skipped for user %s: no active tokens", recipient_id)
             return
 
+        logger.info(
+            "FCM send start: user=%s tokens=%s type=%s conversation=%s:%s unread=%s",
+            recipient_id,
+            len(tokens),
+            data.get("type"),
+            data.get("conversation_type"),
+            data.get("conversation_id") or data.get("group_chat_id"),
+            unread_count,
+        )
+
         invalid_tokens: list[str] = []
+        sent_count = 0
         payload_data = {key: str(value) for key, value in data.items() if value is not None}
         payload_data["title"] = title
         payload_data["body"] = body
@@ -129,14 +167,38 @@ class PushNotificationService:
             )
 
             try:
-                await asyncio.to_thread(messaging.send, message)
+                message_id = await asyncio.to_thread(messaging.send, message)
+                sent_count += 1
+                logger.info(
+                    "FCM send ok: user=%s token=%s message_id=%s",
+                    recipient_id,
+                    _short_token(token),
+                    message_id,
+                )
             except Exception as exc:
                 if exc.__class__.__name__ in {
                     "UnregisteredError",
                     "SenderIdMismatchError",
                 }:
+                    logger.warning(
+                        "FCM token invalid: user=%s token=%s error=%s",
+                        recipient_id,
+                        _short_token(token),
+                        exc.__class__.__name__,
+                    )
                     invalid_tokens.append(token)
                 else:
-                    logger.exception("Failed to send FCM message to user %s", recipient_id)
+                    logger.exception(
+                        "Failed to send FCM message to user %s token=%s",
+                        recipient_id,
+                        _short_token(token),
+                    )
 
         await PushTokenDAO.deactivate_tokens(invalid_tokens)
+        logger.info(
+            "FCM send done: user=%s sent=%s invalid=%s active_before=%s",
+            recipient_id,
+            sent_count,
+            len(invalid_tokens),
+            len(tokens),
+        )
