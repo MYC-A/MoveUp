@@ -62,6 +62,27 @@ void _configurePushNavigation() {
   };
 }
 
+/// Прячет клавиатуру при любом переходе/возврате между экранами. Раньше при
+/// навигации с открытой клавиатурой (поиск, чаты, формы) она «всплывала» или
+/// зависала поверх нового экрана — этот наблюдатель снимает фокус на push/pop.
+class DismissKeyboardOnNavigate extends NavigatorObserver {
+  void _dismiss() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _dismiss();
+    super.didPush(route, previousRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _dismiss();
+    super.didPop(route, previousRoute);
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -71,6 +92,7 @@ class MyApp extends StatelessWidget {
       create: (_) => ChatOverviewController(),
       child: MaterialApp(
         navigatorKey: PushNotificationService.navigatorKey,
+        navigatorObservers: [DismissKeyboardOnNavigate()],
         title: 'MoveUp',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,

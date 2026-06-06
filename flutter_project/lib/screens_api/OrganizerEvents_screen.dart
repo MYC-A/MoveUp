@@ -350,42 +350,46 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _IconBadge(
-                icon: Icons.event_available_outlined,
-                color: AppColors.activity,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                          ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    _MetaLine(
-                      icon: Icons.place_outlined,
-                      label: city,
-                    ),
-                  ],
+          // Тап по шапке открывает карточку мероприятия (как в «Я участвую») —
+          // организатору тоже нужно иметь возможность посмотреть само событие.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openEventDetails(event),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _IconBadge(
+                  icon: Icons.event_available_outlined,
+                  color: AppColors.activity,
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _StatusBadge(
-                label: 'Активно',
-                icon: Icons.bolt_outlined,
-                color: AppColors.success,
-              ),
-            ],
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      _MetaLine(
+                        icon: Icons.place_outlined,
+                        label: city,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                const Icon(Icons.chevron_right,
+                    color: AppColors.textMuted, size: 22),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoStrip(
@@ -559,6 +563,18 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
         builder: (context) => EventDetailsScreen(eventId: eventId),
       ),
     ).then((_) => _refreshApplications());
+  }
+
+  void _openEventDetails(Map<String, dynamic> event) {
+    final eventId = _intValue(event['id']);
+    if (eventId <= 0) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EventDetailsScreen(eventId: eventId),
+      ),
+    ).then((_) => _refreshEvents());
   }
 
   Future<void> _cancelApplication(

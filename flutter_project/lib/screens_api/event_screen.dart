@@ -166,61 +166,25 @@ class _EventScreenState extends State<EventScreen> {
     }
   }
 
-  Future<void> _handleRefresh() {
-    if (_latestEventId == null) {
-      return _loadEvents(refresh: true);
-    }
-    return _refreshEvents();
-  }
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
 
-  Future<void> _refreshEvents() async {
-    if (_isRefreshing || _latestEventId == null) return;
-
-    setState(() {
-      _isRefreshing = true;
-    });
-
-    // Анимация прокрутки к началу
-    await _scrollController.animateTo(
-      0,
-      duration: Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-
-    try {
-      final newEvents = await _eventService.getEvents(
-        skip: 0,
-        limit: _limit,
-        sortBy: 'id',
-        sortOrder: 'desc',
-        query: _searchController.text,
-        city: _selectedCity,
-        availableOnly: _availableOnly,
+    // Прокрутка к началу для наглядности обновления.
+    if (_scrollController.hasClients) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
       );
-
-      final newEventsToAdd =
-          newEvents.where((event) => event.id > _latestEventId!).toList();
-      if (newEventsToAdd.isNotEmpty) {
-        setState(() {
-          _events.insertAll(0, newEventsToAdd);
-          _mapControllers.insertAll(0,
-              List.generate(newEventsToAdd.length, (index) => MapController()));
-          _latestEventId = _events.first.id;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${newEventsToAdd.length} новых мероприятий')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления: $e')),
-      );
-    } finally {
-      setState(() {
-        _isRefreshing = false;
-      });
     }
+
+    // Полная перезагрузка: важно не только подтянуть новые события, но и
+    // обновить статус уже загруженных (после одобрения/отклонения заявки
+    // статус «на рассмотрении» должен смениться).
+    await _loadEvents(refresh: true);
+
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   void _zoomToRoute(List<LatLng> routePoints, MapController mapController) {

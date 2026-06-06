@@ -312,14 +312,29 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
-    final routePointsToSave =
-        _showOptimizedRoute && _optimizedRoutePoints.isNotEmpty
-            ? _optimizedRoutePoints
-            : _routePoints;
-    final routeDistance =
-        _showOptimizedRoute && _optimizedRoutePoints.isNotEmpty
-            ? _redLineDistance
-            : _eventService.calculateDistance(routePointsToSave);
+    // Сохраняем именно маршрут по дорогам (геометрию ORS), а не сырые точки —
+    // иначе на карте рисуются прямые отрезки между точками («раздельные линии»).
+    // Если пользователь не нажал «оптимизировать» — строим маршрут автоматически.
+    List<LatLng> routePointsToSave;
+    double routeDistance;
+    if (_showOptimizedRoute && _optimizedRoutePoints.isNotEmpty) {
+      routePointsToSave = _optimizedRoutePoints;
+      routeDistance = _redLineDistance;
+    } else {
+      try {
+        final data = await _eventService.buildRoute(_routePoints, false);
+        final coordinates =
+            data['features'][0]['geometry']['coordinates'] as List;
+        routePointsToSave =
+            coordinates.map((coord) => LatLng(coord[1], coord[0])).toList();
+        routeDistance = _extractRouteInfo(data).distanceKm;
+      } catch (_) {
+        // Маршрут не построился (нет сети/непроходимо) — сохраняем сырые точки,
+        // чтобы создание не блокировалось.
+        routePointsToSave = _routePoints;
+        routeDistance = _eventService.calculateDistance(_routePoints);
+      }
+    }
 
     if (routeDistance > _maxRouteDistanceKm) {
       _showRouteTooLongMessage();
