@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
@@ -241,6 +243,101 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
+  }
+
+  List<LatLng> get _visibleRouteLinePoints {
+    if (_showOptimizedRoute && _optimizedRoutePoints.length > 1) {
+      return _optimizedRoutePoints;
+    }
+    return _routePoints;
+  }
+
+  List<Marker> _buildRoutePointMarkers() {
+    return _routePoints.asMap().entries.map((entry) {
+      final index = entry.key;
+      final point = entry.value;
+
+      return Marker(
+        point: point,
+        width: 56,
+        height: 56,
+        alignment: Alignment.center,
+        child: GestureDetector(
+          onTap: () => _onMarkerTap(index),
+          onLongPress: () => _removeRoutePoint(index),
+          child: _RoutePointMarker(
+            index: index,
+            total: _routePoints.length,
+            isSelected: _selectedMarkerIndex == index,
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  List<Marker> _buildRouteDirectionMarkers() {
+    final points = _visibleRouteLinePoints;
+    if (points.length < 2) return [];
+
+    final arrowsCount = points.length <= 8
+        ? points.length - 1
+        : math.min(6, math.max(2, (points.length / 30).ceil()));
+    final usedSegments = <int>{};
+    final markers = <Marker>[];
+
+    for (var i = 1; i <= arrowsCount; i++) {
+      final segmentIndex = ((points.length - 1) * i / (arrowsCount + 1))
+          .floor()
+          .clamp(0, points.length - 2)
+          .toInt();
+      if (!usedSegments.add(segmentIndex)) continue;
+
+      final from = points[segmentIndex];
+      final to = points[segmentIndex + 1];
+      markers.add(
+        Marker(
+          point: _midpoint(from, to),
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          child: _RouteDirectionArrow(
+            angle: _bearingRadians(from, to),
+            color: _showOptimizedRoute ? Colors.red : Colors.blue,
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  void _removeRoutePoint(int index) {
+    setState(() {
+      _routePoints.removeAt(index);
+      _optimizedRoutePoints = [];
+      _selectedMarkerIndex = null;
+      _showOptimizedRoute = false;
+      _redLineDistance = 0;
+      _redLineDuration = 0;
+    });
+    _updateBlueLineInfo();
+  }
+
+  LatLng _midpoint(LatLng from, LatLng to) {
+    return LatLng(
+      (from.latitude + to.latitude) / 2,
+      (from.longitude + to.longitude) / 2,
+    );
+  }
+
+  double _bearingRadians(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final deltaLng = (to.longitude - from.longitude) * math.pi / 180;
+    final y = math.sin(deltaLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(deltaLng);
+    return math.atan2(y, x);
   }
 
   Future<void> _submitForm() async {
@@ -831,38 +928,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   ],
                                 ),
                                 MarkerLayer(
-                                  markers: _routePoints
-                                      .asMap()
-                                      .entries
-                                      .map(
-                                        (entry) => Marker(
-                                          point: entry.value,
-                                          child: GestureDetector(
-                                            onTap: () =>
-                                                _onMarkerTap(entry.key),
-                                            onLongPress: () {
-                                              setState(() {
-                                                _routePoints
-                                                    .removeAt(entry.key);
-                                                _optimizedRoutePoints = [];
-                                                _selectedMarkerIndex = null;
-                                                _showOptimizedRoute = false;
-                                                _redLineDistance = 0;
-                                                _redLineDuration = 0;
-                                              });
-                                              _updateBlueLineInfo();
-                                            },
-                                            child: Icon(
-                                              Icons.location_on,
-                                              color: _selectedMarkerIndex ==
-                                                      entry.key
-                                                  ? Colors.blue
-                                                  : Colors.red,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
+                                  markers: [
+                                    ..._buildRouteDirectionMarkers(),
+                                    ..._buildRoutePointMarkers(),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1034,6 +1103,140 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoutePointMarker extends StatelessWidget {
+  final int index;
+  final int total;
+  final bool isSelected;
+
+  const _RoutePointMarker({
+    required this.index,
+    required this.total,
+    required this.isSelected,
+  });
+
+  bool get _isStart => index == 0;
+  bool get _isFinish => total > 1 && index == total - 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _isStart
+        ? Colors.green
+        : _isFinish
+            ? Colors.blue
+            : Colors.deepOrange;
+    final icon = _isStart
+        ? Icons.play_arrow_rounded
+        : _isFinish
+            ? Icons.flag_rounded
+            : null;
+    final label = _isStart
+        ? 'Старт'
+        : _isFinish
+            ? 'Финиш'
+            : '${index + 1}';
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 140),
+      scale: isSelected ? 1.16 : 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: color, width: 1.5),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x26000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: _isStart || _isFinish ? 10 : 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? Colors.amber : Colors.white,
+                width: isSelected ? 3 : 2,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
+              ],
+            ),
+            child: icon == null
+                ? Center(
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  )
+                : Icon(icon, color: Colors.white, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RouteDirectionArrow extends StatelessWidget {
+  final double angle;
+  final Color color;
+
+  const _RouteDirectionArrow({
+    required this.angle,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: angle,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: 1.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x24000000),
+              blurRadius: 5,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.navigation_rounded,
+          color: color,
+          size: 18,
         ),
       ),
     );
