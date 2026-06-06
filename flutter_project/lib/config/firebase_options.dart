@@ -16,6 +16,17 @@ class AppFirebaseOptions {
         projectId.isNotEmpty;
   }
 
+  static List<String> get missingConfigKeys {
+    final keys = <String>[];
+    if (apiKey.isEmpty) keys.add('FIREBASE_API_KEY');
+    if (appId.isEmpty) keys.add('FIREBASE_APP_ID');
+    if (messagingSenderId.isEmpty) {
+      keys.add('FIREBASE_MESSAGING_SENDER_ID');
+    }
+    if (projectId.isEmpty) keys.add('FIREBASE_PROJECT_ID');
+    return keys;
+  }
+
   static FirebaseOptions? get currentPlatform {
     if (!isConfigured) return null;
 

@@ -80,7 +80,8 @@ class _PostItemState extends State<PostItem>
   }
 
   void _navigateToUserProfile(int userId) {
-    print("currentUserId: ${widget.currentUserId} and userId: $userId");
+    debugPrint(
+        'Post author tap: currentUserId=${widget.currentUserId}, userId=$userId');
 
     // Если userId совпадает с текущим пользователем, переходим на ProfileScreen
     if (widget.currentUserId != null && userId == widget.currentUserId) {
@@ -282,7 +283,7 @@ class _PostItemState extends State<PostItem>
                 cacheManager: customCacheManager,
               ),
               onBackgroundImageError: (exception, stackTrace) {
-                debugPrint('Ошибка загрузки аватарки: $exception');
+                debugPrint('Failed to load post avatar: $exception');
               },
             ),
           ),
@@ -334,22 +335,20 @@ class _PostItemState extends State<PostItem>
                             ),
                           ),
                         if (hasCity)
-                          ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: constraints.maxWidth),
+                          SizedBox(
+                            width: constraints.maxWidth,
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                              mainAxisSize: MainAxisSize.max,
                               children: [
                                 const Icon(Icons.place_outlined,
                                     size: 14, color: AppColors.textSecondary),
                                 const SizedBox(width: 2),
-                                // Город ужимается только если длиннее всей
-                                // доступной ширины (почти никогда).
-                                Flexible(
+                                Expanded(
                                   child: Text(
-                                    post.city!,
+                                    post.city!.trim(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
                                     style: metaStyle,
                                   ),
                                 ),

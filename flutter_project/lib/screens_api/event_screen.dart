@@ -1281,7 +1281,7 @@ class _EventActivityIcon extends StatelessWidget {
   }
 }
 
-// Кликабельный чип организатора события — ведёт на его профиль.
+// Кликабельный чип организатора события: ведет на его профиль.
 class _OrganizerChip extends StatelessWidget {
   final String name;
   final bool isMe;
@@ -1299,6 +1299,7 @@ class _OrganizerChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadii.pill),
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm,
           vertical: AppSpacing.xs,
@@ -1309,12 +1310,12 @@ class _OrganizerChip extends StatelessWidget {
           border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           children: [
             const Icon(Icons.person_pin_circle_outlined,
                 size: 16, color: AppColors.primary),
             const SizedBox(width: AppSpacing.xxs),
-            Flexible(
+            Expanded(
               child: Text(
                 isMe ? 'Организатор: вы' : 'Организатор: $name',
                 style: const TextStyle(
@@ -1323,7 +1324,7 @@ class _OrganizerChip extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
                 overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+                maxLines: 2,
               ),
             ),
             const SizedBox(width: AppSpacing.xxs),

@@ -1,5 +1,6 @@
 // lib/services/lk_service.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -25,14 +26,18 @@ class LkService {
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
-    // Логируем ответ сервера для отладки
-    print('Status Code: ${response.statusCode}');
-    print('Response Body: ${response.body}');
+    final String responseBody = utf8.decode(response.bodyBytes);
+    debugPrint('LK profile response status=${response.statusCode}');
 
     if (response.statusCode == 200) {
       try {
-        final String responseBody = utf8.decode(response.bodyBytes);
         final data = json.decode(responseBody);
+        final user = data['user'];
+        if (user is Map) {
+          final userId = user['id'];
+          final city = user['city'];
+          debugPrint('LK profile loaded user_id=$userId city=$city');
+        }
         // Кэшируем вес, чтобы экраны маршрутов/трекер считали калории по
         // реальному весу пользователя без отдельного запроса.
         final weight = data['user']?['weight'];
@@ -41,7 +46,7 @@ class LkService {
         }
         return data;
       } catch (e) {
-        throw FormatException('Ошибка при декодировании JSON: $e');
+        throw FormatException('Failed to decode profile JSON: $e');
       }
     } else {
       throw ApiException.fromResponse(response);

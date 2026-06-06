@@ -29,7 +29,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // уведомление в трее автоматически (background/killed). Вызывать
     // showRemoteMessage здесь не нужно — это создало бы дублирующее уведомление.
   } catch (e) {
-    debugPrint('Ошибка фоновой инициализации Firebase: $e');
+    debugPrint('Failed to initialize Firebase in background handler: $e');
   }
 }
 
@@ -50,6 +50,7 @@ class PushNotificationService {
       notificationNavigationHandler;
 
   static bool _initialized = false;
+  static bool _initializing = false;
   static bool _localNotificationsReady = false;
   static String? _activeConversationKey;
   static Map<String, dynamic>? _pendingNotificationData;
@@ -57,7 +58,7 @@ class PushNotificationService {
   static bool get isInitialized => _initialized;
 
   static Future<void> initialize() async {
-    if (_initialized) return;
+    if (_initialized || _initializing) return;
     if (!_isSupportedPlatform) {
       debugPrint('Push disabled: unsupported platform');
       return;
@@ -65,11 +66,16 @@ class PushNotificationService {
 
     final options = AppFirebaseOptions.currentPlatform;
     if (options == null) {
-      debugPrint('Push disabled: Firebase dart-defines are not configured');
+      final missingKeys = AppFirebaseOptions.missingConfigKeys.join(', ');
+      debugPrint(
+        'Push disabled: Firebase dart-defines are not configured; '
+        'missing=$missingKeys',
+      );
       return;
     }
 
     try {
+      _initializing = true;
       WidgetsFlutterBinding.ensureInitialized();
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(options: options);
@@ -91,7 +97,9 @@ class PushNotificationService {
       await registerCurrentDeviceToken();
       FirebaseMessaging.instance.onTokenRefresh.listen(_registerTokenOnBackend);
     } catch (e) {
-      debugPrint('Ошибка инициализации push-уведомлений: $e');
+      debugPrint('Failed to initialize push notifications: $e');
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -115,15 +123,31 @@ class PushNotificationService {
   }
 
   static Future<void> registerCurrentDeviceToken() async {
-    if (!_initialized) return;
+    if (!_initialized) {
+      final missingKeys = AppFirebaseOptions.missingConfigKeys.join(', ');
+      debugPrint(
+        'Push token registration requested before initialization; '
+        'trying to initialize. firebaseConfigured=${AppFirebaseOptions.isConfigured} '
+        'missing=$missingKeys',
+      );
+      await initialize();
+    }
+
+    if (!_initialized) {
+      debugPrint('Push token registration skipped: service is not initialized');
+      return;
+    }
 
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
+        debugPrint('FCM token received; registering on backend');
         await _registerTokenOnBackend(token);
+      } else {
+        debugPrint('FCM token is empty; backend registration skipped');
       }
     } catch (e) {
-      debugPrint('Ошибка получения push token: $e');
+      debugPrint('Failed to get FCM token: $e');
     }
   }
 
@@ -145,10 +169,10 @@ class PushNotificationService {
       );
 
       if (response.statusCode >= 400) {
-        debugPrint('Ошибка удаления push token: ${response.body}');
+        debugPrint('Failed to delete push token: ${response.body}');
       }
     } catch (e) {
-      debugPrint('Ошибка отключения push token: $e');
+      debugPrint('Failed to unregister push token: $e');
     }
   }
 
@@ -217,7 +241,12 @@ class PushNotificationService {
 
   static Future<void> _registerTokenOnBackend(String token) async {
     final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) return;
+    if (accessToken == null) {
+      debugPrint(
+        'FCM token backend registration skipped: access token is missing',
+      );
+      return;
+    }
 
     try {
       final response = await http.post(
@@ -233,10 +262,12 @@ class PushNotificationService {
       );
 
       if (response.statusCode >= 400) {
-        debugPrint('Ошибка регистрации push token: ${response.body}');
+        debugPrint('Failed to register push token: ${response.body}');
+      } else {
+        debugPrint('FCM token registered on backend');
       }
     } catch (e) {
-      debugPrint('Ошибка отправки push token на backend: $e');
+      debugPrint('Failed to send push token to backend: $e');
     }
   }
 
@@ -306,7 +337,7 @@ class PushNotificationService {
         _conversationLines[key] = List<String>.from(stored);
       }
     } catch (e) {
-      debugPrint('Ошибка чтения push-lines: $e');
+      debugPrint('Failed to read push lines: $e');
     }
 
     return List<String>.from(
@@ -322,7 +353,7 @@ class PushNotificationService {
         _conversationTotal[key] = stored;
       }
     } catch (e) {
-      debugPrint('Ошибка чтения push-total: $e');
+      debugPrint('Failed to read push total: $e');
     }
 
     return _conversationTotal[key] ?? 0;
@@ -341,7 +372,7 @@ class PushNotificationService {
       await prefs.setStringList('push_lines_$key', lines);
       await prefs.setInt('push_total_$key', total);
     } catch (e) {
-      debugPrint('Ошибка сохранения push-state: $e');
+      debugPrint('Failed to save push state: $e');
     }
   }
 
@@ -355,12 +386,12 @@ class PushNotificationService {
       await prefs.remove('push_lines_$key');
       await prefs.remove('push_total_$key');
     } catch (e) {
-      debugPrint('Ошибка очистки push-state: $e');
+      debugPrint('Failed to clear push state: $e');
     }
   }
 
   static void _handleMessageTap(RemoteMessage message) {
-    debugPrint('Открыто FCM-уведомление: ${message.data}');
+    debugPrint('FCM notification opened: ${message.data}');
     _handleNotificationData(message.data);
   }
 
@@ -377,7 +408,7 @@ class PushNotificationService {
         );
       }
     } catch (e) {
-      debugPrint('Ошибка обработки payload push-уведомления: $e');
+      debugPrint('Failed to parse push notification payload: $e');
     }
   }
 
