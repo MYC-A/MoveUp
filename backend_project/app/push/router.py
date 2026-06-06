@@ -43,7 +43,7 @@ async def register_push_token(
         current_user.id,
         _short_token(payload.token),
     )
-    return {"status": "ok"}
+    return {"status": "ok", "push": PushNotificationService.diagnostics()}
 
 
 @router.post("/tokens/delete")
@@ -58,6 +58,16 @@ async def delete_push_token(
     )
     await PushTokenDAO.deactivate_token(payload.token, user_id=current_user.id)
     return {"status": "ok"}
+
+
+@router.get("/debug/status")
+async def get_push_debug_status(current_user: User = Depends(get_current_user)):
+    tokens = await PushTokenDAO.get_active_tokens_for_user(current_user.id)
+    return {
+        "status": "ok",
+        "active_tokens": len(tokens),
+        "push": PushNotificationService.diagnostics(),
+    }
 
 
 @router.post("/debug/send_test")

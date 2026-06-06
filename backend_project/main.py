@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.exceptions import HTTPException
@@ -16,6 +18,13 @@ from app.posts.routes_posts import router as post_router
 from app.event.routers_event import router as event_router
 from app.friendship.routes_friends import router as friends_router
 from app.push.router import router as push_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logging.getLogger("app").setLevel(logging.INFO)
+
 app = FastAPI()
 app.mount('/static', StaticFiles(directory='app/static'), name='static')
 

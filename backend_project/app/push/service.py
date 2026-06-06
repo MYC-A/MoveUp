@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,31 @@ class PushNotificationService:
         return cls._is_configured()
 
     @classmethod
+    def diagnostics(cls) -> dict[str, Any]:
+        raw_path = settings.FIREBASE_CREDENTIALS_PATH
+        credentials_path_set = bool(raw_path)
+        looks_like_windows_path = (
+            sys.platform != "win32" and len(raw_path) >= 2 and raw_path[1] == ":"
+        )
+
+        credentials_file_exists = False
+        if credentials_path_set and not looks_like_windows_path:
+            credentials_path = Path(raw_path).expanduser()
+            if not credentials_path.is_absolute():
+                credentials_path = Path.cwd() / credentials_path
+            credentials_file_exists = credentials_path.exists()
+
+        return {
+            "fcm_enabled": settings.FCM_ENABLED,
+            "credentials_path_set": credentials_path_set,
+            "credentials_path_looks_windows_on_linux": looks_like_windows_path,
+            "credentials_file_exists": credentials_file_exists,
+            "firebase_initialized": cls._initialized,
+            "firebase_init_failed": cls._init_failed,
+            "android_channel_id": settings.FCM_ANDROID_CHANNEL_ID,
+        }
+
+    @classmethod
     def _initialize_firebase(cls) -> bool:
         if cls._initialized:
             return True
@@ -62,7 +88,6 @@ class PushNotificationService:
 
         # Частая ошибка: Windows-путь вида "C:\..." скопирован в .env на Linux.
         # На Linux такой путь трактуется как относительный (нет ведущего "/").
-        import sys
         if sys.platform != "win32" and len(raw_path) >= 2 and raw_path[1] == ":":
             logger.error(
                 "FIREBASE_CREDENTIALS_PATH выглядит как Windows-путь (%s). "
@@ -215,6 +240,7 @@ class PushNotificationService:
             "sent": 0,
             "invalid_tokens": 0,
             "errors": [],
+            "diagnostics": cls.diagnostics(),
         }
 
         if not cls._initialize_firebase() or messaging is None:

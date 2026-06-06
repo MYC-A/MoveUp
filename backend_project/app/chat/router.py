@@ -355,6 +355,12 @@ async def send_message(
         'created_at': _as_utc(saved_message.created_at).isoformat(),
     }
     await notify_user(message.recipient_id, message_data)
+    logger.info(
+        "Personal push task queued: sender=%s recipient=%s message_id=%s",
+        current_user.id,
+        message.recipient_id,
+        saved_message.id,
+    )
     background_tasks.add_task(
         _send_personal_message_push,
         recipient_id=message.recipient_id,
@@ -424,6 +430,13 @@ async def send_group_message(
         }
         await notify_user(participant_id, message_data)
         if participant_id != current_user.id:
+            logger.info(
+                "Group push task queued: sender=%s recipient=%s group_chat=%s message_id=%s",
+                current_user.id,
+                participant_id,
+                group_message.group_chat_id,
+                group_message.id,
+            )
             background_tasks.add_task(
                 _send_group_message_push,
                 recipient_id=participant_id,
