@@ -276,6 +276,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   List<Marker> _buildRouteDirectionMarkers() {
+    if (!_showOptimizedRoute) {
+      return _buildSegmentOrderMarkers();
+    }
+
     final points = _visibleRouteLinePoints;
     if (points.length < 2) return [];
 
@@ -311,6 +315,32 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return markers;
   }
 
+  List<Marker> _buildSegmentOrderMarkers() {
+    if (_routePoints.length < 2) return [];
+
+    return List.generate(_routePoints.length - 1, (index) {
+      final from = _routePoints[index];
+      final to = _routePoints[index + 1];
+      final position = _pointAlongSegment(
+        from,
+        to,
+        index.isEven ? 0.38 : 0.62,
+      );
+
+      return Marker(
+        point: position,
+        width: 48,
+        height: 26,
+        alignment: Alignment.center,
+        child: _RouteSegmentOrderBadge(
+          from: index + 1,
+          to: index + 2,
+          color: Colors.blue,
+        ),
+      );
+    });
+  }
+
   void _removeRoutePoint(int index) {
     setState(() {
       _routePoints.removeAt(index);
@@ -327,6 +357,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return LatLng(
       (from.latitude + to.latitude) / 2,
       (from.longitude + to.longitude) / 2,
+    );
+  }
+
+  LatLng _pointAlongSegment(LatLng from, LatLng to, double fraction) {
+    return LatLng(
+      from.latitude + (to.latitude - from.latitude) * fraction,
+      from.longitude + (to.longitude - from.longitude) * fraction,
     );
   }
 
@@ -1204,6 +1241,46 @@ class _RoutePointMarker extends StatelessWidget {
                 : Icon(icon, color: Colors.white, size: 20),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RouteSegmentOrderBadge extends StatelessWidget {
+  final int from;
+  final int to;
+  final Color color;
+
+  const _RouteSegmentOrderBadge({
+    required this.from,
+    required this.to,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color, width: 1.4),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 5,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        '$from->$to',
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
       ),
     );
   }
