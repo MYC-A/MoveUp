@@ -26,6 +26,13 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class EventScreen extends StatefulWidget {
+  /// Сигнал от MainScreen: дёргается при открытии вкладки «События», чтобы
+  /// тихо обновить список (актуальные места, удалённые события) без полной
+  /// перезагрузки. Экран живёт в IndexedStack, поэтому initState один раз.
+  final Listenable? refreshSignal;
+
+  const EventScreen({this.refreshSignal, Key? key}) : super(key: key);
+
   @override
   _EventScreenState createState() => _EventScreenState();
 }
@@ -64,9 +71,16 @@ class _EventScreenState extends State<EventScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    widget.refreshSignal?.addListener(_onRefreshSignal);
     _loadCurrentUserId();
     _loadCities();
     _loadEvents();
+  }
+
+  // Вкладку «События» открыли снова — тихо подтягиваем свежие данные
+  // (места, удалённые события), не очищая список и без полноэкранного лоадера.
+  void _onRefreshSignal() {
+    if (mounted) _silentReload();
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -78,6 +92,7 @@ class _EventScreenState extends State<EventScreen> {
   @override
   void dispose() {
     _scrollController.removeListener(_handleScroll);
+    widget.refreshSignal?.removeListener(_onRefreshSignal);
     for (var controller in _mapControllers) {
       controller.dispose();
     }
@@ -185,6 +200,47 @@ class _EventScreenState extends State<EventScreen> {
     await _loadEvents(refresh: true);
 
     if (mounted) setState(() => _isRefreshing = false);
+  }
+
+  /// Тихое обновление: перезапрашивает уже загруженный диапазон и заменяет
+  /// список атомарно (без мигающего лоадера и без сброса прокрутки). Удалённые
+  /// события исчезают, места/доступность и статус заявки обновляются.
+  Future<void> _silentReload() async {
+    if (_isLoading) return;
+    final fetchLimit = _events.length < _limit
+        ? _limit
+        : (_events.length > 100 ? 100 : _events.length);
+    try {
+      final fresh = await _eventService.getEvents(
+        skip: 0,
+        limit: fetchLimit,
+        sortBy: 'id',
+        sortOrder: 'desc',
+        query: _searchController.text,
+        city: _selectedCity,
+        availableOnly: _availableOnly,
+      );
+      if (!mounted) return;
+      final oldControllers = List<MapController>.from(_mapControllers);
+      setState(() {
+        _events
+          ..clear()
+          ..addAll(fresh);
+        _mapControllers
+          ..clear()
+          ..addAll(List.generate(fresh.length, (_) => MapController()));
+        _clearInlineMapState();
+        _skip = fresh.length;
+        _hasMore = fresh.length == fetchLimit;
+        if (fresh.isNotEmpty) {
+          _latestEventId =
+              fresh.map((e) => e.id).reduce((a, b) => a > b ? a : b);
+        }
+      });
+      _disposeControllersAfterFrame(oldControllers);
+    } catch (_) {
+      // Фоновое обновление — ошибки игнорируем, список остаётся прежним.
+    }
   }
 
   void _zoomToRoute(List<LatLng> routePoints, MapController mapController) {
@@ -1303,6 +1359,9 @@ class _EventScreenState extends State<EventScreen> {
       if (!mounted) return;
       setState(() => event.myStatus = prevStatus);
       showApiError(context, e);
+      // Событие могло быть удалено/заполнено, пока пользователь смотрел ленту —
+      // тихо обновляем, чтобы карточка отразила актуальное состояние.
+      _silentReload();
     }
   }
 
@@ -1328,6 +1387,7 @@ class _EventScreenState extends State<EventScreen> {
         if (event.participantsCount > 0) event.participantsCount -= 1;
       });
       showApiError(context, e);
+      _silentReload();
     }
   }
 

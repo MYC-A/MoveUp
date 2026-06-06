@@ -131,6 +131,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   ChatOverviewController? _chatOverviewController;
   int _totalUnreadMessages = 0;
+  // Сигнал «открыли вкладку События» — экран тихо обновит места/удалённые события.
+  final ValueNotifier<int> _eventsRefreshTick = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -162,6 +164,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     _chatOverviewController?.removeListener(_handleChatOverviewChanged);
     _chatOverviewController?.setOverviewActive(false);
+    _eventsRefreshTick.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -171,6 +174,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _chatOverviewController?.start();
       _chatOverviewController?.setOverviewActive(_selectedIndex == 3);
+      // Вернулись в приложение на вкладке «События» — обновим места/удалённые.
+      if (_selectedIndex == 1) {
+        _eventsRefreshTick.value++;
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _chatOverviewController?.setOverviewActive(false);
@@ -193,7 +200,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _screens[index] = FeedScreen();
           break;
         case 1:
-          _screens[index] = EventScreen();
+          _screens[index] = EventScreen(refreshSignal: _eventsRefreshTick);
           break;
         case 2:
           _screens[index] = ProfileScreen(onLogout: _logout);
@@ -227,6 +234,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     if (isEnteringChatTab) {
       _chatOverviewController?.setOverviewActive(true);
+    }
+
+    // Открыли вкладку «События» — просим экран тихо обновить данные (места,
+    // удалённые события), т.к. в IndexedStack он не пересоздаётся.
+    if (index == 1) {
+      _eventsRefreshTick.value++;
     }
   }
 
