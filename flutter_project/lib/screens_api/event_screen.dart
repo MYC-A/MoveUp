@@ -26,12 +26,13 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/common/osm_tile_layer.dart';
 
 class EventScreen extends StatefulWidget {
-  /// Сигнал от MainScreen: дёргается при открытии вкладки «События», чтобы
-  /// тихо обновить список (актуальные места, удалённые события) без полной
-  /// перезагрузки. Экран живёт в IndexedStack, поэтому initState один раз.
-  final Listenable? refreshSignal;
+  /// Активна ли вкладка «События» (управляется MainScreen). Пока активна —
+  /// экран периодически и тихо обновляет данные, чтобы места/удалённые события
+  /// и статус заявки менялись без ручного обновления. Экран живёт в
+  /// IndexedStack, поэтому initState вызывается один раз.
+  final ValueListenable<bool>? activeSignal;
 
-  const EventScreen({this.refreshSignal, Key? key}) : super(key: key);
+  const EventScreen({this.activeSignal, Key? key}) : super(key: key);
 
   @override
   _EventScreenState createState() => _EventScreenState();
@@ -67,20 +68,45 @@ class _EventScreenState extends State<EventScreen> {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   int? _currentUserId;
 
+  Timer? _autoRefreshTimer;
+  static const Duration _autoRefreshInterval = Duration(seconds: 10);
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
-    widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.activeSignal?.addListener(_onActiveChanged);
     _loadCurrentUserId();
     _loadCities();
     _loadEvents();
+    // Если вкладка уже активна при создании — сразу включаем авто-обновление.
+    if (widget.activeSignal?.value == true) {
+      _startAutoRefresh();
+    }
   }
 
-  // Вкладку «События» открыли снова — тихо подтягиваем свежие данные
-  // (места, удалённые события), не очищая список и без полноэкранного лоадера.
-  void _onRefreshSignal() {
-    if (mounted) _silentReload();
+  // Вкладка «События» стала активной/неактивной. Пока активна — периодически и
+  // тихо подтягиваем свежие данные (статус заявки, места, удалённые события).
+  void _onActiveChanged() {
+    if ((widget.activeSignal?.value ?? false)) {
+      _startAutoRefresh();
+    } else {
+      _stopAutoRefresh();
+    }
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    // Сразу обновляем при открытии вкладки, затем — по таймеру.
+    _silentReload();
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      if (mounted) _silentReload();
+    });
+  }
+
+  void _stopAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = null;
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -92,7 +118,8 @@ class _EventScreenState extends State<EventScreen> {
   @override
   void dispose() {
     _scrollController.removeListener(_handleScroll);
-    widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.activeSignal?.removeListener(_onActiveChanged);
+    _autoRefreshTimer?.cancel();
     for (var controller in _mapControllers) {
       controller.dispose();
     }
@@ -202,9 +229,11 @@ class _EventScreenState extends State<EventScreen> {
     if (mounted) setState(() => _isRefreshing = false);
   }
 
-  /// Тихое обновление: перезапрашивает уже загруженный диапазон и заменяет
-  /// список атомарно (без мигающего лоадера и без сброса прокрутки). Удалённые
-  /// события исчезают, места/доступность и статус заявки обновляются.
+  /// Тихое обновление: перезапрашивает уже загруженный диапазон и МЕРДЖИТ
+  /// результат в текущий список — обновляет статус заявки/места, убирает
+  /// удалённые, добавляет новые. Контроллеры карт переиспользуются (объект
+  /// события заменяется на месте по тому же индексу), поэтому встроенные карты
+  /// не мигают и прокрутка не сбрасывается.
   Future<void> _silentReload() async {
     if (_isLoading) return;
     final fetchLimit = _events.length < _limit
@@ -221,23 +250,48 @@ class _EventScreenState extends State<EventScreen> {
         availableOnly: _availableOnly,
       );
       if (!mounted) return;
-      final oldControllers = List<MapController>.from(_mapControllers);
+
+      final freshById = {for (final e in fresh) e.id: e};
+      // Минимальный id в окне свежих: событие, которого нет в свежих, но чей id
+      // попадает в это окно — считается удалённым (а не «на следующей странице»).
+      final minFreshId = fresh.isEmpty
+          ? null
+          : fresh.map((e) => e.id).reduce((a, b) => a < b ? a : b);
+
       setState(() {
-        _events
-          ..clear()
-          ..addAll(fresh);
-        _mapControllers
-          ..clear()
-          ..addAll(List.generate(fresh.length, (_) => MapController()));
-        _clearInlineMapState();
-        _skip = fresh.length;
-        _hasMore = fresh.length == fetchLimit;
-        if (fresh.isNotEmpty) {
+        for (int i = _events.length - 1; i >= 0; i--) {
+          final cur = _events[i];
+          final f = freshById[cur.id];
+          if (f != null) {
+            // Заменяем объект на свежий (тот же id → тот же контроллер карты).
+            _events[i] = f;
+          } else if (minFreshId != null && cur.id >= minFreshId) {
+            // Исчезло из окна свежих → удалено организатором.
+            final removed = _events.removeAt(i);
+            if (i < _mapControllers.length) {
+              final c = _mapControllers.removeAt(i);
+              WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
+            }
+            _activeInlineMapEventIds.remove(removed.id);
+            _visibleMapFractions.remove(removed.id);
+            _mapActivationTimers.remove(removed.id)?.cancel();
+          }
+        }
+
+        final currentIds = _events.map((e) => e.id).toSet();
+        final toAdd = fresh.where((e) => !currentIds.contains(e.id)).toList()
+          ..sort((a, b) => b.id.compareTo(a.id));
+        if (toAdd.isNotEmpty) {
+          _events.insertAll(0, toAdd);
+          _mapControllers.insertAll(
+              0, List.generate(toAdd.length, (_) => MapController()));
+        }
+
+        if (_events.isNotEmpty) {
           _latestEventId =
-              fresh.map((e) => e.id).reduce((a, b) => a > b ? a : b);
+              _events.map((e) => e.id).reduce((a, b) => a > b ? a : b);
         }
       });
-      _disposeControllersAfterFrame(oldControllers);
     } catch (_) {
       // Фоновое обновление — ошибки игнорируем, список остаётся прежним.
     }

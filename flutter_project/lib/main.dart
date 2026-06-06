@@ -131,8 +131,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   ChatOverviewController? _chatOverviewController;
   int _totalUnreadMessages = 0;
-  // Сигнал «открыли вкладку События» — экран тихо обновит места/удалённые события.
-  final ValueNotifier<int> _eventsRefreshTick = ValueNotifier<int>(0);
+  // Активна ли вкладка «События». Пока активна — экран периодически и тихо
+  // обновляет данные (места, удалённые события, статус заявки), чтобы статус
+  // менялся без ручного обновления.
+  late final ValueNotifier<bool> _eventsTabActive =
+      ValueNotifier<bool>(widget.initialIndex == 1);
 
   @override
   void initState() {
@@ -164,7 +167,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     _chatOverviewController?.removeListener(_handleChatOverviewChanged);
     _chatOverviewController?.setOverviewActive(false);
-    _eventsRefreshTick.dispose();
+    _eventsTabActive.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -174,14 +177,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _chatOverviewController?.start();
       _chatOverviewController?.setOverviewActive(_selectedIndex == 3);
-      // Вернулись в приложение на вкладке «События» — обновим места/удалённые.
-      if (_selectedIndex == 1) {
-        _eventsRefreshTick.value++;
-      }
+      // Вернулись в приложение — возобновляем авто-обновление событий,
+      // если открыта их вкладка.
+      _eventsTabActive.value = _selectedIndex == 1;
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _chatOverviewController?.setOverviewActive(false);
       _chatOverviewController?.stop();
+      // В фоне не опрашиваем сервер.
+      _eventsTabActive.value = false;
     }
   }
 
@@ -200,7 +204,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _screens[index] = FeedScreen();
           break;
         case 1:
-          _screens[index] = EventScreen(refreshSignal: _eventsRefreshTick);
+          _screens[index] = EventScreen(activeSignal: _eventsTabActive);
           break;
         case 2:
           _screens[index] = ProfileScreen(onLogout: _logout);
@@ -236,11 +240,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _chatOverviewController?.setOverviewActive(true);
     }
 
-    // Открыли вкладку «События» — просим экран тихо обновить данные (места,
-    // удалённые события), т.к. в IndexedStack он не пересоздаётся.
-    if (index == 1) {
-      _eventsRefreshTick.value++;
-    }
+    // Включаем/выключаем авто-обновление событий по активности их вкладки
+    // (в IndexedStack экран не пересоздаётся, поэтому управляем извне).
+    _eventsTabActive.value = index == 1;
   }
 
   Future<void> _logout() async {

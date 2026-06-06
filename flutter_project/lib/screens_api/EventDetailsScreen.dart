@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
@@ -36,21 +38,31 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   int? _currentUserId;
   bool _isLoading = true;
   bool _isActionLoading = false;
+  Timer? _autoRefreshTimer;
+  static const Duration _autoRefreshInterval = Duration(seconds: 10);
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     _loadDetails(showLoading: true);
+    // Пока карточка открыта — тихо обновляем статус заявки/места, чтобы изменения
+    // организатора (одобрил/отклонил) появлялись без ручного обновления.
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      if (mounted && !_isActionLoading && !_isLoading) {
+        _loadDetails(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _mapController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDetails({bool showLoading = false}) async {
+  Future<void> _loadDetails({bool showLoading = false, bool silent = false}) async {
     if (showLoading) {
       setState(() {
         _isLoading = true;
@@ -70,7 +82,9 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e);
-      if (!showLoading && _event != null) {
+      // silent — фоновый авто-опрос: не показываем ошибку, чтобы не спамить
+      // снекбарами при моргании сети.
+      if (!showLoading && !silent && _event != null) {
         showApiError(context, e, onRetry: () => _loadDetails());
       }
     } finally {
