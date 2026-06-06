@@ -19,6 +19,11 @@ class ChatOverviewController extends ChangeNotifier {
   bool _overviewActive = false;
   bool _isRefreshingOverview = false;
   bool _isRefreshingUnread = false;
+  // Если обновление запросили во время уже идущего — не отбрасываем его, а
+  // ставим в очередь ещё один проход. Иначе refresh после «прочитано» мог
+  // потеряться и баджик оставался гореть устаревшей цифрой.
+  bool _overviewRefreshQueued = false;
+  bool _unreadRefreshQueued = false;
   bool _disposed = false;
   int? _connectedUserId;
 
@@ -84,7 +89,11 @@ class ChatOverviewController extends ChangeNotifier {
   }
 
   Future<void> refreshOverview({bool showLoading = false}) async {
-    if (_isRefreshingOverview) return;
+    if (_isRefreshingOverview) {
+      // Уже идёт обновление — запросим ещё один проход после него.
+      _overviewRefreshQueued = true;
+      return;
+    }
     _isRefreshingOverview = true;
 
     if (showLoading) {
@@ -93,26 +102,29 @@ class ChatOverviewController extends ChangeNotifier {
     }
 
     try {
-      final results = await Future.wait<dynamic>([
-        _chatService.getChatData(),
-        _chatService.getUnreadMessagesCount(),
-      ]);
+      do {
+        _overviewRefreshQueued = false;
+        final results = await Future.wait<dynamic>([
+          _chatService.getChatData(),
+          _chatService.getUnreadMessagesCount(),
+        ]);
 
-      final data = results[0] as Map<String, dynamic>;
-      final count = results[1] as Map<String, Map<int, int>>;
-      final user = data['user'];
-      final rawUserId = user is Map ? user['id'] : null;
-      currentUserId = rawUserId is num ? rawUserId.toInt() : null;
-      users = List<Map<String, dynamic>>.from(
-        data['users_with_messages'] as List? ?? const [],
-      );
-      groupChats = List<Map<String, dynamic>>.from(
-        data['group_chats'] as List? ?? const [],
-      );
-      _setUnreadMaps(count);
-      isLoadingOverview = false;
-      _notify();
-      unawaited(_connectRealtime());
+        final data = results[0] as Map<String, dynamic>;
+        final count = results[1] as Map<String, Map<int, int>>;
+        final user = data['user'];
+        final rawUserId = user is Map ? user['id'] : null;
+        currentUserId = rawUserId is num ? rawUserId.toInt() : null;
+        users = List<Map<String, dynamic>>.from(
+          data['users_with_messages'] as List? ?? const [],
+        );
+        groupChats = List<Map<String, dynamic>>.from(
+          data['group_chats'] as List? ?? const [],
+        );
+        _setUnreadMaps(count);
+        isLoadingOverview = false;
+        _notify();
+        unawaited(_connectRealtime());
+      } while (_overviewRefreshQueued);
     } catch (e) {
       debugPrint('Ошибка загрузки данных чата: $e');
       isLoadingOverview = false;
@@ -123,14 +135,22 @@ class ChatOverviewController extends ChangeNotifier {
   }
 
   Future<void> refreshUnreadCount() async {
-    if (_isRefreshingUnread) return;
+    if (_isRefreshingUnread) {
+      // Не отбрасываем — ставим в очередь, чтобы после прочтения счётчик
+      // гарантированно перезапросился и баджик не остался гореть устаревшим.
+      _unreadRefreshQueued = true;
+      return;
+    }
     _isRefreshingUnread = true;
 
     try {
-      final count = await _chatService.getUnreadMessagesCount();
-      _setUnreadMaps(count);
-      _notify();
-      unawaited(_connectRealtime());
+      do {
+        _unreadRefreshQueued = false;
+        final count = await _chatService.getUnreadMessagesCount();
+        _setUnreadMaps(count);
+        _notify();
+        unawaited(_connectRealtime());
+      } while (_unreadRefreshQueued);
     } catch (e) {
       debugPrint('Ошибка загрузки количества непрочитанных сообщений: $e');
     } finally {

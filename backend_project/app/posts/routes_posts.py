@@ -382,8 +382,13 @@ async def like_post(
         current_user1: str = Depends(get_current_user),
         db: AsyncSession = Depends(get_db)
 ):
-    # Проверяем, существует ли пост
-    result = await db.execute(select(Post).filter(Post.id == post_id))
+    # Блокируем строку поста (FOR UPDATE) на время операции: конкурентные
+    # лайки/анлайки (быстрые тапы, несколько устройств) сериализуются на уровне
+    # БД. Благодаря этому коммиты и WebSocket-броадкасты идут строго по порядку,
+    # и на других устройствах не возникает рассинхрона счётчика.
+    result = await db.execute(
+        select(Post).filter(Post.id == post_id).with_for_update()
+    )
     post = result.scalars().first()
     current_user = current_user1
 
