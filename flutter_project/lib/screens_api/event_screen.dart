@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
+import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
 import 'package:flutter_application_1/screens_api/UserProfiles.dart';
 import 'package:flutter_application_1/screens_api/profile_screen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
@@ -900,6 +901,15 @@ class _EventScreenState extends State<EventScreen> {
     );
   }
 
+  void _openEventApplications(Event event) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EventApplicationsScreen(eventId: event.id),
+      ),
+    ).then((_) => _loadEvents(refresh: true));
+  }
+
   // Переход на профиль организатора (свой ЛК, если это текущий пользователь).
   void _openOrganizerProfile(Event event) {
     final isMe =
@@ -919,10 +929,39 @@ class _EventScreenState extends State<EventScreen> {
         _currentUserId != null && event.organizerId == _currentUserId;
 
     if (isOrganizer) {
-      return _participationInfo(
-        icon: Icons.verified_outlined,
-        text: 'Вы организатор',
-        color: AppColors.primary,
+      final pendingCount = event.pendingApplicationsCount;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _participationInfo(
+            icon: Icons.verified_outlined,
+            text: pendingCount > 0
+                ? 'Вы организатор · заявок: $pendingCount'
+                : 'Вы организатор',
+            color: AppColors.primary,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: () => _openEventApplications(event),
+              icon: const Icon(Icons.fact_check_outlined, size: 19),
+              label: Text(
+                pendingCount > 0
+                    ? 'Рассмотреть заявки ($pendingCount)'
+                    : 'Заявки и участники',
+              ),
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
 

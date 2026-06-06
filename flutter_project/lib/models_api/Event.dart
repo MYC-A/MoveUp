@@ -18,6 +18,7 @@ class Event {
   final int? groupChatId;
   final String? organizerName;
   int participantsCount;
+  final int pendingApplicationsCount;
   final bool isExpired;
 
   /// Статус участия текущего пользователя: null | "AWAITS" | "APPROVED" | "DENIED".
@@ -41,6 +42,7 @@ class Event {
     this.groupChatId,
     this.organizerName,
     this.participantsCount = 0,
+    this.pendingApplicationsCount = 0,
     this.isExpired = false,
     this.myStatus,
   });
@@ -66,6 +68,7 @@ class Event {
       groupChatId: json['group_chat_id'],
       organizerName: json['organizer_name'],
       participantsCount: json['participants_count'] ?? 0,
+      pendingApplicationsCount: json['pending_applications_count'] ?? 0,
       isExpired: json['is_expired'] ?? false,
       myStatus: json['my_status'],
       routeData: (json['route_data'] as List?)

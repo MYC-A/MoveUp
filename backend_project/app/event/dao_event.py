@@ -293,6 +293,21 @@ class EventParticipantDAO(BaseDAO):
             raise e
 
     @staticmethod
+    async def get_pending_counts(event_ids: list[int], session: AsyncSession) -> dict[int, int]:
+        if not event_ids:
+            return {}
+
+        result = await session.execute(
+            select(EventParticipant.event_id, func.count())
+            .where(
+                EventParticipant.event_id.in_(event_ids),
+                EventParticipant.approved == ApprovedType.AWAITS,
+            )
+            .group_by(EventParticipant.event_id)
+        )
+        return {event_id: count for event_id, count in result.all()}
+
+    @staticmethod
     async def get_participants_count(event_id: int, session: AsyncSession) -> int:
         result = await session.execute(
             select(func.count()).select_from(EventParticipant).where(

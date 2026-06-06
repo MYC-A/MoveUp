@@ -99,6 +99,7 @@ class EventRead(BaseModel):
     group_chat_id: Optional[int] = None
     organizer_name: Optional[str] = None
     participants_count: int = 0
+    pending_applications_count: int = 0
     is_expired: bool = False
     # Статус участия текущего пользователя: None | "AWAITS" | "APPROVED" | "DENIED".
     my_status: Optional[str] = None
@@ -128,6 +129,7 @@ class EventRead(BaseModel):
                 "route_data": data.route_data,
                 "group_chat_id": data.group_chat_id,
                 "participants_count": max(data.max_participants - data.available_seats, 0),
+                "pending_applications_count": 0,
                 "is_expired": _is_event_expired(data.start_time, data.end_time),
             }
 

@@ -257,15 +257,25 @@ async def get_events(
 
         # Статус участия текущего пользователя для всех событий страницы (1 запрос).
         status_map = {}
+        pending_counts = {}
         if current_user is not None:
+            event_ids = [e.id for e in events_read]
             status_map = await EventParticipantDAO.get_user_statuses(
-                current_user.id, [e.id for e in events_read], session=db
+                current_user.id, event_ids, session=db
+            )
+            own_event_ids = [
+                event.id for event in events_read
+                if event.organizer_id == current_user.id
+            ]
+            pending_counts = await EventParticipantDAO.get_pending_counts(
+                own_event_ids, session=db
             )
 
         events_dict = []
         for event in events_read:
             event_dict = event.dict()
             event_dict["my_status"] = status_map.get(event.id)
+            event_dict["pending_applications_count"] = pending_counts.get(event.id, 0)
             if event_dict.get("start_time"):
                 event_dict["start_time"] = event_dict["start_time"].isoformat()
             if event_dict.get("end_time"):

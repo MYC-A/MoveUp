@@ -222,7 +222,7 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
               ),
               Tab(
                 icon: Icon(Icons.assignment_turned_in_outlined),
-                text: 'Мои заявки',
+                text: 'Я участвую',
               ),
             ],
           ),
@@ -268,8 +268,8 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
         error: applicationsError,
         emptyState: const AppEmptyState(
           icon: Icons.assignment_outlined,
-          title: 'Активных заявок нет',
-          message: 'Заявки на прошедшие мероприятия скрываются.',
+          title: 'Активных участий нет',
+          message: 'Заявки на чужие прошедшие мероприятия скрываются.',
         ),
         onRetry: _refreshApplications,
         itemBuilder: (context, index) =>
@@ -341,6 +341,7 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
     final title = _stringValue(event['title'], 'Без названия');
     final city = _stringValue(event['city'], 'Город не указан');
     final seatsText = _formatSeats(event);
+    final pendingCount = _intValue(event['pending_applications_count']);
 
     return _Panel(
       child: Column(
@@ -397,6 +398,15 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
                   label: 'Места',
                   value: seatsText,
                 ),
+              _InfoPill(
+                icon: pendingCount > 0
+                    ? Icons.notification_important_outlined
+                    : Icons.assignment_outlined,
+                label: 'Ожидают',
+                value: pendingCount > 0
+                    ? '$pendingCount заявок'
+                    : 'Нет новых заявок',
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -424,10 +434,14 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
                           eventId: event['id'],
                         ),
                       ),
-                    );
+                    ).then((_) => _refreshEvents());
                   },
-                  icon: const Icon(Icons.people_alt_outlined),
-                  label: const Text('Заявки'),
+                  icon: const Icon(Icons.fact_check_outlined),
+                  label: Text(
+                    pendingCount > 0
+                        ? 'Рассмотреть ($pendingCount)'
+                        : 'Участники',
+                  ),
                 ),
               ),
             ],
@@ -505,6 +519,12 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
 
   String _formatDateRange(dynamic start, dynamic end) {
     return Helper.formatDateRange(start, end);
+  }
+
+  int _intValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _formatSeats(Map<String, dynamic> event) {

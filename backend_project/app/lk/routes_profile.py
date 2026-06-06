@@ -289,6 +289,10 @@ async def get_user_events(
     query = query.order_by(Event.start_time.asc()).offset(skip).limit(limit)
     result = await db.execute(query)
     events = result.scalars().all()
+    pending_counts = await EventParticipantDAO.get_pending_counts(
+        [event.id for event in events],
+        session=db,
+    )
 
     # Преобразуем данные в JSON-совместимый формат
     events_data = []
@@ -303,6 +307,7 @@ async def get_user_events(
             "max_participants": event.max_participants,
             "available_seats": event.available_seats,
             "participants_count": max(event.max_participants - event.available_seats, 0),
+            "pending_applications_count": pending_counts.get(event.id, 0),
             "is_expired": _is_event_expired(event.start_time, event.end_time),
         })
 
