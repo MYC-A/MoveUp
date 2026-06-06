@@ -222,23 +222,46 @@ class EventParticipantDAO(BaseDAO):
 
             current_status = participant.approved
 
+            approved_count_result = await session.execute(
+                select(func.count()).select_from(EventParticipant).where(
+                    EventParticipant.event_id == event_id,
+                    EventParticipant.approved == ApprovedType.APPROVED,
+                )
+            )
+            approved_count = approved_count_result.scalar() or 0
+
             if current_status == new_status:
+                event.available_seats = max(
+                    event.max_participants - approved_count,
+                    0,
+                )
                 if commit:
                     await session.commit()
                 return participant
 
-            if new_status == ApprovedType.APPROVED:
-                if event.available_seats <= 0:
+            if (
+                new_status == ApprovedType.APPROVED
+                and current_status != ApprovedType.APPROVED
+            ):
+                if approved_count >= event.max_participants:
                     raise ValueError("Нет доступных мест для участия")
-                event.available_seats -= 1
-            elif current_status == ApprovedType.APPROVED:
-                event.available_seats = min(
-                    event.available_seats + 1,
-                    event.max_participants,
-                )
 
             participant.approved = new_status
             participant.status_changed = True
+            await session.flush()
+
+            approved_count_result = await session.execute(
+                select(func.count()).select_from(EventParticipant).where(
+                    EventParticipant.event_id == event_id,
+                    EventParticipant.approved == ApprovedType.APPROVED,
+                )
+            )
+            approved_count = approved_count_result.scalar() or 0
+            event.available_seats = max(
+                event.max_participants - approved_count,
+                0,
+            )
+
             if commit:
                 await session.commit()
                 await session.refresh(participant)
@@ -278,10 +301,21 @@ class EventParticipantDAO(BaseDAO):
             if not participant:
                 raise ValueError("Участник мероприятия не найден")
 
-            if participant.approved == ApprovedType.APPROVED:
-                event.available_seats = min(event.available_seats + 1, event.max_participants)
-
             await session.delete(participant)
+            await session.flush()
+
+            approved_count_result = await session.execute(
+                select(func.count()).select_from(EventParticipant).where(
+                    EventParticipant.event_id == event_id,
+                    EventParticipant.approved == ApprovedType.APPROVED,
+                )
+            )
+            approved_count = approved_count_result.scalar() or 0
+            event.available_seats = max(
+                event.max_participants - approved_count,
+                0,
+            )
+
             if commit:
                 await session.commit()
             else:
@@ -302,6 +336,24 @@ class EventParticipantDAO(BaseDAO):
             .where(
                 EventParticipant.event_id.in_(event_ids),
                 EventParticipant.approved == ApprovedType.AWAITS,
+            )
+            .group_by(EventParticipant.event_id)
+        )
+        return {event_id: count for event_id, count in result.all()}
+
+    @staticmethod
+    async def get_approved_counts(
+        event_ids: list[int],
+        session: AsyncSession,
+    ) -> dict[int, int]:
+        if not event_ids:
+            return {}
+
+        result = await session.execute(
+            select(EventParticipant.event_id, func.count())
+            .where(
+                EventParticipant.event_id.in_(event_ids),
+                EventParticipant.approved == ApprovedType.APPROVED,
             )
             .group_by(EventParticipant.event_id)
         )

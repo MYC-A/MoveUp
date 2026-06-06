@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/screens_api/EventDetailsScreen.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
@@ -212,25 +213,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             notification['event_title'],
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          subtitle: Text('Количество: ${notification['count']}'),
+          subtitle: Text(
+            type == 'application'
+                ? 'Новых заявок: ${notification['count']}'
+                : 'Статус изменился: ${notification['count']}',
+          ),
           trailing: notification['is_new']
               ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
               : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
           onTap: () async {
-            // Помечаем уведомление как прочитанное перед переходом
-            await _markNotificationAsRead(notification['event_id'], type);
+            final rawEventId = notification['event_id'];
+            final eventId = rawEventId is int
+                ? rawEventId
+                : int.tryParse(rawEventId?.toString() ?? '');
+            if (eventId == null) return;
+
+            await _markNotificationAsRead(eventId, type);
+            if (!mounted) return;
+
+            final destination = type == 'application'
+                ? EventApplicationsScreen(eventId: eventId)
+                : EventDetailsScreen(eventId: eventId);
 
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => EventApplicationsScreen(
-                  eventId: notification['event_id'],
-                ),
-              ),
-            ).then((_) {
-              // Обновляем уведомления после возврата
-              _loadNotifications();
-            });
+              MaterialPageRoute(builder: (context) => destination),
+            ).then((_) => _loadNotifications());
           },
         );
       },

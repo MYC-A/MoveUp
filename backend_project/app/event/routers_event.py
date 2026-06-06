@@ -255,11 +255,15 @@ async def get_events(
 
         events_read = [EventRead.model_validate(event) for event in events]
 
+        event_ids = [e.id for e in events_read]
+        approved_counts = await EventParticipantDAO.get_approved_counts(
+            event_ids, session=db
+        )
+
         # Статус участия текущего пользователя для всех событий страницы (1 запрос).
         status_map = {}
         pending_counts = {}
         if current_user is not None:
-            event_ids = [e.id for e in events_read]
             status_map = await EventParticipantDAO.get_user_statuses(
                 current_user.id, event_ids, session=db
             )
@@ -274,6 +278,12 @@ async def get_events(
         events_dict = []
         for event in events_read:
             event_dict = event.dict()
+            approved_count = approved_counts.get(event.id, 0)
+            event_dict["available_seats"] = max(
+                event.max_participants - approved_count,
+                0,
+            )
+            event_dict["participants_count"] = approved_count
             event_dict["my_status"] = status_map.get(event.id)
             event_dict["pending_applications_count"] = pending_counts.get(event.id, 0)
             if event_dict.get("start_time"):
@@ -315,6 +325,15 @@ async def get_event_details(
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     result = EventRead.model_validate(event)
+    approved_counts = await EventParticipantDAO.get_approved_counts(
+        [event_id], session=db
+    )
+    approved_count = approved_counts.get(event_id, 0)
+    result.available_seats = max(
+        result.max_participants - approved_count,
+        0,
+    )
+    result.participants_count = approved_count
     if current_user is not None:
         participant = await EventParticipantDAO.find_user_participant(
             event_id, current_user.id, session=db

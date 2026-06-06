@@ -289,14 +289,20 @@ async def get_user_events(
     query = query.order_by(Event.start_time.asc()).offset(skip).limit(limit)
     result = await db.execute(query)
     events = result.scalars().all()
+    event_ids = [event.id for event in events]
     pending_counts = await EventParticipantDAO.get_pending_counts(
-        [event.id for event in events],
+        event_ids,
+        session=db,
+    )
+    approved_counts = await EventParticipantDAO.get_approved_counts(
+        event_ids,
         session=db,
     )
 
     # Преобразуем данные в JSON-совместимый формат
     events_data = []
     for event in events:
+        approved_count = approved_counts.get(event.id, 0)
         events_data.append({
             "id": event.id,
             "title": event.title,
@@ -305,8 +311,11 @@ async def get_user_events(
             "start_time": event.start_time,
             "end_time": event.end_time,
             "max_participants": event.max_participants,
-            "available_seats": event.available_seats,
-            "participants_count": max(event.max_participants - event.available_seats, 0),
+            "available_seats": max(
+                event.max_participants - approved_count,
+                0,
+            ),
+            "participants_count": approved_count,
             "pending_applications_count": pending_counts.get(event.id, 0),
             "is_expired": _is_event_expired(event.start_time, event.end_time),
         })
@@ -544,8 +553,41 @@ class ApplicationResponse(BaseModel):
 class EventApplicationsResponse(BaseModel):
     applications: List[ApplicationResponse]
     total_applications: int
+    event: dict
 
 
+async def _event_management_summary(event: Event, db: AsyncSession) -> dict:
+    approved_result = await db.execute(
+        select(func.count())
+        .select_from(EventParticipant)
+        .filter(
+            EventParticipant.event_id == event.id,
+            EventParticipant.approved == ApprovedType.APPROVED,
+        )
+    )
+    pending_result = await db.execute(
+        select(func.count())
+        .select_from(EventParticipant)
+        .filter(
+            EventParticipant.event_id == event.id,
+            EventParticipant.approved == ApprovedType.AWAITS,
+        )
+    )
+    approved_count = approved_result.scalar() or 0
+    pending_count = pending_result.scalar() or 0
+    available_seats = max(
+        event.max_participants - approved_count,
+        0,
+    )
+
+    return {
+        "id": event.id,
+        "title": event.title,
+        "available_seats": available_seats,
+        "max_participants": event.max_participants,
+        "participants_count": approved_count,
+        "pending_applications_count": pending_count,
+    }
 
 
 @router.get("/event/{event_id}/applications", response_model=EventApplicationsResponse)
@@ -593,7 +635,8 @@ async def get_event_applications(
 
     return {
         "applications": applications_data,
-        "total_applications": total_applications
+        "total_applications": total_applications,
+        "event": await _event_management_summary(event, db),
     }
 
 
@@ -656,6 +699,7 @@ async def approve_application(
                 )
 
         await db.commit()
+        await db.refresh(event)
 
         return {
             "id": event.id,
@@ -664,6 +708,7 @@ async def approve_application(
             "participant_id": participant.id,
             "user_id": participant.user_id,
             "status": participant.approved.value,
+            "event": await _event_management_summary(event, db),
         }
     except ValueError as e:
         await db.rollback()
@@ -735,6 +780,7 @@ async def get_event_participants(
     )
 
     return {
+        "event": await _event_management_summary(event, db),
         "participants": [
             {
                 "id": participant.id,
@@ -782,7 +828,12 @@ async def remove_event_participant(
             )
 
         await db.commit()
-        return {"message": "Участник удален", "participant_id": participant_id}
+        await db.refresh(event)
+        return {
+            "message": "Участник удален",
+            "participant_id": participant_id,
+            "event": await _event_management_summary(event, db),
+        }
     except ValueError as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

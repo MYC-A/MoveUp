@@ -444,7 +444,9 @@ class _NotificationIconState extends State<NotificationIcon> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => NotificationsScreen(),
+            builder: (context) => NotificationsScreen(
+              onNotificationsUpdated: _checkNotifications,
+            ),
           ),
         ).then((_) {
           _checkNotifications();

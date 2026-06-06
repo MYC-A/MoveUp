@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/services_api/api_error_ui.dart';
+import 'package:flutter_application_1/screens_api/UserProfiles.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_spacing.dart';
 
 class EventApplicationsScreen extends StatefulWidget {
   final int eventId;
@@ -25,6 +27,8 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
   final int participantsLimit = 50;
   bool isLoadingParticipants = false;
   bool hasMoreParticipants = true;
+  Map<String, dynamic>? eventSummary;
+  bool _changed = false;
 
   @override
   void initState() {
@@ -64,6 +68,9 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       if (!mounted) return;
       setState(() {
         applications.addAll(data['applications']);
+        if (data['event'] is Map) {
+          eventSummary = Map<String, dynamic>.from(data['event']);
+        }
         skip += limit;
         hasMore = data['applications'].length == limit;
       });
@@ -92,6 +99,9 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
       if (!mounted) return;
       setState(() {
         participants.addAll(data['participants']);
+        if (data['event'] is Map) {
+          eventSummary = Map<String, dynamic>.from(data['event']);
+        }
         participantsSkip += participantsLimit;
         hasMoreParticipants =
             data['participants'].length == participantsLimit;
@@ -110,7 +120,14 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
 
   Future<void> _approveApplication(int participantId) async {
     try {
-      await lkService.approveApplication(widget.eventId, participantId);
+      final result =
+          await lkService.approveApplication(widget.eventId, participantId);
+      if (result['event'] is Map && mounted) {
+        setState(() {
+          eventSummary = Map<String, dynamic>.from(result['event']);
+        });
+      }
+      _changed = true;
       await _reloadApplications();
       await _reloadParticipants();
       if (!mounted) return;
@@ -126,6 +143,7 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
   Future<void> _rejectApplication(int participantId) async {
     try {
       await lkService.rejectApplication(widget.eventId, participantId);
+      _changed = true;
       await _reloadApplications();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -139,7 +157,14 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
 
   Future<void> _removeParticipant(int participantId) async {
     try {
-      await lkService.removeEventParticipant(widget.eventId, participantId);
+      final result =
+          await lkService.removeEventParticipant(widget.eventId, participantId);
+      if (result['event'] is Map && mounted) {
+        setState(() {
+          eventSummary = Map<String, dynamic>.from(result['event']);
+        });
+      }
+      _changed = true;
       await _reloadParticipants();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -155,24 +180,99 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Участники события'),
-          centerTitle: true,
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Заявки'),
-              Tab(text: 'Участники'),
+      child: WillPopScope(
+        onWillPop: () async {
+          Navigator.pop(context, _changed);
+          return false;
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Участники события'),
+            centerTitle: true,
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Заявки'),
+                Tab(text: 'Участники'),
+              ],
+            ),
+          ),
+          body: Column(
+            children: [
+              _buildEventSummary(),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildApplicationsList(),
+                    _buildParticipantsList(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildApplicationsList(),
-            _buildParticipantsList(),
-          ],
-        ),
       ),
+    );
+  }
+
+  Widget _buildEventSummary() {
+    final summary = eventSummary;
+    if (summary == null) return const SizedBox.shrink();
+
+    final available = _intValue(summary['available_seats']);
+    final maxParticipants = _intValue(summary['max_participants']);
+    final approved = _intValue(summary['participants_count']);
+    final pending = _intValue(summary['pending_applications_count']);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+      ),
+      child: Wrap(
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.xs,
+        children: [
+          _SummaryValue(
+            icon: Icons.event_seat_outlined,
+            label: 'Свободно',
+            value: '$available/$maxParticipants',
+          ),
+          _SummaryValue(
+            icon: Icons.groups_outlined,
+            label: 'Участники',
+            value: '$approved',
+          ),
+          _SummaryValue(
+            icon: Icons.hourglass_top_outlined,
+            label: 'Ожидают',
+            value: '$pending',
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _intValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  void _openUserProfile(dynamic userId) {
+    final id = userId is int ? userId : int.tryParse(userId?.toString() ?? '');
+    if (id == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => UserProfiles(userId: id)),
     );
   }
 
@@ -207,8 +307,14 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: ListTile(
-              title: Text(application['user_name']),
-              subtitle: Text('Ожидает решения'),
+              leading: CircleAvatar(
+                child: Text(_initial(application['user_name'])),
+              ),
+              title: Text(application['user_name'] ?? 'Участник'),
+              subtitle: const Text(
+                'Ожидает решения · нажмите, чтобы открыть профиль',
+              ),
+              onTap: () => _openUserProfile(application['user_id']),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -263,16 +369,11 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: ListTile(
               leading: CircleAvatar(
-                child: Text(
-                  (participant['user_name'] ?? '?').toString().isEmpty
-                      ? '?'
-                      : (participant['user_name'] ?? '?')
-                          .toString()
-                          .substring(0, 1),
-                ),
+                child: Text(_initial(participant['user_name'])),
               ),
               title: Text(participant['user_name'] ?? 'Участник'),
-              subtitle: Text('Одобрен'),
+              subtitle: const Text('Одобрен · нажмите, чтобы открыть профиль'),
+              onTap: () => _openUserProfile(participant['user_id']),
               trailing: IconButton(
                 tooltip: 'Удалить участника',
                 icon: Icon(Icons.person_remove_alt_1, color: Colors.red),
@@ -282,6 +383,48 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
           );
         },
       ),
+    );
+  }
+
+  String _initial(dynamic name) {
+    final value = name?.toString().trim() ?? '';
+    return value.isEmpty ? '?' : value.substring(0, 1).toUpperCase();
+  }
+}
+
+class _SummaryValue extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _SummaryValue({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.xxs),
+        Text(
+          '$label: ',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+      ],
     );
   }
 }

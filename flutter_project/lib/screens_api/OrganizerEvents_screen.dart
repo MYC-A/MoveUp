@@ -44,8 +44,6 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
     super.initState();
     _loadEvents();
     _loadUserApplications();
-    _markNotificationsAsRead();
-
     _eventScrollController.addListener(_onEventScroll);
     _applicationsScrollController.addListener(_onApplicationsScroll);
   }
@@ -151,14 +149,6 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   Future<void> _refreshEvents() => _loadEvents(refresh: true);
 
   Future<void> _refreshApplications() => _loadUserApplications(refresh: true);
-
-  Future<void> _markNotificationsAsRead() async {
-    try {
-      await lkService.markNotificationsAsRead();
-    } catch (e) {
-      debugPrint('Ошибка при сбросе уведомлений: $e');
-    }
-  }
 
   Future<void> _confirmDeleteEvent(Map<String, dynamic> event) async {
     final eventId = event['id'];

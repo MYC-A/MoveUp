@@ -232,7 +232,8 @@ class LkService {
     }
   }
 
-  Future<void> removeEventParticipant(int eventId, int participantId) async {
+  Future<Map<String, dynamic>> removeEventParticipant(
+      int eventId, int participantId) async {
     final token = await storage.read(key: 'access_token');
     if (token == null) {
       throw ApiException(
@@ -244,9 +245,11 @@ class LkService {
       headers: {'Cookie': 'users_access_token=$token'},
     );
 
-    if (response.statusCode != 200) {
-      throw ApiException.fromResponse(response);
+    if (response.statusCode == 200) {
+      final String responseBody = utf8.decode(response.bodyBytes);
+      return json.decode(responseBody);
     }
+    throw ApiException.fromResponse(response);
   }
 
   Future<Map<String, dynamic>> fetchEventDetails(int eventId) async {
