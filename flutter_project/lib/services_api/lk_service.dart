@@ -189,6 +189,61 @@ class LkService {
     }
   }
 
+  // Кандидаты для приглашения: без q — подписчики, с q — поиск по всем.
+  // Каждый помечен текущим статусом участия (null/AWAITS/APPROVED/DENIED/INVITED).
+  Future<Map<String, dynamic>> fetchInvitableUsers(
+      int eventId, String query, int skip, int limit) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+
+    final params = <String, String>{
+      'skip': '$skip',
+      'limit': '$limit',
+    };
+    if (query.trim().isNotEmpty) {
+      params['q'] = query.trim();
+    }
+    final url = Uri.parse('$baseUrl/profile/event/$eventId/invitable')
+        .replace(queryParameters: params);
+
+    final response = await Api.get(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(utf8.decode(response.bodyBytes));
+    }
+    throw ApiException.fromResponse(response);
+  }
+
+  // Организатор приглашает пользователя на мероприятие.
+  Future<Map<String, dynamic>> inviteUserToEvent(
+      int eventId, int userId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+
+    final response = await Api.post(
+      Uri.parse('$baseUrl/profile/event/$eventId/invite'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': 'users_access_token=$token',
+      },
+      body: json.encode({'user_id': userId}),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(utf8.decode(response.bodyBytes));
+    }
+    throw ApiException.fromResponse(response);
+  }
+
   Future<Map<String, dynamic>> approveApplication(
       int eventId, int participantId) async {
     final token = await storage.read(key: 'access_token');

@@ -3,7 +3,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from .schemas_event import EventCreate, EventRead, EventParticipantCreate
 from .dao_event import EventDAO, EventParticipantDAO
-from .models_event import Event, EventParticipant, UserNotification
+from .models_event import Event, EventParticipant, UserNotification, ApprovedType
 from .cities import EVENT_CITIES, canonical_city
 from app.core.config import settings
 from app.users.dependensies_user import get_current_user, get_current_user_optional
@@ -175,6 +175,13 @@ async def cancel_participation(
                 detail="Вы не записаны на это мероприятие",
             )
 
+        # Отказ финальный: отклонённую заявку нельзя «отписать» и подать заново.
+        if participant.approved == ApprovedType.DENIED:
+            raise HTTPException(
+                status_code=400,
+                detail="Заявка отклонена организатором",
+            )
+
         event_result = await db.execute(
             select(Event).where(Event.id == event_id).with_for_update()
         )
@@ -199,6 +206,90 @@ async def cancel_participation(
 
         await db.commit()
         return {"status": "ok", "msg": "Запись отменена"}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка сервера: " + str(e))
+
+
+@router.post("/{event_id}/invitation/accept")
+async def accept_invitation(
+    event_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Приглашённый пользователь принимает приглашение → становится участником
+    (APPROVED) и добавляется в чат события, если он есть."""
+    try:
+        participant, event = await EventParticipantDAO.respond_to_invitation(
+            event_id=event_id,
+            user_id=current_user.id,
+            accept=True,
+            session=db,
+        )
+
+        # Добавляем в групповой чат события (лениво создаём, если нужно).
+        if event.group_chat_id is None and event.group_chat_enabled:
+            group_chat = GroupChat(name=event.title, creator_id=event.organizer_id)
+            db.add(group_chat)
+            await db.flush()
+            await db.execute(
+                group_chat_participants.insert().values(
+                    group_chat_id=group_chat.id,
+                    user_id=event.organizer_id,
+                )
+            )
+            event.group_chat_id = group_chat.id
+
+        if event.group_chat_id is not None and participant is not None:
+            existing_member = await db.execute(
+                select(group_chat_participants).where(
+                    (group_chat_participants.c.group_chat_id == event.group_chat_id)
+                    & (group_chat_participants.c.user_id == participant.user_id)
+                )
+            )
+            if existing_member.first() is None:
+                await db.execute(
+                    group_chat_participants.insert().values(
+                        group_chat_id=event.group_chat_id,
+                        user_id=participant.user_id,
+                    )
+                )
+
+        await db.commit()
+        return {"status": "ok", "msg": "Вы присоединились к мероприятию"}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка сервера: " + str(e))
+
+
+@router.post("/{event_id}/invitation/decline")
+async def decline_invitation(
+    event_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Приглашённый пользователь отклоняет приглашение — заявка удаляется."""
+    try:
+        await EventParticipantDAO.respond_to_invitation(
+            event_id=event_id,
+            user_id=current_user.id,
+            accept=False,
+            session=db,
+        )
+        await db.commit()
+        return {"status": "ok", "msg": "Приглашение отклонено"}
     except HTTPException:
         await db.rollback()
         raise

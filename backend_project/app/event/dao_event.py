@@ -156,14 +156,23 @@ class EventParticipantDAO(BaseDAO):
         :raises Exception: Если произошла ошибка при работе с базой данных.
         """
         try:
-            existing_participant = await session.execute(
+            existing_result = await session.execute(
                 select(EventParticipant).where(
                     EventParticipant.event_id == event_id,
                     EventParticipant.user_id == user_id
                 )
             )
-            if existing_participant.scalar():
-                raise ValueError("Пользователь уже является участником мероприятия")
+            existing = existing_result.scalar_one_or_none()
+            if existing is not None:
+                # Состояние заявки определяет, можно ли подать снова.
+                if existing.approved == ApprovedType.DENIED:
+                    # Отказ финальный: повторно подать нельзя.
+                    raise ValueError("Организатор отклонил вашу заявку на это мероприятие")
+                if existing.approved == ApprovedType.INVITED:
+                    raise ValueError("Вас пригласили — примите приглашение в карточке мероприятия")
+                if existing.approved == ApprovedType.APPROVED:
+                    raise ValueError("Вы уже участвуете в мероприятии")
+                raise ValueError("Вы уже подали заявку на это мероприятие")
 
             participant = EventParticipant(
                 event_id=event_id,
@@ -176,6 +185,105 @@ class EventParticipantDAO(BaseDAO):
         except Exception as e:
             await session.rollback()
             raise e
+
+    @classmethod
+    async def invite_user(cls, event_id: int, user_id: int, session: AsyncSession):
+        """Организатор приглашает пользователя: создаёт заявку со статусом
+        INVITED. Если запись уже есть — сообщаем понятную причину."""
+        try:
+            existing_result = await session.execute(
+                select(EventParticipant).where(
+                    EventParticipant.event_id == event_id,
+                    EventParticipant.user_id == user_id,
+                )
+            )
+            existing = existing_result.scalar_one_or_none()
+            if existing is not None:
+                if existing.approved == ApprovedType.APPROVED:
+                    raise ValueError("Пользователь уже участвует")
+                if existing.approved == ApprovedType.AWAITS:
+                    raise ValueError("Пользователь уже подал заявку — одобрите её")
+                if existing.approved == ApprovedType.INVITED:
+                    raise ValueError("Пользователь уже приглашён")
+                # DENIED: разрешаем пригласить заново — обновляем статус.
+                existing.approved = ApprovedType.INVITED
+                existing.is_new = True
+                existing.status_changed = False
+                await session.flush()
+                return existing
+
+            participant = EventParticipant(
+                event_id=event_id,
+                user_id=user_id,
+                approved=ApprovedType.INVITED,
+                is_new=True,
+                status_changed=False,
+            )
+            session.add(participant)
+            await session.flush()
+            return participant
+        except Exception:
+            raise
+
+    @classmethod
+    async def respond_to_invitation(
+        cls,
+        event_id: int,
+        user_id: int,
+        accept: bool,
+        session: AsyncSession,
+    ):
+        """Ответ приглашённого пользователя. accept=True → APPROVED (если есть
+        место), иначе заявка удаляется. Возвращает (participant|None, event)."""
+        event_result = await session.execute(
+            select(Event).where(Event.id == event_id).with_for_update()
+        )
+        event = event_result.scalar_one_or_none()
+        if not event:
+            raise ValueError("Мероприятие не найдено")
+
+        participant_result = await session.execute(
+            select(EventParticipant)
+            .where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        participant = participant_result.scalar_one_or_none()
+        if not participant or participant.approved != ApprovedType.INVITED:
+            raise ValueError("Приглашение не найдено")
+
+        if not accept:
+            await session.delete(participant)
+            await session.flush()
+            return None, event
+
+        approved_count_result = await session.execute(
+            select(func.count()).select_from(EventParticipant).where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.approved == ApprovedType.APPROVED,
+            )
+        )
+        approved_count = approved_count_result.scalar() or 0
+        if approved_count >= event.max_participants:
+            raise ValueError("Нет свободных мест для участия")
+
+        participant.approved = ApprovedType.APPROVED
+        participant.status_changed = False
+        participant.is_new = False
+        await session.flush()
+
+        approved_count_result = await session.execute(
+            select(func.count()).select_from(EventParticipant).where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.approved == ApprovedType.APPROVED,
+            )
+        )
+        approved_count = approved_count_result.scalar() or 0
+        event.available_seats = max(event.max_participants - approved_count, 0)
+        await session.flush()
+        return participant, event
 
     @classmethod
     async def update_participant(

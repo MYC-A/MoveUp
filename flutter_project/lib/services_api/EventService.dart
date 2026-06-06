@@ -271,6 +271,40 @@ class EventService {
     }
   }
 
+  // Принять приглашение организатора (стать участником)
+  Future<void> acceptInvitation(int eventId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+    final url = Uri.parse('$baseUrl/events/$eventId/invitation/accept');
+    final response = await Api.post(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
+  // Отклонить приглашение организатора
+  Future<void> declineInvitation(int eventId) async {
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      throw ApiException(
+          ApiErrorKind.unauthorized, 'Сессия истекла. Войдите снова.');
+    }
+    final url = Uri.parse('$baseUrl/events/$eventId/invitation/decline');
+    final response = await Api.post(
+      url,
+      headers: {'Cookie': 'users_access_token=$token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+  }
+
   // Удаление мероприятия (только организатор)
   Future<void> deleteEvent(int eventId) async {
     final token = await storage.read(key: 'access_token');

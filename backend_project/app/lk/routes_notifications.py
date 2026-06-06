@@ -43,17 +43,33 @@ async def get_user_notifications(
         new_applications = []
 
     # Получаем изменения в статусе заявок, которые подал пользователь
+    # (одобрение/отклонение). INVITED сюда не входит — это отдельный раздел
+    # приглашений со своими действиями (принять/отклонить).
     user_applications_changes_result = await db.execute(
         select(EventParticipant.event_id, Event.title, func.count())
         .join(Event, EventParticipant.event_id == Event.id)
         .filter(
             EventParticipant.user_id == current_user,
-            EventParticipant.approved != ApprovedType.AWAITS,
+            EventParticipant.approved.in_(
+                [ApprovedType.APPROVED, ApprovedType.DENIED]
+            ),
             EventParticipant.status_changed == True  # Только изменения статуса
         )
         .group_by(EventParticipant.event_id, Event.title)
     )
     user_applications_changes = user_applications_changes_result.all()
+
+    # Приглашения от организаторов, ожидающие ответа пользователя.
+    invitations_result = await db.execute(
+        select(EventParticipant.event_id, Event.title)
+        .join(Event, EventParticipant.event_id == Event.id)
+        .filter(
+            EventParticipant.user_id == current_user,
+            EventParticipant.approved == ApprovedType.INVITED,
+            EventParticipant.is_new == True,
+        )
+    )
+    invitations = invitations_result.all()
 
     # Персистентные уведомления (например, отмена мероприятия) — переживают
     # удаление события, поэтому хранятся отдельно от EventParticipant.
@@ -86,6 +102,14 @@ async def get_user_notifications(
                 "is_new": True  # Флаг для новых уведомлений
             }
             for event_id, event_title, count in user_applications_changes
+        ],
+        "invitations": [
+            {
+                "event_id": event_id,
+                "event_title": event_title,
+                "is_new": True,
+            }
+            for event_id, event_title in invitations
         ],
         "event_updates": [
             {
@@ -212,6 +236,20 @@ async def mark_single_notification_as_read(
                 EventParticipant.status_changed == True
             )
             .values(status_changed=False)
+        )
+
+    # Для приглашений (участник) — снимаем «новизну», само приглашение остаётся
+    # активным, пока пользователь не примет/не отклонит его.
+    elif notification_type == 'invitation':
+        await db.execute(
+            update(EventParticipant)
+            .where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.user_id == current_user,
+                EventParticipant.approved == ApprovedType.INVITED,
+                EventParticipant.is_new == True,
+            )
+            .values(is_new=False)
         )
 
     await db.commit()

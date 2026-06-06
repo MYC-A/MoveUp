@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/CreateEventScreen.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/screens_api/InviteToEventScreen.dart';
 import 'package:flutter_application_1/screens_api/UserProfiles.dart';
 import 'package:flutter_application_1/screens_api/profile_screen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
@@ -910,6 +911,18 @@ class _EventScreenState extends State<EventScreen> {
     ).then((_) => _loadEvents(refresh: true));
   }
 
+  void _openInvite(Event event) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InviteToEventScreen(
+          eventId: event.id,
+          eventTitle: event.title,
+        ),
+      ),
+    ).then((_) => _loadEvents(refresh: true));
+  }
+
   // Переход на профиль организатора (свой ЛК, если это текущий пользователь).
   void _openOrganizerProfile(Event event) {
     final isMe =
@@ -961,6 +974,24 @@ class _EventScreenState extends State<EventScreen> {
               ),
             ),
           ),
+          if (!event.isExpired) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: () => _openInvite(event),
+                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                label: const Text('Пригласить участников'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       );
     }
@@ -975,29 +1006,81 @@ class _EventScreenState extends State<EventScreen> {
 
     final status = event.myStatus;
 
-    // Уже записан (или заявка на рассмотрении / отклонена) — показываем статус
-    // и даём отписаться.
-    if (status != null) {
-      final label = status == 'APPROVED'
-          ? 'Вы участвуете'
-          : status == 'AWAITS'
-              ? 'Заявка на рассмотрении'
-              : 'Заявка отклонена';
-      final color = status == 'APPROVED'
-          ? AppColors.success
-          : status == 'AWAITS'
-              ? AppColors.activity
-              : AppColors.danger;
+    // Приглашение от организатора — принять / отклонить.
+    if (status == 'INVITED') {
       return Column(
         children: [
           _participationInfo(
-            icon: status == 'APPROVED'
+            icon: Icons.mail_outline_rounded,
+            text: 'Вас пригласили',
+            color: AppColors.primary,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        hasSeats ? () => _acceptInvitation(event) : null,
+                    icon: const Icon(Icons.check_rounded, size: 18),
+                    label: Text(hasSeats ? 'Принять' : 'Нет мест'),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _declineInvitation(event),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    label: const Text('Отклонить'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      side: const BorderSide(color: AppColors.danger),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Отказ финальный — только статус, без действий (повторно подать нельзя).
+    if (status == 'DENIED') {
+      return _participationInfo(
+        icon: Icons.cancel_outlined,
+        text: 'Заявка отклонена',
+        color: AppColors.danger,
+      );
+    }
+
+    // Участвует (APPROVED) или заявка на рассмотрении (AWAITS) — даём отменить.
+    if (status != null) {
+      final approved = status == 'APPROVED';
+      return Column(
+        children: [
+          _participationInfo(
+            icon: approved
                 ? Icons.check_circle_outline
-                : status == 'AWAITS'
-                    ? Icons.hourglass_top_outlined
-                    : Icons.cancel_outlined,
-            text: label,
-            color: color,
+                : Icons.hourglass_top_outlined,
+            text: approved ? 'Вы участвуете' : 'Заявка на рассмотрении',
+            color: approved ? AppColors.success : AppColors.activity,
           ),
           const SizedBox(height: AppSpacing.sm),
           SizedBox(
@@ -1006,7 +1089,7 @@ class _EventScreenState extends State<EventScreen> {
             child: OutlinedButton.icon(
               onPressed: () => _cancelParticipation(event),
               icon: const Icon(Icons.logout, size: 18),
-              label: const Text('Отписаться'),
+              label: Text(approved ? 'Отменить участие' : 'Отменить заявку'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.danger,
                 side: const BorderSide(color: AppColors.danger),
@@ -1251,6 +1334,48 @@ class _EventScreenState extends State<EventScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Заявка отправлена организатору')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => event.myStatus = prevStatus);
+      showApiError(context, e);
+    }
+  }
+
+  Future<void> _acceptInvitation(Event event) async {
+    final prevStatus = event.myStatus;
+    setState(() {
+      event.myStatus = 'APPROVED';
+      if (event.availableSeats > 0) event.availableSeats -= 1;
+      event.participantsCount += 1;
+    });
+
+    try {
+      await _eventService.acceptInvitation(event.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Вы присоединились к мероприятию')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        event.myStatus = prevStatus;
+        event.availableSeats += 1;
+        if (event.participantsCount > 0) event.participantsCount -= 1;
+      });
+      showApiError(context, e);
+    }
+  }
+
+  Future<void> _declineInvitation(Event event) async {
+    final prevStatus = event.myStatus;
+    setState(() => event.myStatus = null);
+
+    try {
+      await _eventService.declineInvitation(event.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Приглашение отклонено')),
       );
     } catch (e) {
       if (!mounted) return;

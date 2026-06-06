@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models_api/Event.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/screens_api/InviteToEventScreen.dart';
 import 'package:flutter_application_1/screens_api/GroupChatScreen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
@@ -352,6 +353,14 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               label: 'Заявки и участники',
               onPressed: _isActionLoading ? null : _openApplications,
             ),
+            if (!event.isExpired) ...[
+              const SizedBox(height: AppSpacing.sm),
+              _SecondaryActionButton(
+                icon: Icons.person_add_alt_1_rounded,
+                label: 'Пригласить участников',
+                onPressed: _isActionLoading ? null : _openInvite,
+              ),
+            ],
             if (event.groupChatId != null) ...[
               const SizedBox(height: AppSpacing.sm),
               _SecondaryActionButton(
@@ -403,6 +412,51 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       );
     }
 
+    // Приглашение от организатора — отдельные действия: принять / отклонить.
+    if (status == 'INVITED') {
+      return _SurfaceSection(
+        title: 'Приглашение',
+        child: Column(
+          children: [
+            _StatusBanner(
+              icon: _statusIcon(status),
+              label: _statusLabel(status),
+              color: _statusColor(status),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _PrimaryActionButton(
+              icon: Icons.check_rounded,
+              label: event.availableSeats > 0
+                  ? 'Принять приглашение'
+                  : 'Нет свободных мест',
+              onPressed: event.availableSeats > 0 && !_isActionLoading
+                  ? _acceptInvitation
+                  : null,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _SecondaryActionButton(
+              icon: Icons.close_rounded,
+              label: 'Отклонить',
+              destructive: true,
+              onPressed: _isActionLoading ? null : _declineInvitation,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Отказ финальный: показываем статус без действий — повторно подать нельзя.
+    if (status == 'DENIED') {
+      return _SurfaceSection(
+        title: 'Участие',
+        child: _StatusBanner(
+          icon: _statusIcon(status),
+          label: _statusLabel(status),
+          color: _statusColor(status),
+        ),
+      );
+    }
+
     return _SurfaceSection(
       title: 'Участие',
       child: Column(
@@ -423,7 +477,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
           const SizedBox(height: AppSpacing.sm),
           _SecondaryActionButton(
             icon: Icons.logout_rounded,
-            label: status == 'DENIED' ? 'Удалить заявку' : 'Отменить участие',
+            label: status == 'APPROVED' ? 'Отменить участие' : 'Отменить заявку',
             destructive: true,
             onPressed: _isActionLoading ? null : _cancelParticipation,
           ),
@@ -510,6 +564,44 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     }
   }
 
+  Future<void> _acceptInvitation() async {
+    final event = _event;
+    if (event == null) return;
+
+    setState(() => _isActionLoading = true);
+    try {
+      await _eventService.acceptInvitation(event.id);
+      await _loadDetails();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Вы присоединились к мероприятию')),
+      );
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _isActionLoading = false);
+    }
+  }
+
+  Future<void> _declineInvitation() async {
+    final event = _event;
+    if (event == null) return;
+
+    setState(() => _isActionLoading = true);
+    try {
+      await _eventService.declineInvitation(event.id);
+      await _loadDetails();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Приглашение отклонено')),
+      );
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _isActionLoading = false);
+    }
+  }
+
   void _openApplications() {
     final event = _event;
     if (event == null) return;
@@ -518,6 +610,21 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => EventApplicationsScreen(eventId: event.id),
+      ),
+    ).then((_) => _loadDetails());
+  }
+
+  void _openInvite() {
+    final event = _event;
+    if (event == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InviteToEventScreen(
+          eventId: event.id,
+          eventTitle: event.title,
+        ),
       ),
     ).then((_) => _loadDetails());
   }
@@ -633,6 +740,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         return 'Заявка на рассмотрении';
       case 'DENIED':
         return 'Заявка отклонена';
+      case 'INVITED':
+        return 'Вас пригласили на мероприятие';
       default:
         return status;
     }
@@ -646,6 +755,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         return Icons.hourglass_top_outlined;
       case 'DENIED':
         return Icons.cancel_outlined;
+      case 'INVITED':
+        return Icons.mail_outline_rounded;
       default:
         return Icons.info_outline;
     }
@@ -659,6 +770,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         return AppColors.activity;
       case 'DENIED':
         return AppColors.danger;
+      case 'INVITED':
+        return AppColors.primary;
       default:
         return AppColors.textSecondary;
     }

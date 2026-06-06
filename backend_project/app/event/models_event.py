@@ -15,6 +15,9 @@ class ApprovedType(PyEnum):
     APPROVED = "APPROVED"
     AWAITS = "AWAITS"
     DENIED = "DENIED"
+    # Организатор сам пригласил пользователя. Ждём ответа: примет (станет
+    # APPROVED) или отклонит (заявка удаляется).
+    INVITED = "INVITED"
 
 
 class Event(Base):

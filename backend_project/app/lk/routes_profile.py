@@ -761,6 +761,134 @@ async def reject_application(
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
+@router.get("/event/{event_id}/invitable")
+async def get_invitable_users(
+    event_id: int,
+    q: str | None = Query(None, description="Поиск по имени/username; без q — подписчики"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Кандидаты для приглашения на мероприятие: по умолчанию — подписчики
+    организатора, при поиске (q) — любые пользователи. Каждый помечен текущим
+    статусом участия, чтобы клиент не предлагал пригласить уже участвующих."""
+    event_result = await db.execute(
+        select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+    )
+    event = event_result.scalars().first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Событие не найдено или вы не являетесь организатором")
+
+    if q and q.strip():
+        search = f"%{q.strip()}%"
+        candidates_result = await db.execute(
+            select(User)
+            .where(
+                User.id != current_user,
+                or_(
+                    User.full_name.ilike(search),
+                    User.username.ilike(search),
+                ),
+            )
+            .order_by(User.full_name.asc(), User.id.asc())
+            .offset(skip)
+            .limit(limit + 1)
+        )
+    else:
+        candidates_result = await db.execute(
+            select(User)
+            .join(UserFollow, UserFollow.follower_id == User.id)
+            .where(UserFollow.following_id == current_user, User.id != current_user)
+            .order_by(User.full_name.asc(), User.id.asc())
+            .offset(skip)
+            .limit(limit + 1)
+        )
+    candidates = candidates_result.scalars().all()
+    has_more = len(candidates) > limit
+    candidates = candidates[:limit]
+
+    candidate_ids = [u.id for u in candidates]
+    status_map: dict[int, str] = {}
+    if candidate_ids:
+        status_result = await db.execute(
+            select(EventParticipant.user_id, EventParticipant.approved).where(
+                EventParticipant.event_id == event_id,
+                EventParticipant.user_id.in_(candidate_ids),
+            )
+        )
+        status_map = {uid: approved.value for uid, approved in status_result.all()}
+
+    return {
+        "users": [
+            {
+                "id": user.id,
+                "full_name": user.full_name or user.username or "Пользователь",
+                "username": user.username,
+                "avatar_url": user.avatar_url,
+                "city": user.city,
+                "status": status_map.get(user.id),
+            }
+            for user in candidates
+        ],
+        "has_more": has_more,
+    }
+
+
+@router.post("/event/{event_id}/invite")
+async def invite_user_to_event(
+    event_id: int,
+    data: dict,
+    current_user: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Организатор приглашает пользователя на мероприятие (статус INVITED)."""
+    user_id = data.get("user_id")
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=400, detail="Не указан user_id")
+
+    try:
+        event_result = await db.execute(
+            select(Event)
+            .where(Event.id == event_id, Event.organizer_id == current_user)
+            .with_for_update()
+        )
+        event = event_result.scalar_one_or_none()
+        if not event:
+            raise ValueError("Событие не найдено или вы не являетесь организатором")
+
+        if user_id == current_user:
+            raise ValueError("Нельзя пригласить самого себя")
+
+        if _is_event_expired(event.start_time, event.end_time):
+            raise ValueError("Мероприятие уже завершилось")
+
+        target = await db.execute(select(User).where(User.id == user_id))
+        if target.scalar_one_or_none() is None:
+            raise ValueError("Пользователь не найден")
+
+        await EventParticipantDAO.invite_user(
+            event_id=event_id, user_id=user_id, session=db
+        )
+
+        await db.commit()
+        return {
+            "status": "ok",
+            "message": "Приглашение отправлено",
+            "user_id": user_id,
+            "event": await _event_management_summary(event, db),
+        }
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
 @router.get("/event/{event_id}/participants")
 async def get_event_participants(
     event_id: int,

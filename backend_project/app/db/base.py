@@ -33,6 +33,29 @@ async def init_db():
         # Создаем все таблицы, если они отсутствуют
         await conn.run_sync(Base.metadata.create_all)
         await ensure_schema_compatibility(conn)
+    # Значение enum нельзя добавлять в той же транзакции, где оно создаётся/
+    # используется, поэтому делаем это отдельным автокоммит-соединением.
+    await ensure_enum_values()
+
+
+async def ensure_enum_values():
+    """Идемпотентно добавляет недостающие значения PostgreSQL-enum для уже
+    существующих баз (на свежей БД enum создаётся сразу со всеми значениями)."""
+    if engine.dialect.name != "postgresql":
+        # SQLite в dev хранит Enum как VARCHAR+CHECK; локальную базу проще
+        # пересоздать, отдельная миграция не нужна.
+        return
+    try:
+        async with engine.connect() as conn:
+            await conn.execution_options(isolation_level="AUTOCOMMIT")
+            await conn.execute(
+                text("ALTER TYPE approvedtype ADD VALUE IF NOT EXISTS 'INVITED'")
+            )
+    except Exception as exc:  # pragma: no cover - не критично для запуска
+        import logging
+        logging.getLogger(__name__).warning(
+            "Не удалось добавить значение enum 'INVITED' в approvedtype: %s", exc
+        )
 
 
 async def ensure_schema_compatibility(conn):

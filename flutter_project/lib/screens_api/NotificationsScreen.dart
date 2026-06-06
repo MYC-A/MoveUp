@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
-import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
+import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/screens_api/EventDetailsScreen.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
@@ -11,7 +12,8 @@ import 'package:flutter_application_1/services_api/api_error_ui.dart';
 class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onNotificationsUpdated;
 
-  NotificationsScreen({this.onNotificationsUpdated});
+  const NotificationsScreen({this.onNotificationsUpdated, Key? key})
+      : super(key: key);
 
   @override
   _NotificationsScreenState createState() => _NotificationsScreenState();
@@ -26,11 +28,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    _initNotifications();
-  }
-
-  Future<void> _initNotifications() async {
-    await _loadNotifications();
+    _loadNotifications();
   }
 
   Future<void> _loadNotifications() async {
@@ -42,97 +40,225 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final data = await lkService.fetchNotifications();
       if (!mounted) return;
-      setState(() {
-        notifications = data;
-      });
+      setState(() => notifications = data);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-        });
-      }
-      showApiError(context, e);
+      if (mounted) setState(() => _errorMessage = e.toString());
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _markNotificationAsRead(int eventId, String type) async {
+  int _parseEventId(dynamic raw) {
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '') ?? -1;
+  }
+
+  void _notifyUpdated() => widget.onNotificationsUpdated?.call();
+
+  // Новая заявка организатору → экран заявок и участников события.
+  Future<void> _openApplications(int eventId) async {
     try {
-      await lkService.markNotificationAsRead(eventId, type);
-      await _loadNotifications();
-      if (widget.onNotificationsUpdated != null) {
-        widget.onNotificationsUpdated!();
-      }
-    } catch (e) {
-      showApiError(context, e);
-    }
+      await lkService.markNotificationAsRead(eventId, 'application');
+    } catch (_) {}
+    _notifyUpdated();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventApplicationsScreen(eventId: eventId),
+      ),
+    );
+    _loadNotifications();
+  }
+
+  // Изменение статуса моей заявки / приглашение → карточка события.
+  Future<void> _openEventDetails(int eventId, String markType) async {
+    try {
+      await lkService.markNotificationAsRead(eventId, markType);
+    } catch (_) {}
+    _notifyUpdated();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventDetailsScreen(eventId: eventId),
+      ),
+    );
+    _loadNotifications();
   }
 
   Future<void> _markEventUpdateRead(int notificationId) async {
     try {
       await lkService.markEventUpdateRead(notificationId);
       await _loadNotifications();
-      if (widget.onNotificationsUpdated != null) {
-        widget.onNotificationsUpdated!();
-      }
+      _notifyUpdated();
     } catch (e) {
-      showApiError(context, e);
+      if (mounted) showApiError(context, e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Уведомления'),
-          bottom: TabBar(
+          bottom: const TabBar(
             isScrollable: true,
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.primary,
-            tabs: const [
-              Tab(text: 'Мои мероприятия'),
+            tabs: [
+              Tab(text: 'Заявки на события'),
               Tab(text: 'Мои заявки'),
+              Tab(text: 'Приглашения'),
               Tab(text: 'Обновления'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildNotificationSection(
-              notifications: notifications['new_applications'] ?? [],
-              type: 'application',
-            ),
-            _buildNotificationSection(
-              notifications: notifications['user_applications_changes'] ?? [],
-              type: 'change',
-            ),
-            _buildEventUpdatesSection(
-              notifications: notifications['event_updates'] ?? [],
-            ),
+            _buildApplicationsSection(),
+            _buildChangesSection(),
+            _buildInvitationsSection(),
+            _buildEventUpdatesSection(),
           ],
         ),
       ),
     );
   }
 
-  // Раздел персистентных уведомлений (например, отмена мероприятия).
-  // Переход никуда не ведёт — события уже нет; тап помечает прочитанным.
-  Widget _buildEventUpdatesSection({required List<dynamic> notifications}) {
-    if (_isLoading) {
-      return const AppLoading(label: 'Загружаем уведомления');
-    }
+  Widget? _guard() {
+    if (_isLoading) return const AppLoading(label: 'Загружаем уведомления');
     if (_errorMessage != null) {
       return AppErrorState(message: _errorMessage, onRetry: _loadNotifications);
     }
-    if (notifications.isEmpty) {
+    return null;
+  }
+
+  // Организатор: новые заявки на его мероприятия.
+  Widget _buildApplicationsSection() {
+    final guard = _guard();
+    if (guard != null) return guard;
+
+    final items = (notifications['new_applications'] as List?) ?? const [];
+    if (items.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.notifications_none,
+        title: 'Нет новых заявок',
+        message: 'Здесь появятся заявки на ваши мероприятия.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: items.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        final n = items[index];
+        return ListTile(
+          leading: const Icon(Icons.group_add_outlined,
+              color: AppColors.primary),
+          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
+          subtitle: Text('Новых заявок: ${n['count']}'),
+          trailing: n['is_new'] == true
+              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
+              : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
+          onTap: () {
+            final eventId = _parseEventId(n['event_id']);
+            if (eventId > 0) _openApplications(eventId);
+          },
+        );
+      },
+    );
+  }
+
+  // Участник: изменения статуса моих заявок (одобрено / отклонено).
+  Widget _buildChangesSection() {
+    final guard = _guard();
+    if (guard != null) return guard;
+
+    final items =
+        (notifications['user_applications_changes'] as List?) ?? const [];
+    if (items.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.notifications_none,
+        title: 'Нет изменений',
+        message: 'Здесь появятся ответы организаторов на ваши заявки.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: items.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        final n = items[index];
+        return ListTile(
+          leading: const Icon(Icons.event_available_outlined,
+              color: AppColors.activity),
+          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
+          subtitle: const Text('Статус заявки изменился'),
+          trailing: n['is_new'] == true
+              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
+              : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
+          onTap: () {
+            final eventId = _parseEventId(n['event_id']);
+            if (eventId > 0) _openEventDetails(eventId, 'change');
+          },
+        );
+      },
+    );
+  }
+
+  // Участник: приглашения от организаторов (принять / отклонить в карточке).
+  Widget _buildInvitationsSection() {
+    final guard = _guard();
+    if (guard != null) return guard;
+
+    final items = (notifications['invitations'] as List?) ?? const [];
+    if (items.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.mail_outline_rounded,
+        title: 'Нет приглашений',
+        message: 'Здесь появятся приглашения на мероприятия.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: items.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        final n = items[index];
+        return ListTile(
+          leading:
+              const Icon(Icons.mail_outline_rounded, color: AppColors.primary),
+          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
+          subtitle: const Text('Вас пригласили — нажмите, чтобы ответить'),
+          trailing: n['is_new'] == true
+              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
+              : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
+          onTap: () {
+            final eventId = _parseEventId(n['event_id']);
+            if (eventId > 0) _openEventDetails(eventId, 'invitation');
+          },
+        );
+      },
+    );
+  }
+
+  // Персистентные уведомления (например, отмена мероприятия).
+  Widget _buildEventUpdatesSection() {
+    final guard = _guard();
+    if (guard != null) return guard;
+
+    final items = (notifications['event_updates'] as List?) ?? const [];
+    if (items.isEmpty) {
       return const AppEmptyState(
         icon: Icons.notifications_none,
         title: 'Нет обновлений',
@@ -142,23 +268,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: notifications.length,
-      separatorBuilder: (context, index) =>
+      itemCount: items.length,
+      separatorBuilder: (_, __) =>
           const Divider(height: 1, color: AppColors.border),
       itemBuilder: (context, index) {
-        final n = notifications[index];
+        final n = items[index];
         final isNew = n['is_new'] == true;
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs,
-          ),
-          leading: const Icon(Icons.event_busy_outlined,
-              color: AppColors.danger),
-          title: Text(
-            n['title']?.toString() ?? 'Мероприятие',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          leading:
+              const Icon(Icons.event_busy_outlined, color: AppColors.danger),
+          title: Text(n['title']?.toString() ?? 'Мероприятие'),
           subtitle: Text(
             n['body']?.toString() ?? 'Мероприятие отменено организатором',
           ),
@@ -168,78 +287,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           onTap: isNew
               ? () => _markEventUpdateRead(n['notification_id'] as int)
               : null,
-        );
-      },
-    );
-  }
-
-  Widget _buildNotificationSection({
-    required List<dynamic> notifications,
-    required String type,
-  }) {
-    if (_isLoading) {
-      return const AppLoading(label: 'Загружаем уведомления');
-    }
-
-    if (_errorMessage != null) {
-      return AppErrorState(
-        message: _errorMessage,
-        onRetry: _loadNotifications,
-      );
-    }
-
-    if (notifications.isEmpty) {
-      return const AppEmptyState(
-        icon: Icons.notifications_none,
-        title: 'Нет уведомлений',
-        message: 'Здесь появятся новые заявки и изменения по событиям.',
-      );
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: notifications.length,
-      separatorBuilder: (context, index) =>
-          const Divider(height: 1, color: AppColors.border),
-      itemBuilder: (context, index) {
-        final notification = notifications[index];
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs,
-          ),
-          title: Text(
-            notification['event_title'],
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          subtitle: Text(
-            type == 'application'
-                ? 'Новых заявок: ${notification['count']}'
-                : 'Статус изменился: ${notification['count']}',
-          ),
-          trailing: notification['is_new']
-              ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
-              : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
-          onTap: () async {
-            final rawEventId = notification['event_id'];
-            final eventId = rawEventId is int
-                ? rawEventId
-                : int.tryParse(rawEventId?.toString() ?? '');
-            if (eventId == null) return;
-
-            await _markNotificationAsRead(eventId, type);
-            if (!mounted) return;
-
-            final tabIndex = type == 'application' ? 0 : 1;
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => OrganizerEventsScreen(
-                  initialTabIndex: tabIndex,
-                ),
-              ),
-            ).then((_) => _loadNotifications());
-          },
         );
       },
     );
