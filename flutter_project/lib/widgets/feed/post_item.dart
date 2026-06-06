@@ -304,51 +304,88 @@ class _PostItemState extends State<PostItem>
                 const SizedBox(height: AppSpacing.xs),
                 Builder(
                   builder: (context) {
-                    final hasCity =
-                        post.city != null && post.city!.isNotEmpty;
+                    final city = post.city?.trim() ?? '';
+                    final hasCity = city.isNotEmpty;
                     final metaStyle = textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 14,
                     );
-                    return Row(
+                    final cityStyle = metaStyle?.copyWith(height: 1.25);
+
+                    Widget routeDot() {
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.routeSoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: Icon(
+                            Icons.directions_run,
+                            color: AppColors.route,
+                            size: 13,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (hasRoute) ...[
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppColors.routeSoft,
-                              shape: BoxShape.circle,
+                        if (hasCity)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (hasRoute) ...[
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1),
+                                  child: routeDot(),
+                                ),
+                                const SizedBox(width: AppSpacing.xs),
+                              ],
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  Icons.place_outlined,
+                                  size: 14,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  city,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: cityStyle,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (hasCity) const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (hasRoute && !hasCity) ...[
+                              routeDot(),
+                              const SizedBox(width: AppSpacing.xs),
+                            ],
+                            const Icon(
+                              Icons.schedule,
+                              size: 13,
+                              color: AppColors.textSecondary,
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(3),
-                              child: Icon(
-                                Icons.directions_run,
-                                color: AppColors.route,
-                                size: 13,
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                Helper.formatDateTime(post.createdAt),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: metaStyle,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: AppSpacing.xs),
-                        ],
-                        if (hasCity) ...[
-                          const Icon(Icons.place_outlined,
-                              size: 14, color: AppColors.textSecondary),
-                          const SizedBox(width: 2),
-                          // Город сжимается при нехватке места — но время
-                          // всегда остаётся видимым целиком.
-                          Flexible(
-                            child: Text(
-                              post.city!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: metaStyle,
-                            ),
-                          ),
-                          Text(' · ', style: metaStyle),
-                        ],
-                        Text(
-                          Helper.formatDateTime(post.createdAt),
-                          maxLines: 1,
-                          style: metaStyle,
+                          ],
                         ),
                       ],
                     );
