@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
+import 'package:flutter_application_1/screens_api/EventDetailsScreen.dart';
 import 'package:flutter_application_1/services_api/EventService.dart';
 import 'package:flutter_application_1/services_api/EventTranslations.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
@@ -13,7 +14,12 @@ import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/widgets/common/app_loading.dart';
 
 class OrganizerEventsScreen extends StatefulWidget {
-  const OrganizerEventsScreen({Key? key}) : super(key: key);
+  final int initialTabIndex;
+
+  const OrganizerEventsScreen({
+    Key? key,
+    this.initialTabIndex = 0,
+  }) : super(key: key);
 
   @override
   _OrganizerEventsScreenState createState() => _OrganizerEventsScreenState();
@@ -38,6 +44,12 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   bool hasMoreApplications = true;
   String? applicationsError;
   final ScrollController _applicationsScrollController = ScrollController();
+
+  int get _initialTabIndex {
+    if (widget.initialTabIndex < 0) return 0;
+    if (widget.initialTabIndex > 1) return 1;
+    return widget.initialTabIndex;
+  }
 
   @override
   void initState() {
@@ -199,6 +211,7 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
+      initialIndex: _initialTabIndex,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -447,6 +460,11 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
     final title = _stringValue(application['event_title'], 'Без названия');
     final city = _stringValue(application['event_city'], 'Город не указан');
     final statusColor = _statusColor(status);
+    final cancelLabel = status == 'DENIED'
+        ? 'Удалить заявку'
+        : status == 'AWAITS'
+            ? 'Отменить заявку'
+            : 'Отменить участие';
 
     return _Panel(
       child: Column(
@@ -502,9 +520,70 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openApplicationDetails(application),
+                  icon: const Icon(Icons.event_note_outlined),
+                  label: const Text('Открыть'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _cancelApplication(application, status),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                    side: const BorderSide(color: AppColors.danger),
+                  ),
+                  icon: const Icon(Icons.logout_rounded),
+                  label: Text(cancelLabel),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  void _openApplicationDetails(Map<String, dynamic> application) {
+    final eventId = _intValue(application['event_id']);
+    if (eventId <= 0) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EventDetailsScreen(eventId: eventId),
+      ),
+    ).then((_) => _refreshApplications());
+  }
+
+  Future<void> _cancelApplication(
+    Map<String, dynamic> application,
+    String status,
+  ) async {
+    final eventId = _intValue(application['event_id']);
+    if (eventId <= 0) return;
+
+    try {
+      await _eventService.cancelParticipation(eventId);
+      await _refreshApplications();
+      if (!mounted) return;
+      final message = status == 'DENIED'
+          ? 'Заявка удалена'
+          : status == 'AWAITS'
+              ? 'Заявка отменена'
+              : 'Участие отменено';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showApiError(context, e);
+    }
   }
 
   String _formatDateRange(dynamic start, dynamic end) {

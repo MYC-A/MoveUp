@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services_api/lk_service.dart';
-import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
-import 'package:flutter_application_1/screens_api/EventDetailsScreen.dart';
+import 'package:flutter_application_1/screens_api/OrganizerEvents_screen.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
@@ -231,13 +230,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             await _markNotificationAsRead(eventId, type);
             if (!mounted) return;
 
-            final destination = type == 'application'
-                ? EventApplicationsScreen(eventId: eventId)
-                : EventDetailsScreen(eventId: eventId);
-
+            final tabIndex = type == 'application' ? 0 : 1;
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => destination),
+              MaterialPageRoute(
+                builder: (context) => OrganizerEventsScreen(
+                  initialTabIndex: tabIndex,
+                ),
+              ),
             ).then((_) => _loadNotifications());
           },
         );

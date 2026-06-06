@@ -142,7 +142,13 @@ class _EventApplicationsScreenState extends State<EventApplicationsScreen> {
 
   Future<void> _rejectApplication(int participantId) async {
     try {
-      await lkService.rejectApplication(widget.eventId, participantId);
+      final result =
+          await lkService.rejectApplication(widget.eventId, participantId);
+      if (result['event'] is Map && mounted) {
+        setState(() {
+          eventSummary = Map<String, dynamic>.from(result['event']);
+        });
+      }
       _changed = true;
       await _reloadApplications();
       if (!mounted) return;

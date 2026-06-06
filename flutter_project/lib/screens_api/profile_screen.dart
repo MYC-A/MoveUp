@@ -365,6 +365,7 @@ class NotificationIcon extends StatefulWidget {
 
 class _NotificationIconState extends State<NotificationIcon> {
   bool hasNewNotifications = false;
+  Map<String, dynamic> _latestNotifications = {};
   bool _checking = false; // защита от наложения опросов
   Timer? _timer;
 
@@ -403,6 +404,7 @@ class _NotificationIconState extends State<NotificationIcon> {
       }
 
       setState(() {
+        _latestNotifications = notifications;
         hasNewNotifications = notEmpty('new_applications') ||
             notEmpty('user_applications_changes') ||
             notEmpty('event_updates');
@@ -415,6 +417,71 @@ class _NotificationIconState extends State<NotificationIcon> {
     } finally {
       _checking = false;
     }
+  }
+
+  bool _hasItems(String key) {
+    final value = _latestNotifications[key];
+    return value is List && value.isNotEmpty;
+  }
+
+  int? _eventsTabFromNotifications() {
+    if (_hasItems('new_applications')) return 0;
+    if (_hasItems('user_applications_changes')) return 1;
+    return null;
+  }
+
+  Future<void> _markNotificationsForTab(int tabIndex) async {
+    final key = tabIndex == 0 ? 'new_applications' : 'user_applications_changes';
+    final type = tabIndex == 0 ? 'application' : 'change';
+    final items = _latestNotifications[key];
+    if (items is! List) return;
+
+    for (final item in items) {
+      if (item is! Map) continue;
+      final rawEventId = item['event_id'];
+      final eventId = rawEventId is int
+          ? rawEventId
+          : int.tryParse(rawEventId?.toString() ?? '');
+      if (eventId == null) continue;
+      await widget.lkService.markNotificationAsRead(eventId, type);
+    }
+  }
+
+  void _openNotificationsTarget() {
+    final tabIndex = _eventsTabFromNotifications();
+    if (tabIndex == null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NotificationsScreen(
+            onNotificationsUpdated: _checkNotifications,
+          ),
+        ),
+      ).then((_) {
+        _checkNotifications();
+      });
+      return;
+    }
+
+    () async {
+      try {
+        await _markNotificationsForTab(tabIndex);
+      } catch (e) {
+        if (!(e is ApiException && e.isOffline)) {
+          debugPrint('Ошибка при отметке уведомлений: $e');
+        }
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OrganizerEventsScreen(
+            initialTabIndex: tabIndex,
+          ),
+        ),
+      );
+      _checkNotifications();
+    }();
   }
 
   @override
@@ -440,18 +507,7 @@ class _NotificationIconState extends State<NotificationIcon> {
             ),
         ],
       ),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => NotificationsScreen(
-              onNotificationsUpdated: _checkNotifications,
-            ),
-          ),
-        ).then((_) {
-          _checkNotifications();
-        });
-      },
+      onPressed: _openNotificationsTarget,
     );
   }
 }

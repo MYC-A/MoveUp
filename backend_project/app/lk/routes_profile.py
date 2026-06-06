@@ -722,25 +722,43 @@ async def reject_application(
     event_id: int,
     participant_id: int,
     current_user: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         event_result = await db.execute(
-            select(Event).filter(Event.id == event_id, Event.organizer_id == current_user)
+            select(Event)
+            .where(Event.id == event_id, Event.organizer_id == current_user)
+            .with_for_update()
         )
-        event = event_result.scalars().first()
+        event = event_result.scalar_one_or_none()
         if not event:
             raise ValueError("Событие не найдено или вы не являетесь организатором")
 
-        await EventParticipantDAO.update_participant(
+        participant = await EventParticipantDAO.update_participant(
             participant_id=participant_id,
             event_id=event_id,
             new_status=ApprovedType.DENIED,
-            session=db
+            session=db,
+            commit=False,
         )
-        return {"message": "Заявка отклонена"}
-    except Exception as e:
+
+        await db.commit()
+        await db.refresh(event)
+        await db.refresh(participant)
+
+        return {
+            "message": "Заявка отклонена",
+            "participant_id": participant.id,
+            "user_id": participant.user_id,
+            "status": participant.approved.value,
+            "event": await _event_management_summary(event, db),
+        }
+    except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 @router.get("/event/{event_id}/participants")
