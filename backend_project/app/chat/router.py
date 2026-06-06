@@ -147,28 +147,28 @@ async def _send_personal_message_push(
     content: str,
 ) -> None:
     if not PushNotificationService.is_enabled():
-        logger.warning(
-            "Personal push skipped: FCM is disabled recipient=%s message_id=%s",
-            recipient_id,
-            message_id,
-        )
         return
 
-    unread = await MessagesDAO.get_unread_messages_count(recipient_id)
-    await PushNotificationService.send_chat_message_push(
-        recipient_id=recipient_id,
-        title=sender.full_name or "Новое сообщение",
-        body=_truncate_push_body(content),
-        data={
-            "type": "chat_message",
-            "conversation_type": "personal",
-            "conversation_id": sender.id,
-            "conversation_title": sender.full_name or "Пользователь",
-            "sender_id": sender.id,
-            "message_id": message_id,
-        },
-        unread_count=_count_unread_total(unread),
-    )
+        unread = await MessagesDAO.get_unread_messages_count(recipient_id)
+        await PushNotificationService.send_chat_message_push(
+            recipient_id=recipient_id,
+            title=sender.full_name or "Новое сообщение",
+            body=_truncate_push_body(content),
+            data={
+                "type": "chat_message",
+                "conversation_type": "personal",
+                "conversation_id": sender.id,
+                "conversation_title": sender.full_name or "Пользователь",
+                "sender_id": sender.id,
+                "message_id": message_id,
+            },
+            unread_count=_count_unread_total(unread),
+        )
+    except Exception:
+        logger.exception(
+            "Push (личное): ошибка при отправке уведомления получателю %s",
+            recipient_id,
+        )
 
 
 async def _send_group_message_push(
@@ -180,31 +180,31 @@ async def _send_group_message_push(
     content: str,
 ) -> None:
     if not PushNotificationService.is_enabled():
-        logger.warning(
-            "Group push skipped: FCM is disabled recipient=%s group_chat=%s message_id=%s",
-            recipient_id,
-            group_chat_id,
-            message_id,
-        )
         return
 
-    sender_name = sender.full_name or "Участник"
-    unread = await MessagesDAO.get_unread_messages_count(recipient_id)
-    await PushNotificationService.send_chat_message_push(
-        recipient_id=recipient_id,
-        title=group_chat_name,
-        body=f"{sender_name}: {_truncate_push_body(content)}",
-        data={
-            "type": "chat_message",
-            "conversation_type": "group",
-            "conversation_id": group_chat_id,
-            "conversation_title": group_chat_name,
-            "group_chat_id": group_chat_id,
-            "sender_id": sender.id,
-            "message_id": message_id,
-        },
-        unread_count=_count_unread_total(unread),
-    )
+        sender_name = sender.full_name or "Участник"
+        unread = await MessagesDAO.get_unread_messages_count(recipient_id)
+        await PushNotificationService.send_chat_message_push(
+            recipient_id=recipient_id,
+            title=group_chat_name,
+            body=f"{sender_name}: {_truncate_push_body(content)}",
+            data={
+                "type": "chat_message",
+                "conversation_type": "group",
+                "conversation_id": group_chat_id,
+                "conversation_title": group_chat_name,
+                "group_chat_id": group_chat_id,
+                "sender_id": sender.id,
+                "message_id": message_id,
+            },
+            unread_count=_count_unread_total(unread),
+        )
+    except Exception:
+        logger.exception(
+            "Push (группа): ошибка при отправке уведомления участнику %s (чат %s)",
+            recipient_id,
+            group_chat_id,
+        )
 
 @router.get("/unread_messages_count", response_model=Dict[str, Dict[int, int]])
 async def get_unread_messages_count(current_user: User = Depends(get_current_user)):
