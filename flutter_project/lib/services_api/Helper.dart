@@ -57,4 +57,44 @@ class Helper {
     }
     return '$startStr – ${DateFormat('dd.MM.yyyy HH:mm').format(endDt)}';
   }
+
+  /// Время мероприятия — «настенное» локальное, выбранное организатором.
+  /// В отличие от серверных меток (posts/chat создаются через utcnow()), сервер
+  /// хранит время события наивно, БЕЗ перевода в UTC. Поэтому здесь НЕ сдвигаем
+  /// часовой пояс — иначе время «уезжает» на величину пояса.
+  static DateTime? parseLocalWallClock(Object? input) {
+    if (input == null) return null;
+    if (input is DateTime) return input;
+    if (input is! String) return null;
+    final value = input.trim();
+    if (value.isEmpty) return null;
+    final dt = DateTime.tryParse(value);
+    if (dt == null) return null;
+    // Если вдруг пришёл суффикс таймзоны (Z/offset) — берём «настенные» поля как
+    // есть, без конвертации, чтобы отображать ровно выбранное организатором время.
+    return dt.isUtc
+        ? DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+        : dt;
+  }
+
+  /// Диапазон дат мероприятия (без сдвига пояса). Однодневное событие не
+  /// дублирует дату: «05.06.2026 14:30 – 16:00».
+  static String formatLocalDateRange(Object? start, Object? end) {
+    final startDt = parseLocalWallClock(start);
+    final endDt = parseLocalWallClock(end);
+
+    if (startDt == null && endDt == null) return 'Время не указано';
+    if (endDt == null) return DateFormat('dd.MM.yyyy HH:mm').format(startDt!);
+    if (startDt == null) return DateFormat('dd.MM.yyyy HH:mm').format(endDt);
+
+    final startStr = DateFormat('dd.MM.yyyy HH:mm').format(startDt);
+    final sameDay = startDt.year == endDt.year &&
+        startDt.month == endDt.month &&
+        startDt.day == endDt.day;
+
+    if (sameDay) {
+      return '$startStr – ${DateFormat('HH:mm').format(endDt)}';
+    }
+    return '$startStr – ${DateFormat('dd.MM.yyyy HH:mm').format(endDt)}';
+  }
 }

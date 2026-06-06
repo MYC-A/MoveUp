@@ -1,5 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
+import '../services_api/Helper.dart';
+
 class Event {
   final int id;
   final String title;
@@ -55,11 +57,10 @@ class Event {
       eventType: json['event_type'],
       goal: json['goal'],
       city: json['city'],
-      startTime: json['start_time'] != null
-          ? DateTime.parse(json['start_time'])
-          : null,
-      endTime:
-          json['end_time'] != null ? DateTime.parse(json['end_time']) : null,
+      // Время события — «настенное» локальное (его выбрал организатор, сервер
+      // хранит наивно без UTC). НЕ сдвигаем пояс, иначе время уезжает.
+      startTime: Helper.parseLocalWallClock(json['start_time']),
+      endTime: Helper.parseLocalWallClock(json['end_time']),
       difficulty: json['difficulty'],
       maxParticipants: json['max_participants'],
       isPublic: json['is_public'],

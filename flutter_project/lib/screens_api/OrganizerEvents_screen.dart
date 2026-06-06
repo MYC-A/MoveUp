@@ -603,7 +603,8 @@ class _OrganizerEventsScreenState extends State<OrganizerEventsScreen> {
   }
 
   String _formatDateRange(dynamic start, dynamic end) {
-    return Helper.formatDateRange(start, end);
+    // Время события — локальное «настенное», без сдвига пояса (см. Helper).
+    return Helper.formatLocalDateRange(start, end);
   }
 
   int _intValue(dynamic value) {
