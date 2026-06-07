@@ -23,6 +23,7 @@ class PostService {
     int limit, {
     String? query,
     String? city,
+    String? scope,
     bool? hasRoute,
     bool? withPhotos,
   }) async {
@@ -32,6 +33,7 @@ class PostService {
     final queryParameters = <String, String>{
       'skip': skip.toString(),
       'limit': limit.toString(),
+      if (scope != null && scope.trim().isNotEmpty) 'scope': scope.trim(),
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
       if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
       if (hasRoute != null) 'has_route': hasRoute.toString(),

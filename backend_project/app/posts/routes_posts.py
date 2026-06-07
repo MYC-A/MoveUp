@@ -165,6 +165,7 @@ async def broadcast_post_update(post_id: int, update: dict):
 async def get_feed(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    scope: str = Query("all", description="Режим ленты: all, following или mine"),
     q: Optional[str] = Query(None, description="Поиск по тексту, городу или автору"),
     city: Optional[str] = Query(None, description="Фильтр по городу поста"),
     has_route: Optional[bool] = Query(None, description="Посты с маршрутом / без маршрута"),
@@ -172,20 +173,16 @@ async def get_feed(
     current_user1=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Лента активности: посты пользователя и его подписок. Если подписок нет
-    (например, только что зарегистрировался) — показываем рекомендации: свежие
-    посты сообщества, чтобы лента не была пустой."""
-    current_user = current_user1.id
+    """Лента активности.
 
-    # Сколько подписок у пользователя — решает, показывать ленту подписок или
-    # рекомендации.
-    following_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(UserFollow)
-            .where(UserFollow.follower_id == current_user)
-        )
-    ).scalar() or 0
+    По умолчанию показываем свежие посты сообщества. Режим following оставляет
+    только текущего пользователя и его подписки, mine — только текущего
+    пользователя.
+    """
+    current_user = current_user1.id
+    scope = (scope or "all").strip().lower()
+    if scope not in {"all", "following", "mine"}:
+        raise HTTPException(status_code=400, detail="Invalid feed scope")
 
     stmt_posts = (
         select(Post)
@@ -194,7 +191,7 @@ async def get_feed(
         .order_by(Post.created_at.desc(), Post.id.desc())  # Стабильная сортировка для offset/limit
     )
 
-    if following_count > 0:
+    if scope == "following":
         following_subq = select(UserFollow.following_id).where(
             UserFollow.follower_id == current_user
         )
@@ -204,7 +201,8 @@ async def get_feed(
                 Post.user_id.in_(following_subq),
             )
         )
-    # иначе — без фильтра: рекомендации (все свежие посты сообщества).
+    elif scope == "mine":
+        stmt_posts = stmt_posts.where(Post.user_id == current_user)
 
     if q and q.strip():
         search = f"%{q.strip()}%"
@@ -368,6 +366,12 @@ async def create_post(
         photo_urls.append(photo_url)
 
     await db.commit()
+
+    await broadcast_feed_update({
+        "type": "post_created",
+        "post_id": db_post.id,
+        "user_id": current_user,
+    })
 
     # Возвращаем созданный пост с фотографиями
     return {**db_post.__dict__, "photos": photo_urls}

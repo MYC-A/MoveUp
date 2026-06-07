@@ -3,6 +3,7 @@ import 'package:flutter_application_1/services_api/lk_service.dart';
 import 'package:flutter_application_1/screens_api/EventApplicationsScreen.dart';
 import 'package:flutter_application_1/screens_api/EventDetailsScreen.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
@@ -158,11 +159,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           const Divider(height: 1, color: AppColors.border),
       itemBuilder: (context, index) {
         final n = items[index];
-        return ListTile(
-          leading: const Icon(Icons.group_add_outlined,
-              color: AppColors.primary),
-          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
-          subtitle: Text('Новых заявок: ${n['count']}'),
+        return _NotificationTile(
+          icon: Icons.group_add_outlined,
+          iconColor: AppColors.primary,
+          title: n['event_title']?.toString() ?? 'Мероприятие',
+          subtitle: 'Новых заявок: ${n['count']}',
           trailing: n['is_new'] == true
               ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
               : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
@@ -197,11 +198,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           const Divider(height: 1, color: AppColors.border),
       itemBuilder: (context, index) {
         final n = items[index];
-        return ListTile(
-          leading: const Icon(Icons.event_available_outlined,
-              color: AppColors.activity),
-          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
-          subtitle: const Text('Статус заявки изменился'),
+        return _NotificationTile(
+          icon: Icons.event_available_outlined,
+          iconColor: AppColors.activity,
+          title: n['event_title']?.toString() ?? 'Мероприятие',
+          subtitle: 'Статус заявки изменился',
           trailing: n['is_new'] == true
               ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
               : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
@@ -235,11 +236,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           const Divider(height: 1, color: AppColors.border),
       itemBuilder: (context, index) {
         final n = items[index];
-        return ListTile(
-          leading:
-              const Icon(Icons.mail_outline_rounded, color: AppColors.primary),
-          title: Text(n['event_title']?.toString() ?? 'Мероприятие'),
-          subtitle: const Text('Вас пригласили — нажмите, чтобы ответить'),
+        return _NotificationTile(
+          icon: Icons.mail_outline_rounded,
+          iconColor: AppColors.primary,
+          title: n['event_title']?.toString() ?? 'Мероприятие',
+          subtitle: 'Вас пригласили — нажмите, чтобы ответить',
           trailing: n['is_new'] == true
               ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
               : const Icon(Icons.arrow_forward, color: AppColors.textMuted),
@@ -274,13 +275,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       itemBuilder: (context, index) {
         final n = items[index];
         final isNew = n['is_new'] == true;
-        return ListTile(
-          leading:
-              const Icon(Icons.event_busy_outlined, color: AppColors.danger),
-          title: Text(n['title']?.toString() ?? 'Мероприятие'),
-          subtitle: Text(
-            n['body']?.toString() ?? 'Мероприятие отменено организатором',
-          ),
+        return _NotificationTile(
+          icon: Icons.event_busy_outlined,
+          iconColor: AppColors.danger,
+          title: n['title']?.toString() ?? 'Мероприятие',
+          subtitle:
+              n['body']?.toString() ?? 'Мероприятие отменено организатором',
           trailing: isNew
               ? const Icon(Icons.circle, color: AppColors.danger, size: 12)
               : null,
@@ -289,6 +289,85 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               : null,
         );
       },
+    );
+  }
+}
+
+
+class _NotificationTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  const _NotificationTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleSmall?.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxs),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: AppSpacing.sm),
+              trailing!,
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

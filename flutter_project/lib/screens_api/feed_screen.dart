@@ -9,6 +9,7 @@ import '../services_api/api_error_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'dart:async';
 import 'package:flutter_application_1/theme/app_colors.dart';
+import 'package:flutter_application_1/theme/app_radii.dart';
 import 'package:flutter_application_1/theme/app_spacing.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
@@ -45,6 +46,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final List<Map<String, dynamic>> _pendingWebSocketUpdates = [];
   String? _loadError;
   bool _showFilters = false;
+  String _feedScope = 'all';
   String _routeFilter = 'any';
   String _photoFilter = 'any';
 
@@ -104,11 +106,37 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     }
   }
 
-  bool get _hasActiveFilters {
+  bool get _hasSearchFilters {
     return _searchController.text.trim().isNotEmpty ||
         _cityController.text.trim().isNotEmpty ||
         _routeFilter != 'any' ||
         _photoFilter != 'any';
+  }
+
+  bool get _hasActiveFilters {
+    return _feedScope != 'all' || _hasSearchFilters;
+  }
+
+  String get _emptyFeedTitle {
+    if (_feedScope == 'following' && !_hasSearchFilters) {
+      return 'В подписках пока пусто';
+    }
+    if (_feedScope == 'mine' && !_hasSearchFilters) {
+      return 'У вас пока нет публикаций';
+    }
+    return _hasSearchFilters ? 'Посты не найдены' : 'Пока нет публикаций';
+  }
+
+  String get _emptyFeedMessage {
+    if (_feedScope == 'following' && !_hasSearchFilters) {
+      return 'Переключитесь на «Все», чтобы смотреть свежие посты сообщества.';
+    }
+    if (_feedScope == 'mine' && !_hasSearchFilters) {
+      return 'Создайте первый пост или выберите ленту «Все».';
+    }
+    return _hasSearchFilters
+        ? 'Попробуйте изменить поиск или фильтры.'
+        : 'Создайте первый пост или обновите ленту.';
   }
 
   bool? get _hasRouteFilter {
@@ -135,6 +163,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     _searchController.clear();
     _cityController.clear();
     setState(() {
+      _feedScope = 'all';
       _routeFilter = 'any';
       _photoFilter = 'any';
     });
@@ -171,6 +200,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         _limit,
         query: _searchController.text,
         city: _cityController.text,
+        scope: _feedScope,
         hasRoute: _hasRouteFilter,
         withPhotos: _withPhotosFilter,
       );
@@ -234,6 +264,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         _limit,
         query: _searchController.text,
         city: _cityController.text,
+        scope: _feedScope,
         hasRoute: _hasRouteFilter,
         withPhotos: _withPhotosFilter,
       );
@@ -309,6 +340,15 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     if (update['type'] == 'post_deleted') {
       if (postIndex != -1) {
         _removePostAt(postIndex);
+      }
+      return;
+    }
+
+    if (update['type'] == 'post_created') {
+      if (!_isLoading && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _loadPosts(refresh: true);
+        });
       }
       return;
     }
@@ -457,14 +497,14 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (context) => RouteHistoryScreen(selectForPost: true),
       ),
-    ).then((_) => _refreshPosts());
+    ).then((_) => _handleRefresh());
   }
 
   void _navigateToCreatePostWithoutRouteScreen() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => CreatePostWithoutRouteScreen()),
-    ).then((_) => _refreshPosts());
+    ).then((_) => _handleRefresh());
   }
 
   @override
@@ -510,6 +550,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         color: AppColors.background,
         child: Column(
           children: [
+            _buildFeedScopeBar(),
             if (_showFilters) _buildFilterPanel(),
             Expanded(
               child: PageStorage(
@@ -547,6 +588,104 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                         ),
                     ],
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setFeedScope(String scope) {
+    if (_feedScope == scope) return;
+    _filterDebounceTimer?.cancel();
+    setState(() => _feedScope = scope);
+    _loadPosts(refresh: true);
+  }
+
+  Widget _buildFeedScopeBar() {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildScopeButton(
+                value: 'all',
+                icon: Icons.public_rounded,
+                label: 'Все',
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: _buildScopeButton(
+                value: 'following',
+                icon: Icons.people_alt_outlined,
+                label: 'Подписки',
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: _buildScopeButton(
+                value: 'mine',
+                icon: Icons.person_outline,
+                label: 'Мои',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScopeButton({
+    required String value,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected = _feedScope == value;
+    final foreground = selected ? Colors.white : AppColors.textSecondary;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      onTap: () => _setFeedScope(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 17, color: foreground),
+            const SizedBox(width: AppSpacing.xxs),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -671,10 +810,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       return _buildStateList(
         AppEmptyState(
           icon: Icons.dynamic_feed_outlined,
-          title: _hasActiveFilters ? 'Посты не найдены' : 'Пока нет публикаций',
-          message: _hasActiveFilters
-              ? 'Попробуйте изменить фильтры.'
-              : 'Создайте первый пост или обновите ленту.',
+          title: _emptyFeedTitle,
+          message: _emptyFeedMessage,
           action: ElevatedButton.icon(
             onPressed: _showPostOptions,
             icon: const Icon(Icons.add),
