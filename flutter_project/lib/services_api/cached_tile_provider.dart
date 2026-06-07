@@ -10,13 +10,17 @@ import 'package:flutter_map/flutter_map.dart';
 /// между запусками приложения. Кэш убирает повторные загрузки/декодирование —
 /// это снимает микро-фризы при прокрутке и снижает нагрузку на тайл-серверы OSM.
 class CachedTileProvider extends TileProvider {
+  static const Map<String, String> osmHeaders = {
+    // OSM блокирует запросы без внятного описательного User-Agent
+    // (отдаёт 403/429 -> серые незагруженные тайлы). Указываем полноценный
+    // идентификатор приложения с контактом, как требует политика OSM.
+    'User-Agent': 'MoveUp/1.0 (https://moveup.app; support@moveup.app)',
+  };
+
   CachedTileProvider({Map<String, String>? headers})
       : super(
           headers: {
-            // OSM блокирует запросы без внятного описательного User-Agent
-            // (отдаёт 403/429 → серые незагруженные тайлы). Указываем полноценный
-            // идентификатор приложения с контактом, как требует политика OSM.
-            'User-Agent': 'MoveUp/1.0 (https://moveup.app; support@moveup.app)',
+            ...osmHeaders,
             ...?headers,
           },
         );

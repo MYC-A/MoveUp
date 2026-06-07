@@ -1209,12 +1209,14 @@ class _LiveTrackerScreenState extends State<LiveTrackerScreen>
       options: MapOptions(
         initialCenter: _currentPosition!,
         initialZoom: 16.0,
+        minZoom: osmMapMinZoom,
+        maxZoom: osmMapMaxZoom,
         onPositionChanged: (position, hasGesture) {
           if (hasGesture) setState(() => _followUser = false);
         },
       ),
       children: [
-        osmTileLayer(retina: MediaQuery.of(context).devicePixelRatio > 1.5),
+        osmTileLayer(cacheTiles: false),
         if (_route != null && _route!.points.isNotEmpty)
           PolylineLayer(
             polylines: [

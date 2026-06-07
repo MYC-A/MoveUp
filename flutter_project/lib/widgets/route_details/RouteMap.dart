@@ -60,12 +60,12 @@ class _RouteMapState extends State<RouteMap> {
           options: MapOptions(
             initialCenter: _points.first,
             initialZoom: 13.0,
+            minZoom: osmMapMinZoom,
+            maxZoom: osmMapMaxZoom,
             onMapReady: _zoomToRoute,
           ),
           children: [
-            osmTileLayer(
-              retina: MediaQuery.of(context).devicePixelRatio > 1.5,
-            ),
+            osmTileLayer(),
             PolylineLayer(
               polylines: [
                 Polyline(
