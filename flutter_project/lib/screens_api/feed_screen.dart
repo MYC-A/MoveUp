@@ -6,6 +6,7 @@ import '../services_api/post_service.dart';
 import '../models_api/post.dart';
 import '../services_api/web_socket_channel.dart';
 import '../services_api/api_error_ui.dart';
+import '../services_api/api_exception.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'dart:async';
 import 'package:flutter_application_1/theme/app_colors.dart';
@@ -37,8 +38,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final int _limit = 20;
   bool _isLoading = false;
   bool _hasMore = true;
-  int? _latestPostId;
-  bool _isRefreshing = false;
   final List<MapController> _mapControllers = [];
   int? _currentUserId;
   Timer? _webSocketBatchTimer;
@@ -190,7 +189,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         _posts.clear();
         _mapControllers.clear();
         _hasMore = true;
-        _latestPostId = null;
       }
     });
 
@@ -215,10 +213,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         _hasMore = fetched.length == _limit;
         _mapControllers
             .addAll(List.generate(newPosts.length, (_) => MapController()));
-        if (_posts.isNotEmpty) {
-          _latestPostId =
-              _posts.map((p) => p.id).reduce((a, b) => a > b ? a : b);
-        }
       });
       debugPrint("Посты загружены: ${newPosts.length}");
     } catch (e) {
@@ -239,75 +233,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _handleRefresh() {
-    if (_latestPostId == null || _hasActiveFilters) {
-      return _loadPosts(refresh: true);
-    }
-    return _refreshPosts();
-  }
-
-  Future<void> _refreshPosts() async {
-    if (_isRefreshing || _latestPostId == null) return;
-
-    setState(() {
-      _isRefreshing = true;
-    });
-
-    await _scrollController.animateTo(
-      0,
-      duration: Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-
-    try {
-      final newPosts = await _postService.getFeed(
-        0,
-        _limit,
-        query: _searchController.text,
-        city: _cityController.text,
-        scope: _feedScope,
-        hasRoute: _hasRouteFilter,
-        withPhotos: _withPhotosFilter,
-      );
-      final newPostsToAdd =
-          newPosts.where((post) => post.id > _latestPostId!).toList();
-      if (!mounted) return;
-
-      setState(() {
-        if (newPostsToAdd.isNotEmpty) {
-          _posts.insertAll(0, newPostsToAdd);
-          _mapControllers.insertAll(
-              0, List.generate(newPostsToAdd.length, (_) => MapController()));
-          _latestPostId = _posts.first.id;
-        }
-
-        // Обновляем commentsCount/likesCount для существующих постов одним rebuild.
-        for (var newPost in newPosts) {
-          final index = _posts.indexWhere((p) => p.id == newPost.id);
-          if (index != -1) {
-            _posts[index].commentsCount = newPost.commentsCount;
-            _posts[index].likesCount = newPost.likesCount;
-          }
-        }
-
-        _isRefreshing = false;
-      });
-
-      if (newPostsToAdd.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${newPostsToAdd.length} новых постов')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isRefreshing = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка обновления: $e')),
-        );
-      }
-      debugPrint('Ошибка обновления: $e');
-    }
+    return _loadPosts(refresh: true);
   }
 
   void _handleWebSocketUpdate(Map<String, dynamic> update) {
@@ -413,6 +339,14 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       });
     } catch (e) {
       if (!mounted) return;
+      if (e is ApiException && e.kind == ApiErrorKind.notFound) {
+        _removePostById(postId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Пост уже удалён')),
+        );
+        return;
+      }
+
       setState(() {
         post.likedByCurrentUser = prevLiked;
         post.likesCount = prevCount;
@@ -522,23 +456,11 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               setState(() => _showFilters = !_showFilters);
             },
           ),
-          if (_isRefreshing)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else
-            AppIconButton(
-              icon: Icons.refresh,
-              tooltip: 'Обновить ленту',
-              onPressed: _handleRefresh,
-            ),
+          AppIconButton(
+            icon: Icons.refresh,
+            tooltip: 'Обновить ленту',
+            onPressed: _handleRefresh,
+          ),
           AppIconButton(
             icon: Icons.add,
             tooltip: 'Создать пост',
@@ -561,31 +483,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                   child: Stack(
                     children: [
                       _buildFeedContent(),
-                      if (_isRefreshing)
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: Container(
-                              margin: EdgeInsets.all(8),
-                              padding: EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: AppColors.surface,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.border),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: CircularProgressIndicator(strokeWidth: 3),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),

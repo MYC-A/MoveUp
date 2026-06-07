@@ -14,6 +14,7 @@ import 'package:flutter_application_1/widgets/common/app_loading.dart';
 import 'package:flutter_application_1/widgets/common/app_empty_state.dart';
 import 'package:flutter_application_1/widgets/common/app_error_state.dart';
 import 'package:flutter_application_1/services_api/api_error_ui.dart';
+import 'package:flutter_application_1/services_api/api_exception.dart';
 import 'package:flutter_application_1/theme/app_colors.dart';
 
 class UserPosts extends StatefulWidget {
@@ -139,19 +140,35 @@ class _UserPostsState extends State<UserPosts> {
   }
 
   Future<void> _pollPosts() async {
+    if (posts.isEmpty) return;
+
     try {
       final newPosts =
           await lkService.fetchUserPosts(widget.userId, 0, posts.length);
+      final freshPosts = newPosts.map((json) => Post.fromJson(json)).toList();
+
+      final controllersByPostId = <int, MapController>{};
+      for (var i = 0; i < posts.length && i < mapControllers.length; i++) {
+        controllersByPostId[posts[i].id] = mapControllers[i];
+      }
+
+      final nextControllers = <MapController>[];
+      for (final post in freshPosts) {
+        nextControllers.add(
+          controllersByPostId.remove(post.id) ?? MapController(),
+        );
+      }
+
+      final controllersToDispose = controllersByPostId.values.toList();
       setState(() {
-        for (var newPost in newPosts) {
-          final index = posts.indexWhere((p) => p.id == newPost['id']);
-          if (index != -1) {
-            posts[index].commentsCount = newPost['comments_count'] ?? 0;
-            posts[index].likesCount = newPost['likes_count'] ?? 0;
-            posts = List.from(posts);
-          }
-        }
+        posts = freshPosts;
+        mapControllers = nextControllers;
+        skip = posts.length;
       });
+
+      for (final controller in controllersToDispose) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+      }
     } catch (e) {
       debugPrint('Ошибка опроса постов: $e');
     }
@@ -293,6 +310,14 @@ class _UserPostsState extends State<UserPosts> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (e is ApiException && e.kind == ApiErrorKind.notFound) {
+        _removePostById(postId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Пост уже удалён')),
+        );
+        return;
+      }
+
       setState(() {
         post.likedByCurrentUser = prevLiked;
         post.likesCount = prevCount;

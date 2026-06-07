@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../models_api/post.dart';
 import '../services_api/post_service.dart';
 import '../services_api/api_error_ui.dart';
+import '../services_api/api_exception.dart';
 import '../services_api/web_socket_channel.dart';
 import 'package:flutter_application_1/services_api/Helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -157,6 +158,13 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
 
   void _handleWebSocketUpdate(Map<String, dynamic> update) {
     if (update['post_id'] == widget.postId) {
+      if (update['type'] == 'post_deleted') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _closeDeletedPost();
+        });
+        return;
+      }
+
       setState(() {
         switch (update['type']) {
           case 'like':
@@ -205,6 +213,14 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
     }
   }
 
+  void _closeDeletedPost() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Пост уже удалён')),
+    );
+    Navigator.of(context).maybePop();
+  }
+
   Future<void> _likePost() async {
     final prevLiked = _post.likedByCurrentUser;
     final prevCount = _post.likesCount;
@@ -224,6 +240,11 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (e is ApiException && e.kind == ApiErrorKind.notFound) {
+        _closeDeletedPost();
+        return;
+      }
+
       setState(() {
         _post.likedByCurrentUser = prevLiked;
         _post.likesCount = prevCount;

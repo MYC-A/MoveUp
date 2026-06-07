@@ -563,7 +563,9 @@ async def delete_post(
     await db.delete(post)
     await db.commit()
 
-    await broadcast_feed_update({"type": "post_deleted", "post_id": post_id})
+    delete_update = {"type": "post_deleted", "post_id": post_id}
+    await broadcast_feed_update(delete_update)
+    await broadcast_post_update(post_id, delete_update)
     return {"status": "ok", "deleted_post_id": post_id}
 
 
