@@ -522,6 +522,7 @@ async def get_user_posts(
             "content": post.content,
             "distance": post.distance,
             "duration": post.duration,
+            "city": post.city,
             "route_data": post.route_data,
             "user_id": post.user_id,
             "likes_count": post.likes_count,
