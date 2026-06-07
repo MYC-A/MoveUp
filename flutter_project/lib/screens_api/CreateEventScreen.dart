@@ -250,8 +250,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
       return Marker(
         point: point,
-        width: 56,
-        height: 56,
+        width: 72,
+        height: 64,
         alignment: Alignment.center,
         child: GestureDetector(
           onTap: () => _onMarkerTap(index),
@@ -1078,7 +1078,7 @@ class _RoutePointMarker extends StatelessWidget {
 
     return AnimatedScale(
       duration: const Duration(milliseconds: 140),
-      scale: isSelected ? 1.16 : 1,
+      scale: isSelected ? 1.08 : 1,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
